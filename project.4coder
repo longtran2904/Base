@@ -1,0 +1,48 @@
+version(2);
+project_name = "main.exe";
+
+patterns = {
+    "*.c",
+    "*.cpp",
+    "*.h",
+    "*.m",
+    "*.bat",
+    "*.sh",
+    "*.4coder",
+};
+blacklist_patterns = {
+    ".*",
+};
+load_paths_base = {
+    { ".", .relative = true, .recursive = true, },
+};
+load_paths = {
+    .win = load_paths_base,
+    .linux = load_paths_base,
+    .mac = load_paths_base,
+};
+
+commands = {
+    .build = { .out = "*compilation*", .footer_panel = true, .save_dirty_files = true,
+        .win = "build.bat",
+        .linux = "./build.sh",
+        .mac = "./build.sh", },
+    .run = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
+        .win = "build\\main.exe",
+        .linux = "build/main.exe",
+        .mac = "build/main.exe", },
+};
+fkey_command = {
+    .F1 = "build",
+    .F2 = "run",
+};
+
+reference_paths =
+{
+    //"C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\um",
+    //"C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\shared",
+    "C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\um\d3d11.h",
+    "C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\um\d3dcommon.h",
+    "C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\shared\dxgi.h",
+    "C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\shared\initguid.h",
+};

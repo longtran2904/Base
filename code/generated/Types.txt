@@ -1,0 +1,242 @@
+[TestStruct]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 16
+    Size:  16
+    Refs:  [a: "Member"]
+           [b: "Member"]
+           [c: "Member"]
+           [d: "Member"]
+
+[DenseTime]
+    Type:  "Alias"
+    Flags: Done Compiling
+    Index: 17
+    Size:  8
+    Refs:  [u64: "UInt"]
+
+[DateTime]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 18
+    Size:  10
+    Refs:  [msec: "Member"]
+           [sec: "Member"]
+           [min: "Member"]
+           [hour: "Member"]
+           [day: "Member"]
+           [mon: "Member"]
+           [year: "Member"]
+
+[DataAccessFlags]
+    Type:  "Alias"
+    Flags: Done Compiling
+    Index: 19
+    Size:  4
+    Refs:  [u32: "UInt"]
+
+[FilePropertyFlags]
+    Type:  "Alias"
+    Flags: Done Compiling
+    Index: 20
+    Size:  4
+    Refs:  [u32: "UInt"]
+
+[FileProperties]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 21
+    Size:  36
+    Refs:  [size: "Member"]
+           [flags]
+               Type:  "Member"
+               Flags: Done Compiling
+               Index: 1
+               Size:  8
+               Refs:  [FilePropertyFlags: "Alias"]
+
+           [createTime]
+               Type:  "Member"
+               Flags: Done Compiling
+               Index: 2
+               Size:  12
+               Refs:  [DenseTime: "Alias"]
+
+           [modifyTime]
+               Type:  "Member"
+               Flags: Done Compiling
+               Index: 3
+               Size:  24
+               Refs:  [DenseTime: "Alias"]
+
+           [access]
+               Type:  "Member"
+               Flags: Done Compiling
+               Index: 4
+               Size:  32
+               Refs:  [DataAccessFlags: "Alias"]
+
+
+[MemArena]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 22
+    Size:  24
+    Refs:  [cap: "Member"]
+           [pos: "Member"]
+           [commitPos: "Member"]
+
+[TempArena]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 23
+    Size:  16
+    Refs:  2
+           [arena]
+               Type:  "Member"
+               Flags: Done Compiling
+               Index: 0
+               Size:  0
+               Refs:  1
+                      [MemArena]
+                          Type:  "Struct"
+                          Flags: Done Compiling
+                          Index: 22
+                          Size:  24
+                          Refs:  [cap: "Member"]
+                                 [pos: "Member"]
+                                 [commitPos: "Member"]
+
+
+           [pos: "Member"]
+
+[StringJoin]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 24
+    Size:  68
+    Refs:  [pre: "Member"]
+           [mid: "Member"]
+           [post: "Member"]
+           [a]
+               Type:  "Member"
+               Flags: Done Compiling
+               Index: 3
+               Size:  48
+               Refs:  0
+                      [A]
+                          Type:  "Struct"
+                          Flags: Done Compiling
+                          Index: 27
+                          Size:  16
+                          Refs:  [sad: "Member"]
+                                 [fuck: "Member"]
+
+
+           <Anonymous>
+               Type:  "Member"
+               Flags: Done Compiling
+               Index: 4
+               Size:  64
+               Refs:  0
+                      <Anonymous>
+                          Type:  "Struct"
+                          Flags: Done Compiling
+                          Index: 29
+                          Size:  4
+                          Refs:  [c: "Member"]
+
+
+
+[StringNode]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 25
+    Size:  32
+    Refs:  [next: "Member"]
+           [string: "Member"]
+
+[StringList]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 26
+    Size:  32
+    Refs:  4
+           [first]
+               Type:  "Member"
+               Flags: Done Compiling
+               Index: 0
+               Size:  0
+               Refs:  1
+                      [StringNode]
+                          Type:  "Struct"
+                          Flags: Done Compiling
+                          Index: 25
+                          Size:  32
+                          Refs:  [next: "Member"]
+                                 [string: "Member"]
+
+
+           [last]
+               Type:  "Member"
+               Flags: Done Compiling
+               Index: 1
+               Size:  8
+               Refs:  1
+                      [StringNode]
+                          Type:  "Struct"
+                          Flags: Done Compiling
+                          Index: 25
+                          Size:  32
+                          Refs:  [next: "Member"]
+                                 [string: "Member"]
+
+
+           [nodeCount: "Member"]
+           [totalSize: "Member"]
+
+[A]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 27
+    Size:  16
+    Refs:  [sad: "Member"]
+           [fuck: "Member"]
+
+[B]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 28
+    Size:  4
+    Refs:  [b: "Member"]
+
+<Anonymous>
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 29
+    Size:  4
+    Refs:  [c: "Member"]
+
+<Anonymous>
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 30
+    Size:  8
+    Refs:  [bTest: "Member"]
+           [cTest: "Member"]
+
+[StringMatchFlags]
+    Type:  "Alias"
+    Flags: Done Compiling
+    Index: 31
+    Size:  4
+    Refs:  [u32: "UInt"]
+
+[StringDecode]
+    Type:  "Struct"
+    Flags: Done Compiling
+    Index: 32
+    Size:  8
+    Refs:  [codepoint: "Member"]
+           [size: "Member"]
+
