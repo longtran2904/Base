@@ -1,9 +1,9 @@
 
 global String MetaTokenType_names[] =
 {
-#define ENUM_NAME(n) ConstStr(Stringify(n)),
+#define ENUM_NAME(n) StrConst(Stringify(n)),
     TOKEN_TYPE(ENUM_NAME)
-#define NAME_KEYWORD(n) ConstStr(Stringify(Keyword_##n)),
+#define NAME_KEYWORD(n) StrConst(Stringify(Keyword_##n)),
     C_KEYWORD(NAME_KEYWORD)
         
 #undef ENUM_NAME
@@ -12,14 +12,14 @@ global String MetaTokenType_names[] =
 
 global String MetaInfoKind_names[] =
 {
-#define ENUM_NAME(e, n) ConstStr(Stringify(n)),
+#define ENUM_NAME(e, n) StrConst(Stringify(n)),
     META_INFO_KIND(ENUM_NAME)
 #undef ENUM_NAME
 };
 
 global String MetaInfoFlag_names[] =
 {
-#define ENUM_NAME(e, v, n) ConstStr(n),
+#define ENUM_NAME(e, v, n) StrConst(n),
     META_INFO_FLAG(ENUM_NAME)
 #undef ENUM_NAME
 };
@@ -42,7 +42,7 @@ function void Refill(Lexer* lexer, String str)
         lexer->at[1] = lexer->input.str[1];
     }
     
-    String advanceStr = PreSubStr(str, lexer->input);
+    String advanceStr = SubstrSplit(str, lexer->input).pre;
     for (u64 i = 0; i < advanceStr.size; ++i)
     {
         lexer->colNumber++;
@@ -57,8 +57,37 @@ function void Refill(Lexer* lexer, String str)
 function void AdvanceChars(Lexer* lexer, u32 advance)
 {
     String str = lexer->input;
-    lexer->input = SkipStr(lexer->input, advance);
+    lexer->input = StrSkip(lexer->input, advance);
     Refill(lexer, str);
+}
+
+typedef u32 StringMatchFlags;
+enum
+{
+    StringMatchFlag_NoCase = 1 << 0,
+    StringMatchFlag_NotEqual = 1 << 1,
+    StringMatchFlag_Inclusive = 1 << 2,
+};
+
+function String SkipStrUntil(String str, String characters, StringMatchFlags flags)
+{
+    b32 result = false;
+    b32 noCase = flags & StringMatchFlag_NoCase;
+    b32 equal = !!!(flags & StringMatchFlag_NotEqual);
+    b32 inclusive = flags & StringMatchFlag_Inclusive;
+    
+    u64 size;
+    for (size = 0; size < str.size; ++size)
+        if (result = (ChrCompareArr(str.str[size], characters, noCase) == equal))
+            break;
+    
+    if (!result)
+    {
+        size = 0;
+        inclusive = true;
+    }
+    
+    return StrSkip(str, size + (inclusive ? 0 : 1));
 }
 
 function void AdvanceUntil(Lexer* lexer, String characters, StringMatchFlags flags)
@@ -71,11 +100,11 @@ function void AdvanceUntil(Lexer* lexer, String characters, StringMatchFlags fla
 function MetaTokenType ParseKeyword(Lexer* lexer)
 {
 #define DEF_KEYWORD(n) \
-do \
-{ \
-String str = SkipStr(StrLit(Stringify(n)), 1); \
-if (CompareStr(PrefixStr(lexer->input, str.size), str, 0)) return MetaTokenType_Keyword_##n; \
-} while (0);
+    do \
+    { \
+        String str = StrSkip(StrLit(Stringify(n)), 1); \
+        if (StrCompare(StrPrefix(lexer->input, str.size), str, 0)) return MetaTokenType_Keyword_##n; \
+    } while (0);
     C_KEYWORD(DEF_KEYWORD)
 #undef DEF_KEYWORD
     return MetaTokenType_Identifier;
@@ -211,14 +240,14 @@ function Token GetToken(Lexer* lexer)
                 result.type = MetaTokenType_Constant_Integer;
                 if (c == '0')
                 {
-                    if (CompareCharNoCase(lexer->at[0], 'x'))
+                    if (ChrCompareNoCase(lexer->at[0], 'x'))
                     {
                         // NOTE: hexadecimal constant
                         AdvanceChars(lexer, 1);
                         AdvanceUntil(lexer, StrLit(Stringify(HexadecimalDigits)), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
                     }
 #if COMPILER_CL
-                    else if (CompareCharNoCase(lexer->at[0], 'b'))
+                    else if (ChrCompareNoCase(lexer->at[0], 'b'))
                     {
                         // NOTE: MSVC's binary extension
                         AdvanceChars(lexer, 1);
@@ -239,7 +268,7 @@ function Token GetToken(Lexer* lexer)
                     AdvanceUntil(lexer, StrLit(Stringify(Digits)), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
                     
                     b32 isFloat = false;
-                    if (CompareChar(lexer->at[0], '.', 0))
+                    if (ChrCompare(lexer->at[0], '.', 0))
                     {
                         FLOATING_CONSTANT:
                         isFloat = true;
@@ -247,10 +276,10 @@ function Token GetToken(Lexer* lexer)
                         AdvanceUntil(lexer, StrLit(Stringify(Digits)), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
                     }
                     
-                    if (CompareCharNoCase(lexer->at[0], 'e'))
+                    if (ChrCompareNoCase(lexer->at[0], 'e'))
                     {
                         isFloat = true;
-                        if (CompareCharArray(lexer->at[0], StrLit("+-"), 0))
+                        if (ChrCompareArr(lexer->at[0], StrLit("+-"), 0))
                             AdvanceChars(lexer, 1);
                     }
                     
@@ -267,11 +296,11 @@ function Token GetToken(Lexer* lexer)
                 }
                 
             }
-            else if (IsNonDigit(c))
+            else if (IsCharacter(c) || c == '_')
             {
                 // TODO: Handle keyword
                 result.type = ParseKeyword(lexer);
-                AdvanceUntil(lexer, StrLit(Stringify(Concat(NonDigits, Digits))), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
+                AdvanceUntil(lexer, StrLit(Digits Characters "_"), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
             }
             else
             {
@@ -296,7 +325,7 @@ function Token RequireToken(Lexer* lexer, MetaTokenType desiredType)
 function Token RequireIdentifier(Lexer* lexer, String match)
 {
     Token token = RequireToken(lexer, MetaTokenType_Identifier);
-    if (!CompareStr(token.str, match, 0))
+    if (!StrCompare(token.str, match, 0))
         ErrorToken(lexer, token, "Unexpected Identifier");
     return token;
 }
@@ -310,7 +339,7 @@ function b32 OptionalToken(Lexer* lexer, MetaTokenType desiredType)
     return result;
 }
 
-function Lexer Lexing(String input, String fileName, MemArena* arena)
+function Lexer Lexing(String input, String fileName, Arena* arena)
 {
     Lexer result = {
         .arena = arena,
@@ -325,7 +354,7 @@ function Lexer Lexing(String input, String fileName, MemArena* arena)
     return result;
 }
 
-function Parser Parsing(Lexer* lexer, MemArena* arena)
+function Parser Parsing(Lexer* lexer, Arena* arena)
 {
     Parser result = {
         .lexer = lexer,
@@ -337,11 +366,12 @@ function Parser Parsing(Lexer* lexer, MemArena* arena)
 
 function void ErrorArgList(Lexer* lexer, Token errorToken, char* format, va_list argList)
 {
-    String tokenError = PushStrf(lexer->arena, false, "%.*s (%u, %u) on \"%.*s\": Error:", StrExpand(errorToken.fileName), errorToken.lineNumber, errorToken.colNumber, StrExpand(errorToken.str));
-    String formatError = PushStrfv(lexer->arena, false, format, argList);
-    String error = PushStrf(lexer->arena, false, "%.*s %.*s\n", StrExpand(tokenError), StrExpand(formatError));
+    String tokenError = StrPushf(lexer->arena, "%.*s (%u, %u) on \"%.*s\": Error:",
+                                 StrExpand(errorToken.fileName), errorToken.lineNumber, errorToken.colNumber, StrExpand(errorToken.str));
+    String formatError = StrPushfv(lexer->arena, format, argList);
+    String error = StrPushf(lexer->arena, "%.*s %.*s\n", StrExpand(tokenError), StrExpand(formatError));
     
-    PushStrList(lexer->arena, lexer->errorList, error);
+    StrListPush(lexer->arena, lexer->errorList, error);
     
     lexer->error = true;
 }
@@ -469,14 +499,14 @@ function MetaInfo* FindMetaType(TypeTable* table, String name)
 {
     if (name.size != 0)
         for (MetaInfo* info = table->first; info; info = info->next)
-        if (CompareStr(info->name, name, 0))
-        return info;
+            if (StrCompare(info->name, name, 0))
+                return info;
     return 0;
 }
 
 function void AddMetaInfo(TypeTable* table, MetaInfo* currentType, MetaInfo* info)
 {
-    if (info->kind == MetaInfoKind_Alias && CompareStr(info->name, info->first->name, 0))
+    if (info->kind == MetaInfoKind_Alias && StrCompare(info->name, info->first->name, 0))
         return;
     
     if (info->kind == MetaInfoKind_Member)

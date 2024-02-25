@@ -17,7 +17,7 @@ typedef enum ENUM_NAME
 } ENUM_NAME;
 
 #undef X
-#define X(n) ConstStr(Stringify(n)),
+#define X(n) StrConst(Stringify(n)),
 global String Concat(ENUM_NAME, _names)[] =
 {
     X(None)

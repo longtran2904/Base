@@ -51,6 +51,6 @@ function b32 IsGFXWindowMaximized(GFXWindow window);
 
 function b32  WaitForGFXInput(void);
 function void GFXMessageBox(String title, String message);
-function void GFXErrorBox(i32 code);
+function void GFXErrorBox(StringList* errors, i32 code);
 
 #endif //_LONG_G_F_X_H

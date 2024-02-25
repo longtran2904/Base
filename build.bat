@@ -1,6 +1,8 @@
 @echo off
 
-set opts=-FC -GR- -EHa- -nologo -Zi -O2
+set opts=-FC -GR- -EHa- -nologo -Zi
+if [%1]==[release] set opts=%opts% -O2
+
 set code=%cd%
 set libs=Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib
 pushd build

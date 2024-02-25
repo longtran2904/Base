@@ -11,19 +11,19 @@ struct W32OpenGLWindow
 // NOTE: WGL Definitions
 
 #define WGL_FUNCS(X) \
-X(HGLRC, CreateContext, (HDC dc)) \
-X(BOOL,  DeleteContext, (HGLRC rc)) \
-X(BOOL,  MakeCurrent, (HDC dc, HGLRC rc)) \
-X(PROC,  GetProcAddress, (LPCSTR name))
+    X(HGLRC, CreateContext, (HDC dc)) \
+    X(BOOL,  DeleteContext, (HGLRC rc)) \
+    X(BOOL,  MakeCurrent, (HDC dc, HGLRC rc)) \
+    X(PROC,  GetProcAddress, (LPCSTR name))
 #define FUNCTION_VALUE(X) WGL_FUNCS(X)
 #define FUNCTION_PREFIX W32Wgl
 #define POINTER_PREFIX w32Wgl
 #include "XFunction.h"
 
 #define WGL_EXT_FUNCS(X) \
-X(BOOL,  ChoosePixelFormatARB, (HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, \
-UINT nMaxFormats, int *piFormats, UINT *nNumFormats)) \
-X(HGLRC, CreateContextAttribsARB, (HDC dc, HGLRC share, const int* attribList))
+    X(BOOL,  ChoosePixelFormatARB, (HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, \
+                                    UINT nMaxFormats, int *piFormats, UINT *nNumFormats)) \
+    X(HGLRC, CreateContextAttribsARB, (HDC dc, HGLRC share, const int* attribList))
 #define FUNCTION_VALUE(X) WGL_EXT_FUNCS(X)
 #define FUNCTION_PREFIX W32Wgl
 #define POINTER_PREFIX w32Wgl
@@ -103,8 +103,8 @@ typedef f32 GLFloat;
 typedef u32 GLBitfield;
 
 #define FUNCTION_VALUE(X) \
-X(void, glClearColor, (GLFloat red, GLFloat green, GLFloat blue, GLFloat alpha)) \
-X(void, glClear     , (GLBitfield mask))
+    X(void, glClearColor, (GLFloat red, GLFloat green, GLFloat blue, GLFloat alpha)) \
+    X(void, glClear     , (GLBitfield mask))
 #define FUNCTION_PREFIX GL
 #include "XFunction.h"
 
@@ -125,23 +125,25 @@ global int w32OpenGLPixelFormat = 0;
 
 function b32 InitGL(void)
 {
+    b32 error = 0;
+    
     // Get instance
     HINSTANCE instance = W32GetInstance();
     
     // Setup opengl
     {
         if (w32OpenGLModule != 0)
-            SetConstError("OpenGL hass already intialized");
+            ErrorSet("OpenGL hass already intialized", error);
         
-        if (!HasError())
+        if (!error)
         {
             w32OpenGLModule = LoadLibrary("opengl32.dll");
             if (w32OpenGLModule == 0)
-                SetConstError("Failed to initialize opengl.dll");
+                ErrorSet("Failed to initialize opengl.dll", error);
         }
     }
     
-    if (!HasError())
+    if (!error)
     {
 #define X(r, n, p)  GET_PROC_ADDR(w32Wgl##n, w32OpenGLModule, Stringify(Concat(wgl, n)));
         WGL_FUNCS(X)
@@ -153,13 +155,13 @@ function b32 InitGL(void)
 #undef X
         
         if (missingWglFunc)
-            SetConstError("Failed to load wgl function(s)");
+            ErrorSet("Failed to load wgl function(s)", error);
     }
     
     // Create bootstrap window
     HWND bootstrapWindow = 0;
-    ATOM atom;
-    if (!HasError())
+    ATOM atom = 0;
+    if (!error)
     {
         WNDCLASS wndClass = {
             .lpfnWndProc = W32GraphicsWindowProc,
@@ -169,9 +171,9 @@ function b32 InitGL(void)
         
         atom = RegisterClass(&wndClass);
         if (atom == 0)
-            SetConstError("Failed to resgister class");
+            ErrorSet("Failed to resgister class", error);
         
-        if (!HasError())
+        if (!error)
         {
             HWND hwnd = CreateWindow(BOOTSTRAP_WINDOW_CLASS_NAME,
                                      "opengl-bootstrap-window",
@@ -180,7 +182,7 @@ function b32 InitGL(void)
                                      );
             
             if (hwnd == 0)
-                SetConstError("Failed to create window");
+                ErrorSet("Failed to create window", error);
             else
                 bootstrapWindow = hwnd;
         }
@@ -188,7 +190,7 @@ function b32 InitGL(void)
     
     // Create bootstrap context
     HGLRC bootstrapContext = 0;
-    if (!HasError())
+    if (!error)
     {
         HDC dc = GetDC(bootstrapWindow);
         
@@ -207,76 +209,78 @@ function b32 InitGL(void)
         
         int formatIDX = ChoosePixelFormat(dc, &formatDesc);
         if (formatIDX == 0)
-            SetConstError("Failed to choose bootstrap pixel format");
+            ErrorSet("Failed to choose bootstrap pixel format", error);
         
-        if (!HasError())
+        if (!error)
             if (!SetPixelFormat(dc, formatIDX, &formatDesc))
-            SetConstError("Failed to create bootstrap pixel format");
+                ErrorSet("Failed to create bootstrap pixel format", error);
         
-        if (!HasError())
+        if (!error)
         {
             HGLRC hglrc = w32WglCreateContext(dc);
             if (hglrc == 0)
-                SetConstError("Failed to create bootstrap context");
+                ErrorSet("Failed to create bootstrap context", error);
             
             // Load wgl ext functions
             {
-                if (!HasError())
+                if (!error)
                     w32WglMakeCurrent(dc, hglrc);
 #define X(r, n, p) \
-if (!HasError()) \
-{ \
-(*(PROC*)&w32Wgl##n) = w32WglGetProcAddress("wgl"Stringify(n)); \
-if (w32Wgl##n == 0) SetConstError("Failed to initialize wgl"Stringify(n)); \
-}
+    if (!error) \
+    { \
+        (*(PROC*)&w32Wgl##n) = w32WglGetProcAddress("wgl"Stringify(n)); \
+        if (w32Wgl##n == 0) ErrorSet("Failed to initialize wgl"Stringify(n), error); \
+    }
                 WGL_EXT_FUNCS(X);
 #undef X
             }
             
-            if (!HasError())
+            if (!error)
                 bootstrapContext = hglrc;
         }
         
         ReleaseDC(bootstrapWindow, dc);
     }
     
-	HWND dummyWindow = CreateWindow(GRAPHICS_WINDOW_CLASS_NAME, "LongDummy",
-									0, 0, 0, 0, 0,
-									0, 0, W32GetInstance(), 0);
+	HWND dummyWindow = 0;
+    if (!error)
+        dummyWindow = CreateWindow(GRAPHICS_WINDOW_CLASS_NAME, "LongDummy",
+                                   0, 0, 0, 0, 0,
+                                   0, 0, W32GetInstance(), 0);
+    
 	if (dummyWindow)
 	{
 		// Create real context
 		HDC dc = GetDC(dummyWindow);
 		
-		int formatAttribsI[] = {
-			WGL_DRAW_TO_WINDOW_ARB, TRUE,
-			WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
-			WGL_SWAP_METHOD_ARB, WGL_SWAP_EXCHANGE_ARB,
-			WGL_SUPPORT_OPENGL_ARB, TRUE,
-			WGL_DOUBLE_BUFFER_ARB, TRUE,
-			WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-			WGL_COLOR_BITS_ARB, 8,
-			WGL_RED_BITS_ARB, 8,
-			WGL_GREEN_BITS_ARB, 8,
-			WGL_BLUE_BITS_ARB, 8,
-			0
-		};
-		
-		UINT numFormats = 0;
-		BOOL cpf = w32WglChoosePixelFormatARB(dc, formatAttribsI, 0,
-											  1, &w32OpenGLPixelFormat, &numFormats);
-		if (!cpf || numFormats == 0)
-			SetConstError("Failed to choose graphics pixel format");
-		
-		if (!HasError())
+        int formatAttribsI[] = {
+            WGL_DRAW_TO_WINDOW_ARB, TRUE,
+            WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
+            WGL_SWAP_METHOD_ARB, WGL_SWAP_EXCHANGE_ARB,
+            WGL_SUPPORT_OPENGL_ARB, TRUE,
+            WGL_DOUBLE_BUFFER_ARB, TRUE,
+            WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
+            WGL_COLOR_BITS_ARB, 8,
+            WGL_RED_BITS_ARB, 8,
+            WGL_GREEN_BITS_ARB, 8,
+            WGL_BLUE_BITS_ARB, 8,
+            0
+        };
+        
+        UINT numFormats = 0;
+        BOOL cpf = w32WglChoosePixelFormatARB(dc, formatAttribsI, 0, 1, &w32OpenGLPixelFormat, &numFormats);
+        if (!cpf || numFormats == 0)
+            ErrorSet("Failed to choose graphics pixel format", error);
+        
+		if (!error)
 		{
 			PIXELFORMATDESCRIPTOR formatDesc = {0};
 			BOOL spf = SetPixelFormat(dc, w32OpenGLPixelFormat, &formatDesc);
 			if (!spf)
-				SetConstError("Failed to set graphics pixel format");
+				ErrorSet("Failed to set graphics pixel format", error);
 		}
 		
-		if (!HasError())
+		if (!error)
 		{
 			int attribs[] = {
 				WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
@@ -288,23 +292,23 @@ if (w32Wgl##n == 0) SetConstError("Failed to initialize wgl"Stringify(n)); \
 			
 			w32OpenGLContext = w32WglCreateContextAttribsARB(dc, 0, attribs);
 			if (!w32OpenGLContext)
-				SetConstError("Failed to create graphics context");
+				ErrorSet("Failed to create graphics context", error);
 		}
 		
 		// Load opengl functions
 		{
-			if (!HasError())
+			if (!error)
 			{
 				GET_PROC_ADDR(glClearColor, w32OpenGLModule, "glClearColor");
 				if (glClearColor == 0)
-					SetConstError("Could not load glClearColor");
+					ErrorSet("Could not load glClearColor", error);
 			}
 			
-			if (!HasError())
+			if (!error)
 			{
 				GET_PROC_ADDR(glClear, w32OpenGLModule, "glClear");
 				if (glClear == 0)
-					SetConstError("Could not load glClear");
+					ErrorSet("Could not load glClear", error);
 			}
 		}
 		
@@ -322,12 +326,12 @@ if (w32Wgl##n == 0) SetConstError("Failed to initialize wgl"Stringify(n)); \
 		if (dummyWindow)
 			Assert(DestroyWindow(dummyWindow));
         
-        if (!atom)
+        if (atom)
             Assert(UnregisterClass(BOOTSTRAP_WINDOW_CLASS_NAME, instance));
     }
     
 	// Clean up "non-temps"
-    if (HasError())
+    if (error)
     {
         // Clear modules
         if (w32OpenGLModule)
@@ -350,7 +354,7 @@ if (w32Wgl##n == 0) SetConstError("Failed to initialize wgl"Stringify(n)); \
 		w32OpenGLPixelFormat = 0;
     }
     
-    return !HasError();
+    return !error;
 }
 
 function void W32CloseOpenGLWindow(GFXWindow window)
@@ -361,12 +365,15 @@ function void W32CloseOpenGLWindow(GFXWindow window)
 
 function b32 EquipGLWindow(GFXWindow window)
 {
+    b32 error = 1;
 	if (!IsGFXWindowValid(window))
-		SetErrorf("Invalid window handle: %d", window);
+		ErrorFmt("Invalid window handle: %d", window);
 	else if (IsGFXWindowEquipped(window))
-		SetErrorf("Window is already equipped: %d", window);
+		ErrorFmt("Window is already equipped: %d", window);
+    else
+        error = 0;
 	
-	if (!HasError())
+	if (!error)
 	{
 		W32Window* slot = W32WindowFromGFXHandle(window);
 		HDC dc = GetDC(slot->wnd);
@@ -374,24 +381,25 @@ function b32 EquipGLWindow(GFXWindow window)
 		PIXELFORMATDESCRIPTOR formatDesc = {0};
 		BOOL spf = SetPixelFormat(dc, w32OpenGLPixelFormat, &formatDesc);
 		if (!spf)
-			SetConstError("Failed to set graphics pixel format");
+			ErrorSet("Failed to set graphics pixel format", error);
 		
 		ReleaseDC(slot->wnd, dc);
 		
-		if (!HasError())
+		if (!error)
 		{
 			W32OpenGLWindow* equipped = w32OpenGLSlots + window - 1;
 			equipped->dummy = 1;
 			SetGFXWindowEquippedData(window, equipped, W32CloseOpenGLWindow);
 		}
 		
-		if (HasError())
+		if (error)
 		{
 			ZeroStruct(slot);
 			ZeroStruct(w32OpenGLSlots + window - 1);
 		}
 	}
-    return !HasError();
+    
+    return !error;
 }
 
 global HDC  w32RenderDC = 0;

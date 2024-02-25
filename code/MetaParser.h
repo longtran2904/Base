@@ -4,62 +4,62 @@
 #define _META_PARSER_H
 
 #define TOKEN_TYPE(X) \
-X(Unknow) \
-\
-X(OpenParen) \
-X(CloseParen) \
-X(Colon) \
-X(Semicolon) \
-X(Asterisk) \
-X(OpenBracket) \
-X(CloseBracket) \
-X(OpenBrace) \
-X(CloseBrace) \
-X(Equals) \
-X(Comma) \
-X(Pound) \
-\
-X(Ampersand) \
-X(Exclamation) \
-X(Or) \
-X(Tilde) \
-\
-X(Plus) \
-X(Minus) \
-X(Divide) \
-X(Mod) \
-\
-X(Question) \
-X(RightArrow) \
-X(LeftArrow) \
-X(Arrow) \
-X(Dot) \
-\
-X(Identifier) \
-\
-X(Constant_Integer) \
-X(Constant_Float) \
-X(Constant_Enumeration) \
-X(Constant_Char) \
-X(Constant_String) \
-\
-X(Comment) \
-X(EndOfStream)
+    X(Unknow) \
+    \
+    X(OpenParen) \
+    X(CloseParen) \
+    X(Colon) \
+    X(Semicolon) \
+    X(Asterisk) \
+    X(OpenBracket) \
+    X(CloseBracket) \
+    X(OpenBrace) \
+    X(CloseBrace) \
+    X(Equals) \
+    X(Comma) \
+    X(Pound) \
+    \
+    X(Ampersand) \
+    X(Exclamation) \
+    X(Or) \
+    X(Tilde) \
+    \
+    X(Plus) \
+    X(Minus) \
+    X(Divide) \
+    X(Mod) \
+    \
+    X(Question) \
+    X(RightArrow) \
+    X(LeftArrow) \
+    X(Arrow) \
+    X(Dot) \
+    \
+    X(Identifier) \
+    \
+    X(Constant_Integer) \
+    X(Constant_Float) \
+    X(Constant_Enumeration) \
+    X(Constant_Char) \
+    X(Constant_String) \
+    \
+    X(Comment) \
+    X(EndOfStream)
 
 #define C_KEYWORD(X) \
-X(break) \
-X(case) \
-X(continue) \
-X(else) \
-X(for) \
-X(goto) \
-X(if) \
-X(struct) \
-X(enum) \
-X(union) \
-X(switch) \
-X(typedef) \
-X(while) \
+    X(break) \
+    X(case) \
+    X(continue) \
+    X(else) \
+    X(for) \
+    X(goto) \
+    X(if) \
+    X(struct) \
+    X(enum) \
+    X(union) \
+    X(switch) \
+    X(typedef) \
+    X(while) \
 
 typedef enum MetaTokenType
 {
@@ -76,25 +76,25 @@ typedef enum MetaInfoKind MetaInfoKind;
 enum MetaInfoKind
 {
 #define META_INFO_KIND(X) \
-X(MetaInfoKind_None, "None") \
-X(MetaInfoKind_Int, "Int") \
-X(MetaInfoKind_UInt, "UInt") \
-X(MetaInfoKind_Float, "Float") \
-X(MetaInfoKind_Bool, "Bool") \
-X(MetaInfoKind_String, "String") \
-X(MetaInfoKind_Void, "Void") \
+    X(MetaInfoKind_None, "None") \
+    X(MetaInfoKind_Int, "Int") \
+    X(MetaInfoKind_UInt, "UInt") \
+    X(MetaInfoKind_Float, "Float") \
+    X(MetaInfoKind_Bool, "Bool") \
+    X(MetaInfoKind_String, "String") \
+    X(MetaInfoKind_Void, "Void") \
     \
-X(MetaInfoKind_Alias, "Alias") \
-X(MetaInfoKind_Pointer, "Pointer") \
+    X(MetaInfoKind_Alias, "Alias") \
+    X(MetaInfoKind_Pointer, "Pointer") \
     \
-X(MetaInfoKind_Struct, "Struct") \
-X(MetaInfoKind_Union, "Union") \
-X(MetaInfoKind_Enum, "Enum") \
-X(MetaInfoKind_Procedure, "Procedure") \
+    X(MetaInfoKind_Struct, "Struct") \
+    X(MetaInfoKind_Union, "Union") \
+    X(MetaInfoKind_Enum, "Enum") \
+    X(MetaInfoKind_Procedure, "Procedure") \
     \
-X(MetaInfoKind_Member, "Member") \
-X(MetaInfoKind_Argument, "Argument") \
-X(MetaInfoKind_Return, "Return")
+    X(MetaInfoKind_Member, "Member") \
+    X(MetaInfoKind_Argument, "Argument") \
+    X(MetaInfoKind_Return, "Return")
     //MetaInfoKind_Array,
     //MetaInfoKind_Code,
     //MetaInfoKind_Type, // First class type
@@ -121,7 +121,7 @@ typedef struct Token
 
 typedef struct Lexer
 {
-    MemArena* arena;
+    Arena* arena;
     String fileName, input;
     u32 lineNumber, colNumber;
     b32 error;
@@ -134,10 +134,10 @@ typedef u32 MetaInfoFlags;
 typedef enum MetaInfoFlag
 {
 #define META_INFO_FLAG(X) \
-X(MetaInfoFlag_Polymorphic, (1 << 0), "Polymorphic") \
-X(MetaInfoFlag_CompileTimeValue, (1 << 1), "Comptime Value") \
-X(MetaInfoFlag_CompileTimeType, (1 << 2), "Comptime Type") \
-X(MetaInfoFlag_DoneCompiling, (1 << 3), "Done Compiling") \
+    X(MetaInfoFlag_Polymorphic, (1 << 0), "Polymorphic") \
+    X(MetaInfoFlag_CompileTimeValue, (1 << 1), "Comptime Value") \
+    X(MetaInfoFlag_CompileTimeType, (1 << 2), "Comptime Type") \
+    X(MetaInfoFlag_DoneCompiling, (1 << 3), "Done Compiling") \
     
 #define ENUM_DEF(n, v, c) n = v,
     META_INFO_FLAG(ENUM_DEF)
@@ -172,7 +172,7 @@ struct MetaInfo
 #define MAX_MEMBER_COUNT MAX_TYPE_COUNT * 10
 typedef struct TypeTable
 {
-    MemArena* arena;
+    Arena* arena;
     MetaInfo* first;
     MetaInfo* last;
     u32 typeCount;
@@ -186,8 +186,8 @@ typedef struct Parser
 
 #define POINTER_SIZE 8
 
-function Lexer Lexing(String input, String fileName, MemArena* arena);
-function Parser Parsing(Lexer* lexer, MemArena* arena);
+function Lexer Lexing(String input, String fileName, Arena* arena);
+function Parser Parsing(Lexer* lexer, Arena* arena);
 function void ErrorToken(Lexer* lexer, Token errorToken, char* message, ...);
 function void Error(Lexer* lexer, char* message, ...);
 

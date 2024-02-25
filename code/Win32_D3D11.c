@@ -33,7 +33,7 @@
 // NOTE: DXGI Definitions
 
 #define DXGI_FUNCS(X) \
-X(HRESULT, CreateDXGIFactory, (REFIID, void**))
+    X(HRESULT, CreateDXGIFactory, (REFIID, void**))
 #define FUNCTION_VALUE(X) DXGI_FUNCS(X)
 #define FUNCTION_PREFIX W32
 #define POINTER_PREFIX w32
@@ -44,11 +44,11 @@ X(HRESULT, CreateDXGIFactory, (REFIID, void**))
 // NOTE: D3D11 Definitions
 
 #define D3D11_FUNCS(X) \
-X(HRESULT, D3D11CreateDevice, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
-UINT, UINT, ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**)) \
-X(HRESULT, D3D11CreateDeviceAndSwapChain, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
-UINT, UINT, DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**, \
-ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**))
+    X(HRESULT, D3D11CreateDevice, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
+                                   UINT, UINT, ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**)) \
+    X(HRESULT, D3D11CreateDeviceAndSwapChain, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
+                                               UINT, UINT, DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**, \
+                                               ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**))
 #define FUNCTION_VALUE(X) D3D11_FUNCS(X)
 #include "XFunction.h"
 
@@ -56,9 +56,9 @@ ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**))
 // NOTE: D3DCompiler Definitions
 
 #define D3DCOMPILER_FUNCS(X) \
-X(HRESULT, D3DReadFileToBlob, (LPCWSTR, ID3DBlob**)) \
-X(HRESULT, D3DCompile, (LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, \
-LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**))
+    X(HRESULT, D3DReadFileToBlob, (LPCWSTR, ID3DBlob**)) \
+    X(HRESULT, D3DCompile, (LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, \
+                            LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**))
 #define FUNCTION_VALUE(X) D3DCOMPILER_FUNCS(X)
 #include "XFunction.h"
 
@@ -91,27 +91,29 @@ HMODULE d3dcompilerModule = 0;
 
 function b32 InitD3D11(void)
 {
+    b32 error = 0;
+    
     // Load modules and functions
     {
-#define X(r, n, p) if (!HasError()) \
-{ \
-GET_PROC_ADDR(w32##n, scopeModule, Stringify(n)); \
-if (!w32##n) SetConstError("Failed to load "Stringify(n)); \
-}
+#define X(r, n, p) if (!error) \
+    { \
+        GET_PROC_ADDR(w32##n, scopeModule, Stringify(n)); \
+        if (!w32##n) ErrorSet("Failed to load "Stringify(n), error); \
+    }
         
         // -- dxgi.dll --
         {
             if (dxgiModule != 0)
-                SetConstError("dxgi.dll has already initialized");
+                ErrorSet("dxgi.dll has already initialized", error);
             
-            if (!HasError())
+            if (!error)
             {
                 dxgiModule = LoadLibraryA("dxgi.dll");
                 if (!dxgiModule)
-                    SetConstError("Failed to load dxgi.dll");
+                    ErrorSet("Failed to load dxgi.dll", error);
             }
             
-            if (!HasError())
+            if (!error)
             {
                 HMODULE scopeModule = dxgiModule;
                 DXGI_FUNCS(X)
@@ -119,19 +121,19 @@ if (!w32##n) SetConstError("Failed to load "Stringify(n)); \
         }
         
         // -- d3d11.dll --
-        if (!HasError())
+        if (!error)
         {
             if (d3d11Module != 0)
-                SetConstError("d3d11Module.dll has already initialized");
+                ErrorSet("d3d11Module.dll has already initialized", error);
             
-            if (!HasError())
+            if (!error)
             {
                 d3d11Module = LoadLibraryA("d3d11.dll");
                 if (!d3d11Module)
-                    SetConstError("Failed to load d3d11.dll");
+                    ErrorSet("Failed to load d3d11.dll", error);
             }
             
-            if (!HasError())
+            if (!error)
             {
                 HMODULE scopeModule = d3d11Module;
                 D3D11_FUNCS(X)
@@ -139,20 +141,20 @@ if (!w32##n) SetConstError("Failed to load "Stringify(n)); \
         }
         
         // -- d3dcompiler_47.dll --
-        if (!HasError())
+        if (!error)
         {
             if (d3dcompilerModule != 0)
-                SetConstError("d3dcompiler_47.dll has already initialized");
+                ErrorSet("d3dcompiler_47.dll has already initialized", error);
             
-            if (!HasError())
+            if (!error)
             {
                 // TODO: deal with the fact that there're multiple versions of this dll
                 d3dcompilerModule = LoadLibraryA("d3dcompiler_47.dll");
                 if (!d3dcompilerModule)
-                    SetConstError("Failed to load d3dcompiler_47.dll");
+                    ErrorSet("Failed to load d3dcompiler_47.dll", error);
             }
             
-            if (!HasError())
+            if (!error)
             {
                 HMODULE scopeModule = d3dcompilerModule;
                 D3DCOMPILER_FUNCS(X)
@@ -163,25 +165,25 @@ if (!w32##n) SetConstError("Failed to load "Stringify(n)); \
     
     {
         // -- Create device --
-        if (!HasError())
+        if (!error)
         {
             HRESULT result = w32D3D11CreateDevice(0, D3D_DRIVER_TYPE_HARDWARE, 0, D3D11_CREATE_DEVICE_DEBUG,
                                                   0, 0, D3D11_SDK_VERSION, &device, 0, &ctx);
             if (result != S_OK)
-                SetConstError("Failed to create device");
+                ErrorSet("Failed to create device", error);
         }
         
         // -- Create dbg --
-        if (!HasError())
+        if (!error)
         {
             HRESULT result = ID3D11Device_QueryInterface(device, iid_ID3D11Debug, &dbg);
             if (result != S_OK)
-                SetConstError("Failed to query dbg");
+                ErrorSet("Failed to query dbg", error);
         }
     }
     
 	// Clean up "non-temps"
-    if (HasError())
+    if (error)
     {
         // Clear modules
 		if (dxgiModule)
@@ -208,7 +210,7 @@ if (!w32##n) SetConstError("Failed to load "Stringify(n)); \
         d3dcompilerModule = 0;
     }
     
-    return !HasError();
+    return !error;
 }
 
 function void W32CloseD3D11Window(GFXWindow window)
@@ -223,10 +225,12 @@ function void W32CloseD3D11Window(GFXWindow window)
 
 function b32 EquipD3D11Window(GFXWindow window)
 {
-    if (!IsGFXWindowValid(window))
-        SetConstError("Handle isn't valid");
+    b32 error = 0;
     
-    if (!HasError())
+    if (!IsGFXWindowValid(window))
+        ErrorSet("Handle isn't valid", error);
+    
+    if (!error)
     {
         W32Window* slot = W32WindowFromGFXHandle(window);
         
@@ -234,15 +238,15 @@ function b32 EquipD3D11Window(GFXWindow window)
         ID3D11RenderTargetView* view = 0;
         ID3D11Texture2D* backBuffer = 0;
         
-        if (!HasError())
+        if (!error)
         {
 			// Create factory
 			IDXGIFactory* factory = 0;
 			HRESULT factoryResult = w32CreateDXGIFactory(iid_IDXGIFactory, &factory);
 			if (factoryResult != S_OK)
-				SetConstError("Failed to create factory");
+				ErrorSet("Failed to create factory", error);
 			
-			if (!HasError())
+			if (!error)
 			{
 				// Create swapChain
 				DXGI_SWAP_CHAIN_DESC swapChainDesc = {
@@ -259,13 +263,13 @@ function b32 EquipD3D11Window(GFXWindow window)
 				
 				IDXGIFactory_CreateSwapChain(factory, (IUnknown*)device, &swapChainDesc, &swapchain);
 				if (!swapchain)
-					SetConstError("Failed to create swapchain");
+					ErrorSet("Failed to create swapchain", error);
 				
 				IDXGIFactory_Release(factory);
 			}
         }
         
-		if (!HasError())
+		if (!error)
 		{
 			W32D3D11Window* equipped = w32D3D11Slots + window - 1;
 			equipped->swapchain = swapchain;
@@ -273,7 +277,7 @@ function b32 EquipD3D11Window(GFXWindow window)
 		}
     }
     
-    return !HasError();
+    return !error;
 }
 
 function ID3D11DeviceContext* GetD3D11DeviceCtx(void)

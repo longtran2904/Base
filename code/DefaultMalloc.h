@@ -5,17 +5,17 @@
 
 #include <stdlib.h>
 
-#if !defined(ReserveMem)
-#define ReserveMem malloc
+#if !defined(MemReserve)
+#define MemReserve malloc
 #endif
-#if !defined(CommitMem)
-#define CommitMem ChangeMemoryNoOp
+#if !defined(MemCommit)
+#define MemCommit ChangeMemoryNoOp
 #endif
-#if !defined(DecommitMem)
-#define DecommitMem ChangeMemoryNoOp
+#if !defined(MemDecommit)
+#define MemDecommit ChangeMemoryNoOp
 #endif
-#if !defined(ReleaseMem)
-#define ReleaseMem free
+#if !defined(MemRelease)
+#define MemRelease free
 #endif
 
 #endif //_DEFAULT_MALLOC_H

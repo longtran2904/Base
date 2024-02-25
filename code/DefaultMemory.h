@@ -3,17 +3,17 @@
 #ifndef _DEFAULT_MEMORY_H
 #define _DEFAULT_MEMORY_H
 
-#if !defined(ReserveMem)
-#define ReserveMem OSReserve
+#if !defined(MemReserve)
+#define MemReserve OSReserve
 #endif
-#if !defined(CommitMem)
-#define CommitMem OSCommit
+#if !defined(MemCommit)
+#define MemCommit OSCommit
 #endif
-#if !defined(DecommitMem)
-#define DecommitMem OSDecommit
+#if !defined(MemDecommit)
+#define MemDecommit OSDecommit
 #endif
-#if !defined(ReleaseMem)
-#define ReleaseMem OSRelease
+#if !defined(MemRelease)
+#define MemRelease OSRelease
 #endif
 
 #endif //_DEFAULT_MEMORY_H

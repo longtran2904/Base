@@ -185,25 +185,25 @@ typedef u64 GFXWindow;
 #define KEEP_PREFIX
 
 #define DXGI_FUNCS(X) \
-X(HRESULT, CreateDXGIFactory, (REFIID, void**))
+    X(HRESULT, CreateDXGIFactory, (REFIID, void**))
 #define FUNCTION_VALUE(X) DXGI_FUNCS(X)
 #define FUNCTION_PREFIX W32
 #define POINTER_PREFIX w32
 #include "XFunction.h"
 
 #define D3D11_FUNCS(X) \
-X(HRESULT, D3D11CreateDevice, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
-UINT, UINT, ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**)) \
-X(HRESULT, D3D11CreateDeviceAndSwapChain, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
-UINT, UINT, DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**, \
-ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**))
+    X(HRESULT, D3D11CreateDevice, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
+                                   UINT, UINT, ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**)) \
+    X(HRESULT, D3D11CreateDeviceAndSwapChain, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
+                                               UINT, UINT, DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**, \
+                                               ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**))
 #define FUNCTION_VALUE(X) D3D11_FUNCS(X)
 #include "XFunction.h"
 
 #define D3DCOMPILER_FUNCS(X) \
-X(HRESULT, D3DReadFileToBlob, (LPCWSTR, ID3DBlob**)) \
-X(HRESULT, D3DCompile, (LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, \
-LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**))
+    X(HRESULT, D3DReadFileToBlob, (LPCWSTR, ID3DBlob**)) \
+    X(HRESULT, D3DCompile, (LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, \
+                            LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**))
 #define FUNCTION_VALUE(X) D3DCOMPILER_FUNCS(X)
 #include "XFunction.h"
 
@@ -270,7 +270,7 @@ global W32D3D11Window* win32WindowFree = 0;
 #define W32HandleFromSlot(s) (GFXWindow)(((s) - win32WindowSlots) + 1)
 #define W32SlotFromHandle(h) (win32WindowSlots + ((h) - 1))
 #define W32IsHandleValid(h) ((1 <= (h)) && \
-((h) <= ArrayCount(win32WindowSlots)))
+                             ((h) <= ArrayCount(win32WindowSlots)))
 
 ID3D11Device* device = 0;
 ID3D11DeviceContext* ctx = 0;
@@ -325,7 +325,7 @@ function b32 InitD3D11(void)
     
     // Setup window slots
     {
-        ZeroArray(win32WindowSlots);
+        ZeroFixedArr(win32WindowSlots);
         win32WindowFree = win32WindowSlots;
         W32D3D11Window* last = win32WindowSlots + ArrayCount(win32WindowSlots) - 1;
         for (W32D3D11Window* slot = win32WindowSlots; slot < last; ++slot)
@@ -335,10 +335,10 @@ function b32 InitD3D11(void)
     // Load modules and functions
     {
 #define X(r, n, p) if (error.size == 0) \
-{ \
-GET_PROC_ADDR(w32##n, scopeModule, Stringify(n)); \
-if (!w32##n) error = StrLit("Error: Failed to load "Stringify(n)"\n"); \
-}
+    { \
+        GET_PROC_ADDR(w32##n, scopeModule, Stringify(n)); \
+        if (!w32##n) error = StrLit("Error: Failed to load "Stringify(n)"\n"); \
+    }
         
         // -- dxgi.dll --
         {

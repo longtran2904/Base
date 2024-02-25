@@ -116,12 +116,12 @@ function void InitOSMain(int argc, char **argv)
     BeginScratch(scratch);
     
     // Setup arena
-    permArena = MakeArena();
+    permArena = ArenaMake();
     
     for (int i = 0; i <argc; ++i)
     {
         String arg = StrFromCStr((u8*)argv[i]);
-        PushStrList(permArena, &win32CmdLine, arg);
+        StrListPush(permArena, &win32CmdLine, arg);
     }
     
     {
@@ -143,8 +143,8 @@ function void InitOSMain(int argc, char **argv)
         }
         
         String fullPath = Str(buffer, size);
-        String binaryPath = ChopStrAfter(fullPath, StrLit("/\\"), StringMatchFlag_Inclusive);
-        win32BinaryPath = CopyStr(permArena, binaryPath, true);
+        String binaryPath = StrPrefix(fullPath, StrFindChr(fullPath, "/\\", FindStr_LastMatch));
+        win32BinaryPath = StrCopy(permArena, binaryPath);
     }
     
     {
@@ -162,7 +162,7 @@ function void InitOSMain(int argc, char **argv)
         if (buffer != 0)
             // NOTE: the docs make it sound like we can only count on cap getting the
             // size on failure; so we're just going to cstring this to be safe.
-            win32UserPath = CopyStr(permArena, StrFromCStr(buffer), true);
+            win32UserPath = StrCloneCStr(permArena, buffer);
     }
     
     {
@@ -179,7 +179,7 @@ function void InitOSMain(int argc, char **argv)
         // NOTE: size - 1 because this particular string function in the Win32 API
         // is different from the others and it includes  the trailing backslash.
         // We want consistency, so the "- 1" removes it.
-        win32TempPath = CopyStr(permArena, Str(buffer, size - 1), true);
+        win32TempPath = StrCopy(permArena, Str(buffer, size - 1));
     }
     
     EndScratch(scratch);
@@ -206,6 +206,7 @@ function void W32WinMainInit(HINSTANCE hInstance,
 {
     int argc = __argc;
     char** argv = __argv;
+    win32Instance = hInstance;
     InitOSMain(argc, argv);
 }
 
@@ -249,7 +250,7 @@ function DenseTime W32DenseTimeFromFileTime(FILETIME* fileTime)
     SYSTEMTIME systemTime = {0};
     FileTimeToSystemTime(fileTime, &systemTime);
     DateTime dateTime = W32DateTimeFromSystemTime(&systemTime);
-    DenseTime result = ToDenseTime(&dateTime);
+    DenseTime result = TimeToDense(&dateTime);
     return result;
 }
 
@@ -306,7 +307,7 @@ function DateTime ToUniversalTime(DateTime* localTime)
 
 //~ NOTE: File Handling
 
-function String ReadOSFile(MemArena* arena, String fileName, b32 terminateData)
+function String ReadOSFile(Arena* arena, String fileName, b32 terminateData)
 {
     BeginScratch(scratch, arena);
     HANDLE file = CreateFileA(fileName.str,
@@ -321,7 +322,7 @@ function String ReadOSFile(MemArena* arena, String fileName, b32 terminateData)
         DWORD lowSize = GetFileSize(file, &highSize);
         u64 totalSize = (((u64)highSize << 32) | (u64)lowSize);
         
-        TempArena restorePoint = BeginTemp(arena);
+        TempArena restorePoint = TempBegin(arena);
         u8* buffer = PushZeroArray(arena, u8, totalSize + (terminateData ? 1 : 0));
         
         u8* ptr = buffer;
@@ -343,7 +344,7 @@ function String ReadOSFile(MemArena* arena, String fileName, b32 terminateData)
         if (success)
             result = (String){ buffer, totalSize };
         else
-            EndTemp(restorePoint);
+            TempEnd(restorePoint);
         
         CloseHandle(file);
     }
@@ -432,7 +433,7 @@ function FileProperties GetFileProperties(String fileName)
     return result;
 }
 
-function String GetFilePath(MemArena* arena, SystemPath path, b32 addNullTerminator)
+function String GetFilePath(Arena* arena, SystemPath path)
 {
     String result = {0};
     switch (path)
@@ -449,24 +450,14 @@ function String GetFilePath(MemArena* arena, SystemPath path, b32 addNullTermina
                 buffer = PushArray(scratch, u8, size);
                 size = GetCurrentDirectoryA(size, buffer);
             }
-            result = CopyStr(arena, Str(buffer, size), addNullTerminator);
+            result = StrCopy(arena, Str(buffer, size));
             EndScratch(scratch);
         } break;
         
-        case SystemPath_Binary:
-        {
-            result = CopyStr(arena, win32BinaryPath, addNullTerminator);
-        } break;
-        
-        case SystemPath_UserData:
-        {
-            result = CopyStr(arena, win32UserPath, addNullTerminator);
-        } break;
-        
-        case SystemPath_TempData:
-        {
-            result = CopyStr(arena, win32TempPath, addNullTerminator);
-        } break;
+        // @RECONSIDER(long): Should I just put all these in a read-only section and return, rather than copy all the times.
+        case SystemPath_Binary:   result = StrCopy(arena, win32BinaryPath); break;
+        case SystemPath_UserData: result = StrCopy(arena, win32UserPath  ); break;
+        case SystemPath_TempData: result = StrCopy(arena, win32TempPath  ); break;
     }
     
     return result;
@@ -511,7 +502,7 @@ function OSFileIter InitFileIter(String path)
 {
     BeginScratch(scratch);
     
-    path = JoinStr3(scratch, &(StringJoin){ path, StrLit("\\*") }, true);
+    path = StrJoin3(scratch, path, StrLit("\\*"));
     OSFileIter result = {0};
     W32FileIter* w32Iter = (W32FileIter*)&result;
     w32Iter->handle = FindFirstFile(path.str, &w32Iter->findData);
@@ -520,7 +511,7 @@ function OSFileIter InitFileIter(String path)
     return result;
 }
 
-function b32 NextFileIter(MemArena* arena, OSFileIter* iter, String* outName, FileProperties* outProp, b32 terminate)
+function b32 NextFileIter(Arena* arena, OSFileIter* iter, String* outName, FileProperties* outProp)
 {
     b32 result = false;
     
@@ -537,7 +528,7 @@ function b32 NextFileIter(MemArena* arena, OSFileIter* iter, String* outName, Fi
             b32 emit = !isDot && !isDotDot;
             WIN32_FIND_DATAA data = {0};
             if (emit)
-                CopyStruct(&data, &w32Iter->findData);
+                data = w32Iter->findData;//CopyStruct(&data, &w32Iter->findData);
             
             // Increment the iter
             if (!FindNextFile(w32Iter->handle, &w32Iter->findData))
@@ -546,7 +537,7 @@ function b32 NextFileIter(MemArena* arena, OSFileIter* iter, String* outName, Fi
             // Do the emit if we saved one earlier
             if (emit)
             {
-                String name = CopyStr(arena, StrFromCStr(data.cFileName), terminate);
+                String name = StrCloneCStr(arena, data.cFileName);
                 FileProperties prop = (FileProperties)
                 {
                     ((u64)data.nFileSizeHigh << 32) | (u64)data.nFileSizeLow,

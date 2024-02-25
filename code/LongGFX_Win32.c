@@ -36,7 +36,7 @@ function GFXWindow W32GFXHandleFromHWND(HWND wnd)
 	{
 		for (u32 i = 0; i < GFX_MAX_WINDOW_SLOTS; ++i)
 			if (w32WindowSlots[i].wnd == wnd)
-			return i + 1;
+                return i + 1;
 	}
 	return 0;
 }
@@ -124,7 +124,7 @@ function b32 InitGFX(void)
 {
     // Setup window slots
     {
-        ZeroArray(w32WindowSlots);
+        ZeroFixedArr(w32WindowSlots);
         w32WindowFree = w32WindowSlots;
         W32Window* last = w32WindowSlots + ArrayCount(w32WindowSlots) - 1;
         for (W32Window* slot = w32WindowSlots; slot < last; ++slot)
@@ -132,15 +132,16 @@ function b32 InitGFX(void)
     }
 	
 #define GRAPHICS_WINDOW_CLASS_NAME "Long_GFX_Graphics"
+    b32 error = 0;
     if (!RegisterClass(&(WNDCLASS){
                            .style = CS_HREDRAW|CS_VREDRAW,
                            .lpfnWndProc = W32GraphicsWindowProc,
                            .hInstance = W32GetInstance(),
                            .lpszClassName = GRAPHICS_WINDOW_CLASS_NAME,
                        }))
-        SetConstError("Failed to resgister class");
+        ErrorSet("Failed to resgister class", error);
     
-    return !HasError();
+    return !error;
 }
 
 function GFXWindow CreateGFXWindow(void)
@@ -150,23 +151,24 @@ function GFXWindow CreateGFXWindow(void)
 
 function GFXWindow CreateGFXWindowEx(String title, i32 x, i32 y, i32 width, i32 height)
 {
+    b32 error = 0;
     W32Window* slotPtr = w32WindowFree;
     if (slotPtr == 0)
-        SetConstError("Reached max window count");
+        ErrorSet("Reached max window count", error);
     
     HWND wnd = 0;
-    if (!HasError())
+    if (!error)
 	{
 		wnd = CreateWindow(GRAPHICS_WINDOW_CLASS_NAME, title.str,
 						   WS_OVERLAPPEDWINDOW,
 						   x, y, width, height,
 						   0, 0, W32GetInstance(), 0);
         if (!wnd)
-			SetConstError("Failed to create graphics window");
+			ErrorSet("Failed to create graphics window", error);
 	}
     
     GFXWindow result = 0;
-    if (!HasError())
+    if (!error)
     {
         SLLStackPop(w32WindowFree);
         ZeroStruct(slotPtr);
@@ -192,8 +194,7 @@ function b32 SetGFXWindowVisible(GFXWindow window, b32 visible)
 function b32 SetGFXWindowTitle(GFXWindow window, String title)
 {
 	BeginScratch(scratch);
-	char* str = CopyStr(scratch, title, true).str;
-	b32 result = SetWindowText(W32WindowFromGFXHandle(window)->wnd, str);
+	b32 result = SetWindowText(W32WindowFromGFXHandle(window)->wnd, StrToCStr(scratch, title));
 	EndScratch(scratch);
 	return result;
 }
@@ -210,7 +211,7 @@ function b32 SetGFXWindowInnerRect(GFXWindow window, i32 x, i32 y, i32 w, i32 h)
 		if (SetWindowPos(wnd, HWND_TOP,
 						 r.left, r.top, r.right - r.left, r.bottom - r.top,
 						 0))
-		result = true;
+            result = true;
 	
 	return result;
 }
@@ -304,11 +305,11 @@ function b32 SetGFXWindowFullScreen(GFXWindow window, b32 fullscreen)
 			if (GetWindowPlacement(slot->wnd, &slot->place) &&
 				GetMonitorInfo(MonitorFromWindow(slot->wnd, MONITOR_DEFAULTTOPRIMARY), &monitorInfo))
 				if (SetWindowLong(slot->wnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW))
-				result = SetWindowPos(slot->wnd, HWND_TOP,
-									  monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
-									  monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
-									  monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
-									  SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+                    result = SetWindowPos(slot->wnd, HWND_TOP,
+                                          monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
+                                          monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
+                                          monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
+                                          SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
 		}
 		
 		// change to windowed
@@ -371,12 +372,16 @@ function void GFXMessageBox(String title, String message)
     MessageBoxA(0, message.str, title.str, MB_OK);
 }
 
-function void GFXErrorBox(i32 code)
+function void GFXErrorBox(StringList* errors, i32 code)
 {
-    BeginScratch(scratch);
-    GFXMessageBox(StrLit("Error"), JoinStr3(scratch, &(StringJoin){ StrLit("Error: "), GetError(), StrLit(".\n")}, true));
-    EndScratch(scratch);
-	
-	if (code)
-		ExitOSProcess(code);
+    if (errors->nodeCount)
+    {
+        BeginScratch(scratch);
+        String errStr = StrJoin(scratch, errors, .pre = StrLit("Error: \n"), .mid = StrLit(".\n"), .post = StrLit(".\n"));
+        GFXMessageBox(StrLit("Error"), errStr);
+        EndScratch(scratch);
+        
+        if (code)
+            ExitOSProcess(code);
+    }
 }
