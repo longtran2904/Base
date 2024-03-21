@@ -1,3 +1,4 @@
+#define BASE_LOG_COLOR
 #include "DefaultMemory.h"
 #include "Base.h"
 #include "LongOS.h"
@@ -26,6 +27,15 @@ typedef struct Test
     int c;
     int d;
 } Test;
+
+global i32 snapshot;
+void TestLogCallback(Arena* arena, Record* record, char* fmt, va_list args)
+{
+    BeginScratch(scratch, arena);
+    fmt = StrPushf(scratch, "%s, snapshot: %d", fmt, snapshot++).str;
+    LogFmtStd(arena, record, fmt, args);
+    EndScratch(scratch);
+}
 
 int main(void)
 {
@@ -158,58 +168,58 @@ int main(void)
     
     EvalPrintLine;
     
-    EvalPrintF(StrToF32(StrLit("15.75")  , 0));
-    EvalPrintF(StrToF32(StrLit("1.575E1"), 0));
-    EvalPrintF(StrToF32(StrLit("1575e-2"), 0));
-    EvalPrintF(StrToF32(StrLit("-2.5e-3"), 0));
-    EvalPrintF(StrToF32(StrLit("25E-4")  , 0));
-    EvalPrintF(StrToF32(StrLit(".0075e2"), 0));
-    EvalPrintF(StrToF32(StrLit("0.075e1"), 0));
-    EvalPrintF(StrToF32(StrLit(".075e1") , 0));
-    EvalPrintF(StrToF32(StrLit("75e-2")  , 0));
+    EvalPrintF(F32FromStr(StrLit("15.75")  , 0));
+    EvalPrintF(F32FromStr(StrLit("1.575E1"), 0));
+    EvalPrintF(F32FromStr(StrLit("1575e-2"), 0));
+    EvalPrintF(F32FromStr(StrLit("-2.5e-3"), 0));
+    EvalPrintF(F32FromStr(StrLit("25E-4")  , 0));
+    EvalPrintF(F32FromStr(StrLit(".0075e2"), 0));
+    EvalPrintF(F32FromStr(StrLit("0.075e1"), 0));
+    EvalPrintF(F32FromStr(StrLit(".075e1") , 0));
+    EvalPrintF(F32FromStr(StrLit("75e-2")  , 0));
     
     EvalPrintLine;
     
-    EvalPrintLL(StrToI64(StrLit("28"), 0));
-    EvalPrintLL(StrToI64(StrLit("4000000024"), 0));
-    EvalPrintLL(StrToI64(StrLit("2000000022"), 0));
-    EvalPrintLL(StrToI64(StrLit("4000000000"), 0));
-    EvalPrintLL(StrToI64(StrLit("9000000000"), 0));
-    EvalPrintLL(StrToI64(StrLit("900000000001"), 0));
-    EvalPrintLL(StrToI64(StrLit("9000000000002"), 0));
-    EvalPrintLL(StrToI64(StrLit("90000000000004"), 0));
+    EvalPrintLL(I64FromStr(StrLit("28"), 10, 0));
+    EvalPrintLL(I64FromStr(StrLit("4000000024"), 10, 0));
+    EvalPrintLL(I64FromStr(StrLit("2000000022"), 10, 0));
+    EvalPrintLL(I64FromStr(StrLit("4000000000"), 10, 0));
+    EvalPrintLL(I64FromStr(StrLit("9000000000"), 10, 0));
+    EvalPrintLL(I64FromStr(StrLit("900000000001"), 10, 0));
+    EvalPrintLL(I64FromStr(StrLit("9000000000002"), 10, 0));
+    EvalPrintLL(I64FromStr(StrLit("90000000000004"), 10, 0));
     
     EvalPrintLine;
     
-    EvalPrintLL(StrToI64(StrLit("024"), 0));
-    EvalPrintLL(StrToI64(StrLit("04000000024"), 0));
-    EvalPrintLL(StrToI64(StrLit("02000000022"), 0));
-    EvalPrintLL(StrToI64(StrLit("04000000000"), 0));
-    EvalPrintLL(StrToI64(StrLit("044000000000000"), 0));
-    EvalPrintLL(StrToI64(StrLit("044400000000000001"), 0));
-    EvalPrintLL(StrToI64(StrLit("04444000000000000002"), 0));
-    EvalPrintLL(StrToI64(StrLit("04444000000000000004"), 0));
+    EvalPrintLL(I64FromStr(StrLit("24"), 8, 0));
+    EvalPrintLL(I64FromStr(StrLit("4000000024"), 8, 0));
+    EvalPrintLL(I64FromStr(StrLit("2000000022"), 8, 0));
+    EvalPrintLL(I64FromStr(StrLit("4000000000"), 8, 0));
+    EvalPrintLL(I64FromStr(StrLit("44000000000000"), 8, 0));
+    EvalPrintLL(I64FromStr(StrLit("44400000000000001"), 8, 0));
+    EvalPrintLL(I64FromStr(StrLit("4444000000000000002"), 8, 0));
+    EvalPrintLL(I64FromStr(StrLit("4444000000000000004"), 8, 0));
     
     EvalPrintLine;
     
-    EvalPrint(StrToI64(StrLit("0x2a"), 0) == 42);
-    EvalPrint(StrToI64(StrLit("0XA0000024"), 0) == 2684354596);
-    EvalPrint(StrToI64(StrLit("0x20000022"), 0) == 536870946);
-    EvalPrint(StrToI64(StrLit("0XA0000021"), 0) == 2684354593);
-    EvalPrint(StrToI64(StrLit("0x8a000000000000"), 0) == 38843546786070528);
-    EvalPrint(StrToI64(StrLit("0x8A40000000000010"), 0) == -8484781697966014448);
-    EvalPrint(StrToI64(StrLit("0x4a44000000000020"), 0) == 5351402257222991904);
-    EvalPrint(StrToI64(StrLit("0x8a44000000000040"), 0) == -8483655798059171776);
+    EvalPrint(I64FromStr(StrLit("2a"), 16, 0) == 42);
+    EvalPrint(I64FromStr(StrLit("0XA0000024"), 16, 0) == 2684354596);
+    EvalPrint(I64FromStr(StrLit("20000022"), 16, 0) == 536870946);
+    EvalPrint(I64FromStr(StrLit("0XA0000021"), 16, 0) == 2684354593);
+    EvalPrint(I64FromStr(StrLit("8a000000000000"), 16, 0) == 38843546786070528);
+    EvalPrint(I64FromStr(StrLit("8A40000000000010"), 16, 0) == -8484781697966014448);
+    EvalPrint(I64FromStr(StrLit("4a44000000000020"), 16, 0) == 5351402257222991904);
+    EvalPrint(I64FromStr(StrLit("8a44000000000040"), 16, 0) == -8483655798059171776);
     
     EvalPrintLine;
     
-    EvalPrint(StrToI64(StrLit("0b10"), 0) == 2);
-    EvalPrint(StrToI64(StrLit("0B10000011"), 0) == 131);
-    EvalPrint(StrToI64(StrLit("0b100000011"), 0) == 259);
-    EvalPrint(StrToI64(StrLit("0B10010100"), 0) == 148);
-    EvalPrint(StrToI64(StrLit("0B11111111111111111111111111111111"), 0) == MAX_U32);
-    EvalPrint(StrToI64(StrLit("0b0000000000000000000000000000000000000000000000000000000000000000"), 0) == 0);
-    EvalPrint(StrToI64(StrLit("0b0000000000000000000000000000000000000000000000000000000000000001"), 0) == 1);
+    EvalPrint(I64FromStr(StrLit("10"), 2, 0) == 2);
+    EvalPrint(I64FromStr(StrLit("10000011"), 2, 0) == 131);
+    EvalPrint(I64FromStr(StrLit("100000011"), 2, 0) == 259);
+    EvalPrint(I64FromStr(StrLit("10010100"), 2, 0) == 148);
+    EvalPrint(I64FromStr(StrLit("11111111111111111111111111111111"), 2, 0) == MAX_U32);
+    EvalPrint(I64FromStr(StrLit("0000000000000000000000000000000000000000000000000000000000000000"), 2, 0) == 0);
+    EvalPrint(I64FromStr(StrLit("0000000000000000000000000000000000000000000000000000000000000001"), 2, 0) == 1);
     
     EvalPrintLine;
     
@@ -279,16 +289,16 @@ int main(void)
     
     EvalPrintLine;
     
-    EvalPrintStr(StrFromF64(arena, 0, 3));
-    EvalPrintStr(StrFromF64(arena, 0b10001, 8));
-    EvalPrintStr(StrFromF64(arena, 0xFF12ACDE, 7));
-    EvalPrintStr(StrFromF64(arena, -38.9, 9));
-    EvalPrintStr(StrFromF64(arena, .75, 10));
-    EvalPrintStr(StrFromF64(arena, .75, 1));
+    EvalPrintStr(StrFromF64(arena, 0, 2));
+    EvalPrintStr(StrFromF64(arena, 0b10001, 7));
+    EvalPrintStr(StrFromF64(arena, 0xFF12ACDE, 6));
+    EvalPrintStr(StrFromF64(arena, -38.9, 8));
+    EvalPrintStr(StrFromF64(arena, .75, 9));
+    EvalPrintStr(StrFromF64(arena, .75, 0));
+    EvalPrintStr(StrFromF64(arena, .625, 1));
     EvalPrintStr(StrFromF64(arena, .625, 2));
-    EvalPrintStr(StrFromF64(arena, .625, 3));
-    EvalPrintStr(StrFromF64(arena, 1.17549435082e-38, 9));
-    EvalPrintStr(StrFromF64(arena, 1.40129846432e-45, 9));
+    EvalPrintStr(StrFromF64(arena, 1.17549435082e-38, 8));
+    EvalPrintStr(StrFromF64(arena, 1.40129846432e-45, 8));
     
     EvalPrintLine;
     
@@ -436,7 +446,7 @@ int main(void)
         for (u64 i = 0; i < ArrayCount(test); ++i)
         {
             TempArena temp = TempBegin(arena);
-            String fStr = StrFromF64(arena, test[i].f, test[i].prec + 1);
+            String fStr = StrFromF64(arena, test[i].f, test[i].prec);
             /*if (test[i].str.size && !StrCompare(fStr, test[i].str, 0))
             printf("Expected: %.*s, Result: %.*s\n", StrExpand(test[i].str), StrExpand(fStr));*/
             TempEnd(temp);
@@ -526,11 +536,12 @@ int main(void)
     String fileData = ReadOSFile(arena, StrLit("data/Test.txt"), true);
     EvalPrintS(fileData.str);
     EvalPrint(WriteOSFile(StrLit("data/Test2.txt"), data));
+    EvalPrintStr(data);
     
-    EvalPrintStr(GetFilePath(arena, SystemPath_CurrentDirectory));
-    EvalPrintStr(GetFilePath(arena, SystemPath_Binary));
-    EvalPrintStr(GetFilePath(arena, SystemPath_UserData));
-    EvalPrintStr(GetFilePath(arena, SystemPath_TempData));
+    EvalPrintStr(GetCurrDir(arena));
+    EvalPrintStr(GetProcDir());
+    EvalPrintStr(GetUserDir());
+    EvalPrintStr(GetTempDir());
     
     EvalPrintLine;
     
@@ -568,6 +579,41 @@ int main(void)
     EvalPrintULL(file.createTime);
     EvalPrintULL(file.modifyTime);
     EvalPrint(TimeToDate(file.modifyTime).year);
+    
+    EvalPrintLine;
+    
+    LogBegin(arena);
+    {
+        LogPush(LOG_TRACE, "Log #%d", LOG_TRACE);
+        LogPush(LOG_DEBUG, "Log #%d", LOG_DEBUG);
+        LogPush(LOG_INFO , "Log #%d", LOG_INFO);
+        LogPush(LOG_WARN , "Log #%d", LOG_WARN);
+        LogPush(LOG_ERROR, "Log #%d", LOG_ERROR);
+        LogPush(LOG_FATAL, "Log #%d", LOG_FATAL);
+        
+        LogInfo* info = LogGetInfo();
+        info->level = LOG_INFO;
+        LogPush(LOG_TRACE, "Log trace");
+        LogPush(LOG_DEBUG, "Log debug");
+        LogPush(LOG_INFO , "Log info");
+        LogPush(LOG_WARN , "Log warn");
+        LogPush(LOG_ERROR, "Log error");
+        LogPush(LOG_FATAL, "Log fatal");
+        
+        info->level = LOG_DEBUG;
+        info->callback = TestLogCallback;
+        LogPush(LOG_TRACE, "Log trace");
+        LogPush(LOG_DEBUG, "Log debug");
+        LogPush(LOG_INFO , "Log info");
+        LogPush(LOG_WARN , "Log warn");
+        LogPush(LOG_ERROR, "Log error");
+        LogPush(LOG_FATAL, "Log fatal");
+        
+        Logger logger = LogEnd();
+        StringList list = StrListFromLogger(arena, &logger);
+        for (StringNode* node = list.first; node; node = node->next)
+            printf("%.*s\n", StrExpand(node->string));
+    }
     
     EvalPrintLine;
     
@@ -634,15 +680,16 @@ int WinMain(HINSTANCE hInstance,
     W32WinMainInit(hInstance, hPrevInstance, lpCmdLine, nShowCmd);
     BeginScratch(scratch);
     
-    ErrorBegin(scratch);
+    ErrorBegin(scratch, .callback = GFXErrorFmt);
     {
         InitGFX();
         InitGL();
         InitD3D11();
         
-        StringList errors = ErrorEnd();
-        GFXErrorBox(&errors, 1);
+        //ErrorFmt("Test Error 1");
+        //ErrorFmt("Test Error 2");
     }
+    GFXCheckError(1);
     
 	SetGFXResizeFunc(WindowResizeHandler);
 	
@@ -651,11 +698,11 @@ int WinMain(HINSTANCE hInstance,
 	for (u32 i = 0; i < TEST_WINDOW_COUNT; ++i)
 	{
 		i32 w = 400, h = 200;
-		/*if (i > 0)
-        GetGFXWindowInnerRect(windows[i - 1], 0, 0, &w, &h);*/
+		i32 isGL = i % 2;
+		//if (i > 0) GetGFXWindowInnerRect(windows[i - 1], 0, 0, &w, &h);
+        
 		w = w * (i + 1);
 		h = h * (i + 1);
-		i32 isGL = i % 2;
         
         ErrorBegin(scratch);
         {
@@ -664,11 +711,8 @@ int WinMain(HINSTANCE hInstance,
                 EquipGLWindow(windows[i]);
             else
                 EquipD3D11Window(windows[i]);
-            
-            StringList errors = ErrorEnd();
-            if (!windows[i])
-                GFXErrorBox(&errors, 1);
         }
+        GFXCheckError(1);
         
 		SetGFXWindowUserData(windows[i], PtrFromInt(isGL));
 		ShowGFXWindow(windows[i]);

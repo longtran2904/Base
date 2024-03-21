@@ -133,7 +133,7 @@ function b32 InitGL(void)
     // Setup opengl
     {
         if (w32OpenGLModule != 0)
-            ErrorSet("OpenGL hass already intialized", error);
+            ErrorSet("OpenGL has already intialized", error);
         
         if (!error)
         {

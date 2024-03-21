@@ -1,6 +1,6 @@
 @echo off
 
-set opts=-FC -GR- -EHa- -nologo -Zi
+set opts=-FC -GR- -EHa- -nologo -Zi -FAcs
 if [%1]==[release] set opts=%opts% -O2
 
 set code=%cd%

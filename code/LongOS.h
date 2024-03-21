@@ -22,21 +22,20 @@ function void OSDecommit(void* ptr, u64 size);
 
 //~ NOTE(long): File Handling
 
-typedef enum SystemPath
-{
-    SystemPath_CurrentDirectory,
-    SystemPath_Binary,
-    SystemPath_UserData,
-    SystemPath_TempData,
-    SystemPath_Count
-} SystemPath;
-
 function String ReadOSFile(Arena* arena, String fileName, b32 terminateData);
-function b32    WriteOSFile(String fileName, String data);
-function b32    WriteOSList(String fileName, StringList data);
+function b32    WriteOSList(String fileName, StringList* data);
+#define WriteOSFile(file, data) WriteOSList((file), &(StringList) \
+                                            { \
+                                                .first = &(StringNode){ .string = (data) }, \
+                                                .last  = &(StringNode){ .string = (data) }, \
+                                                .nodeCount = 1, .totalSize = (data).size, \
+                                            })
 
 function FileProperties GetFileProperties(String fileName);
-function String GetFilePath(Arena* arena, SystemPath path);
+function String GetCurrDir(Arena* arena);
+function String GetProcDir(void);
+function String GetUserDir(void);
+function String GetTempDir(void);
 
 function b32 DeleteOSFile(String fileName);
 function b32 RenameOSFile(String oldName, String newName);
@@ -77,16 +76,5 @@ function void      ReleaseOSLib(OSLib lib);
 //~ NOTE(long): Entropy
 
 function void GetOSEntropy(void* data, u64 size);
-
-//~ NOTE(long): Generic OS function (Put this to a LongOS.c file when there are more functions)
-
-function b32 WriteOSFile(String fileName, String data)
-{
-    StringNode node = {0};
-    StringList list = {0};
-    StrListPushNode(&list, data, &node);
-    b32 result = WriteOSList(fileName, list);
-    return result;
-}
 
 #endif //_LONG_O_S_H

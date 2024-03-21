@@ -372,16 +372,28 @@ function void GFXMessageBox(String title, String message)
     MessageBoxA(0, message.str, title.str, MB_OK);
 }
 
-function void GFXErrorBox(StringList* errors, i32 code)
+function void GFXErrorBox(Logger* logger, i32 code)
 {
-    if (errors->nodeCount)
+    if (logger->count)
     {
         BeginScratch(scratch);
-        String errStr = StrJoin(scratch, errors, .pre = StrLit("Error: \n"), .mid = StrLit(".\n"), .post = StrLit(".\n"));
-        GFXMessageBox(StrLit("Error"), errStr);
+        StringList errors = {0};
+        for (u64 i = 0; i < logger->count; ++i)
+            StrListPush(scratch, &errors, logger->records[i].log);
+        
+        String error = StrJoin(scratch, &errors,
+                               .pre = StrPushf(scratch, "The process has encountered %d error(s):\n", errors.nodeCount),
+                               .mid = StrLit(".\n"), .post = StrLit(".\n"));
+        MessageBoxA(0, error.str, "Error", MB_OK|MB_ICONERROR);
         EndScratch(scratch);
         
         if (code)
             ExitOSProcess(code);
     }
+}
+
+function void GFXErrorFmt(Arena* arena, Record* record, char* fmt, va_list args)
+{
+    record->log = StrPushfv(arena, fmt, args);
+    record->log = StrPushf(arena, "%s:%d: %s", record->file, record->line, record->log.str);
 }

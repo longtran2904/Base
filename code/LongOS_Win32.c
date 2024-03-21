@@ -67,7 +67,7 @@ CryptGenRandom
 CryptReleaseContext
 */
 
-//~ NOTE: Base Memory Functions
+//~ NOTE(long): Base Memory Functions
 
 function void* OSReserve(u64 size)
 {
@@ -91,7 +91,7 @@ function void OSRelease(void* ptr)
     VirtualFree(ptr, 0, MEM_RELEASE);
 }
 
-//~ NOTE: Global Variables
+//~ NOTE(long): Global Variables
 
 //global DWORD win32OSThreadContextIndex = 0;
 global DWORD win32TicksPerSecond = 0;
@@ -103,7 +103,9 @@ global String win32TempPath = {0};
 global StringList win32CmdLine = {0};
 global HINSTANCE win32Instance = {0};
 
-//~ NOTE: Setup
+global Arena* win32PermArena = {0};
+
+//~ NOTE(long): Setup
 
 function void InitOSMain(int argc, char **argv)
 {
@@ -116,12 +118,12 @@ function void InitOSMain(int argc, char **argv)
     BeginScratch(scratch);
     
     // Setup arena
-    permArena = ArenaMake();
+    win32PermArena = ArenaMake();
     
     for (int i = 0; i <argc; ++i)
     {
         String arg = StrFromCStr((u8*)argv[i]);
-        StrListPush(permArena, &win32CmdLine, arg);
+        StrListPush(win32PermArena, &win32CmdLine, arg);
     }
     
     {
@@ -144,7 +146,7 @@ function void InitOSMain(int argc, char **argv)
         
         String fullPath = Str(buffer, size);
         String binaryPath = StrPrefix(fullPath, StrFindChr(fullPath, "/\\", FindStr_LastMatch));
-        win32BinaryPath = StrCopy(permArena, binaryPath);
+        win32BinaryPath = StrCopy(win32PermArena, binaryPath);
     }
     
     {
@@ -160,9 +162,9 @@ function void InitOSMain(int argc, char **argv)
         }
         
         if (buffer != 0)
-            // NOTE: the docs make it sound like we can only count on cap getting the
+            // NOTE(long): the docs make it sound like we can only count on cap getting the
             // size on failure; so we're just going to cstring this to be safe.
-            win32UserPath = StrCloneCStr(permArena, buffer);
+            win32UserPath = StrCloneCStr(win32PermArena, buffer);
     }
     
     {
@@ -176,10 +178,10 @@ function void InitOSMain(int argc, char **argv)
             size = GetTempPathA(size, buffer);
         }
         
-        // NOTE: size - 1 because this particular string function in the Win32 API
+        // NOTE(long): size - 1 because this particular string function in the Win32 API
         // is different from the others and it includes  the trailing backslash.
         // We want consistency, so the "- 1" removes it.
-        win32TempPath = StrCopy(permArena, Str(buffer, size - 1));
+        win32TempPath = StrCopy(win32PermArena, Str(buffer, size - 1));
     }
     
     EndScratch(scratch);
@@ -190,14 +192,14 @@ function StringList GetOSArgs(void)
     return win32CmdLine;
 }
 
-//~ NOTE: Exit
+//~ NOTE(long): Exit
 
 function void ExitOSProcess(u32 code)
 {
     ExitProcess(code);
 }
 
-//~ NOTE: Win32 Specialized Functions
+//~ NOTE(long): Win32 Specialized Functions
 
 function void W32WinMainInit(HINSTANCE hInstance,
                              HINSTANCE hPrevInstance,
@@ -217,7 +219,7 @@ function HINSTANCE W32GetInstance(void)
 
 #define GET_PROC_ADDR(f, m, n) (*(PROC*)(&(f))) = GetProcAddress((m), (n))
 
-//~ NOTE: Time
+//~ NOTE(long): Time
 
 function DateTime W32DateTimeFromSystemTime(SYSTEMTIME* time)
 {
@@ -305,7 +307,7 @@ function DateTime ToUniversalTime(DateTime* localTime)
     return result;
 }
 
-//~ NOTE: File Handling
+//~ NOTE(long): File Handling
 
 function String ReadOSFile(Arena* arena, String fileName, b32 terminateData)
 {
@@ -353,7 +355,7 @@ function String ReadOSFile(Arena* arena, String fileName, b32 terminateData)
     return result;
 }
 
-function b32 WriteOSList(String fileName, StringList data)
+function b32 WriteOSList(String fileName, StringList* data)
 {
     BeginScratch(scratch);
     HANDLE file = CreateFileA(fileName.str,
@@ -366,7 +368,7 @@ function b32 WriteOSList(String fileName, StringList data)
     {
         result = true;
         
-        for (StringNode* node = data.first; node != 0; node = node->next)
+        for (StringNode* node = data->first; node != 0; node = node->next)
         {
             u8* ptr = node->string.str;
             u8* opl = ptr + node->string.size;
@@ -433,34 +435,16 @@ function FileProperties GetFileProperties(String fileName)
     return result;
 }
 
-function String GetFilePath(Arena* arena, SystemPath path)
+function String GetProcDir(void) { return win32BinaryPath; }
+function String GetUserDir(void) { return win32UserPath; }
+function String GetTempDir(void) { return win32TempPath; }
+
+function String GetCurrDir(Arena* arena)
 {
-    String result = {0};
-    switch (path)
-    {
-        case SystemPath_CurrentDirectory:
-        {
-            BeginScratch(scratch, arena);
-            DWORD cap = 2048;
-            u8* buffer = PushArray(scratch, u8, cap);
-            DWORD size = GetCurrentDirectoryA(cap, buffer);
-            if (size > cap)
-            {
-                ResetScratch(scratch);
-                buffer = PushArray(scratch, u8, size);
-                size = GetCurrentDirectoryA(size, buffer);
-            }
-            result = StrCopy(arena, Str(buffer, size));
-            EndScratch(scratch);
-        } break;
-        
-        // @RECONSIDER(long): Should I just put all these in a read-only section and return, rather than copy all the times.
-        case SystemPath_Binary:   result = StrCopy(arena, win32BinaryPath); break;
-        case SystemPath_UserData: result = StrCopy(arena, win32UserPath  ); break;
-        case SystemPath_TempData: result = StrCopy(arena, win32TempPath  ); break;
-    }
-    
-    return result;
+    DWORD size = GetCurrentDirectoryA(0, 0);
+    u8* buffer = PushArray(arena, u8, size);
+    size = GetCurrentDirectoryA(size + 1, buffer);
+    return (String){ buffer, size };
 }
 
 function b32 DeleteOSFile(String fileName)
@@ -487,7 +471,7 @@ function b32 DeleteOSDir(String path)
     return result;
 }
 
-// NOTE: File Iteration
+// NOTE(long): File Iteration
 
 typedef struct W32FileIter
 {
@@ -568,7 +552,7 @@ function void EndFileIter(OSFileIter* iter)
         FindClose(w32Iter->handle);
 }
 
-//~ NOTE: Libraries
+//~ NOTE(long): Libraries
 
 function OSLib LoadOSLib(String path)
 {
@@ -590,7 +574,7 @@ function void ReleaseOSLib(OSLib lib)
     FreeLibrary(module);
 }
 
-//~ NOTE: Entropy
+//~ NOTE(long): Entropy
 
 function void GetOSEntropy(void* data, u64 size)
 {

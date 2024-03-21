@@ -58,6 +58,8 @@ global String Day_names[] =
 //~ NOTE(long): Math Functions
 
 #include <math.h>
+#include <xmmintrin.h>
+#include <emmintrin.h>
 
 //- NOTE(long): Trigonometric Functions
 #ifndef EXTRA_PRECISION
@@ -188,32 +190,99 @@ function f64 Abs_f64(f64 x)
     return x;
 }
 
-function f32 Trunc_f32(f32 x) { return (f32)((i32)x); }
+#ifdef __SSE4__
+function f32 Trunc_f32(f32 x)
+{
+    return _mm_cvtss_f32(_mm_round_ss(_mm_set_ss(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
+}
+
 function f32 Floor_f32(f32 x)
 {
-    f32 r = Trunc_f32(x);
-    return r > x ? r - 1 : r;
+    return _mm_cvtss_f32(_mm_floor_ss((__m128){0}, _mm_set_ss(x)));
 }
+
 function f32 Ceil_f32(f32 x)
 {
-    f32 r = Trunc_f32(x);
-    return r < x ? r + 1 : r;
+    return _mm_cvtss_f32(_mm_ceil_ss((__m128){0}, _mm_set_ss(x)));
 }
 
-function f64 Trunc_f64(f64 x) { return (f64)((i64)x); }
+function f64 Trunc_f64(f64 x)
+{
+    return _mm_cvtss_f64(_mm_round_sd(_mm_set_sd(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
+}
+
 function f64 Floor_f64(f64 x)
 {
-    f64 r = Trunc_f64(x);
-    return r > x ? r - 1 : r;
-}
-function f64 Ceil_f64(f64 x)
-{
-    f64 r = Trunc_f64(x);
-    return r < x ? r + 1 : r;
+    return _mm_cvtss_f64(_mm_floor_sd((__m128){0}, _mm_set_sd(x)));
 }
 
-function f32 Sqrt_f32(f32 x) { return sqrtf(x); }
-function f64 Sqrt_f64(f64 x) { return sqrt (x); }
+function f64 Ceil_f64(f64 x)
+{
+    return _mm_cvtss_f64(_mm_ceil_sd((__m128){0}, _mm_set_sd(x)));
+}
+#elif defined(__SSE2__)
+function f32 Trunc_f32(f32 x)
+{
+    __m128 f = _mm_set_ss(x);
+    __m128 r = _mm_cvtepi32_ps(_mm_cvttps_epi32(f)); // r = (f32)(i32)f
+    __m128 m = _mm_cmpgt_ss(_mm_set1_ps(0x1p31f), _mm_andnot_ps(_mm_set1_ps(-0.f), f));
+    r = _mm_or_ps(_mm_and_ps(m, r), _mm_andnot_ps(m, f)); // if (!(2**31 > abs(f))) r = f + 1;
+    return _mm_cvtss_f32(r);
+}
+
+function f32 Floor_f32(f32 x)
+{
+    __m128 f = _mm_set_ss(x);
+    __m128 r = _mm_cvtepi32_ps(_mm_cvttps_epi32(f)); // r = (f32)(i32)f
+    r = _mm_sub_ss(r, _mm_and_ps(_mm_cmplt_ss(f, r), _mm_set1_ps(1.f))); // if (f < r) r -= 1
+    __m128 m = _mm_cmpgt_ss(_mm_set1_ps(0x1p31f), _mm_andnot_ps(_mm_set1_ps(-0.f), f));
+    r = _mm_or_ps(_mm_and_ps(m, r), _mm_andnot_ps(m, f)); // if (!(2**31 > abs(f))) r = f + 1;
+    return _mm_cvtss_f32(r);
+}
+
+function f32 Ceil_f32(f32 x)
+{
+    __m128 f = _mm_set_ss(x);
+    __m128 r = _mm_cvtepi32_ps(_mm_cvttps_epi32(f)); // r = (f32)(i32)f
+    r = _mm_add_ss(r, _mm_and_ps(_mm_cmpgt_ss(f, r), _mm_set1_ps(1.f))); // if (f > r) r += 1
+    __m128 m = _mm_cmpgt_ss(_mm_set1_ps(0x1p31f), _mm_andnot_ps(_mm_set1_ps(-0.f), f));
+    r = _mm_or_ps(_mm_and_ps(m, r), _mm_andnot_ps(m, f)); // if (!(2**31 > abs(f))) r = f + 1;
+    return _mm_cvtss_f32(r);
+}
+
+function f64 Trunc_f64(f64 x)
+{
+    __m128d f = _mm_set_sd(x);
+    __m128d r = _mm_cvtsi64_sd((__m128d){0}, _mm_cvttsd_si64(f)); // r = (f64)(i64)f
+    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63f), _mm_andnot_pd(_mm_set1_pd(-0.), f));
+    r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); // if (!(2**63 > abs(f))) r = f + 1;
+    return _mm_cvtss_f64(r);
+}
+
+function f64 Floor_f64(f64 x)
+{
+    __m128d f = _mm_set_sd(x);
+    __m128d r = _mm_cvtsi64_sd((__m128d){0}, _mm_cvttsd_si64(f)); // r = (f64)(i64)f
+    r = _mm_sub_sd(r, _mm_and_pd(_mm_cmplt_sd(f, r), _mm_set1_pd(1.))); // if (f < r) r -= 1
+    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63f), _mm_andnot_pd(_mm_set1_pd(-0.), f));
+    r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); // if (!(2**63 > abs(f))) r = f + 1;
+    return _mm_cvtss_f64(r);
+}
+
+function f64 Ceil_f64(f64 x)
+{
+    __m128d f = _mm_set_sd(x);
+    __m128d r = _mm_cvtsi64_sd((__m128d){0}, _mm_cvttsd_si64(f)); // r = (f64)(i64)f
+    r = _mm_add_sd(r, _mm_and_pd(_mm_cmpgt_sd(f, r), _mm_set1_pd(1.))); // if (f > r) r += 1
+    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63f), _mm_andnot_pd(_mm_set1_pd(-0.), f));
+    r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); // if (!(2**63 > abs(f))) r = f + 1;
+    return _mm_cvtss_f64(r);
+}
+#endif
+
+function f32 Sqrt_f32(f32 x) { return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(x))); }
+function f64 Sqrt_f64(f64 x) { return _mm_cvtsd_f64(_mm_sqrt_sd((__m128d){0}, _mm_set_sd(x))); }
+function f32 RSqrt_f32(f32 x) { return _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss(x))); }
 
 function f32 Ln_f32(f32 x) { return logf(x); }
 function f64 Ln_f64(f64 x) { return log (x); }
@@ -928,6 +997,21 @@ function StringNode* StrFindList(String str, StringList* list, StringFindFlags f
     return 0;
 }
 
+function String StrGetSubstr(String a, String b, StringFindFlags flags)
+{
+    u64 share = 0;
+    if (flags & FindStr_LastMatch)
+    {
+        for (; share < a.size && share < b.size && a.str[a.size - share - 1] == b.str[b.size - share - 1]; ++share);
+        return StrChop(a, share);
+    }
+    else
+    {
+        for (; share < a.size && share < b.size && a.str[share] == b.str[share]; ++share);
+        return StrSkip(a, share);
+    }
+}
+
 function String StrChopAfter(String str, String arr, StringFindFlags flags)
 {
     i64 index = StrFindArr(str, arr, flags);
@@ -974,6 +1058,9 @@ function void StrSwapChr(String str, char o, char n)
             str.str[i] = n;
 }
 
+#define InvalidRune 0xFFFD
+#define InvalidDecoder (StringDecode){ InvalidRune, 2 }
+
 //- NOTE(long): Unicode Functions
 function StringDecode StrDecodeUTF8(u8* str, u32 cap)
 {
@@ -995,12 +1082,14 @@ function StringDecode StrDecodeUTF8(u8* str, u32 cap)
     StringDecode result = {0};
     if (cap > 0)
     {
-        result.codepoint = '#';
-        result.size = 1;
-        
+        result = InvalidDecoder;
         u8 byte = str[0];
         u8 l = length[byte >> 3];
-        if (0 < l && l <= cap)
+        
+        if (l == 0) result.error = DecodeError_InvalidBits;
+        else if (l > cap) result.error = DecodeError_EOF;
+        
+        else
         {
             u32 cp = (byte & firstByteMask[l]) << 18;
             switch (l)
@@ -1011,17 +1100,33 @@ function StringDecode StrDecodeUTF8(u8* str, u32 cap)
                 default: break;
             }
             cp >>= finalShift[l];
-            
             result = (StringDecode){cp, l};
+            
+            // NOTE(long): Accumulate the various error conditions
+            local u8 mins[] = { 4194304, 0, 128, 2048, 65536 };
+            result.error |= (cp < mins[l]) ? DecodeError_Overlong : 0; // non-canonical encoding
+            result.error |= ((cp >> 11) == 0x1b) ? DecodeError_Surrogate : 0;
+            result.error |= (cp > 0x10FFFF) ? DecodeError_OutOfRange : 0;
+            
+            u8 cbits = 0; // top two bits of each tail byte
+            switch (l)
+            {
+                case 4: cbits |= ((str[3] & 0xC0) >> 2);
+                case 3: cbits |= ((str[2] & 0xC0) >> 4);
+                case 2: cbits |= ((str[1] & 0xC0) >> 6);
+                default: break;
+            }
+            result.error |= (cbits == 0x2A) ? DecodeError_InvalidBits : 0;
         }
     }
+    else result.error = DecodeError_EOF;
     
     return result;
 }
 
 function StringDecode StrDecodeWide(u16* str, u32 cap)
 {
-    StringDecode result = {'#', 1};
+    StringDecode result = InvalidDecoder;
     
     u16 x = str[0];
     if (x < 0xD800 || 0xDFFF < x) result.codepoint = x;
@@ -1043,7 +1148,7 @@ function StringDecode StrDecodeWide(u16* str, u32 cap)
 
 function u32 StrEncodeUTF8(u8* dst, u32 codepoint)
 {
-    u32 size = 0;
+    u32 size;
     if (codepoint < (1 << 7))
     {
         dst[0] = codepoint;
@@ -1059,6 +1164,7 @@ function u32 StrEncodeUTF8(u8* dst, u32 codepoint)
     
     else if (codepoint < (1 << 16))
     {
+        CP16:
         dst[0] = 0xE0 | (codepoint >> 12);
         dst[1] = 0x80 | ((codepoint >> 6) & 0x3F);
         dst[2] = 0x80 | (codepoint & 0x3F);
@@ -1076,26 +1182,31 @@ function u32 StrEncodeUTF8(u8* dst, u32 codepoint)
     
     else
     {
-        dst[0] = '#';
-        size = 1;
+        codepoint = InvalidRune;
+        goto CP16;
     }
     return size;
 }
 
 function u32 StrEncodeWide(u16* dst, u32 codepoint)
 {
-    u32 size = 0;
+    u32 size;
     if (codepoint < 0x10000)
     {
         dst[0] = codepoint;
         size = 1;
     }
-    else
+    else if (codepoint < 0x10FFFF)
     {
         u32 cpj = codepoint - 0x10000;
         dst[0] = (cpj >>   10) + 0xD800;
         dst[1] = (cpj & 0x3FF) + 0xDC00;
         size = 2;
+    }
+    else
+    {
+        dst[0] = InvalidRune;
+        size = 1;
     }
     return size;
 }
@@ -1109,7 +1220,7 @@ function String32 Str8ToStr32(Arena* arena, String str)
     Str8Stream(str, ptr, opl)
     {
         StringDecode decode = StrDecodeUTF8(ptr, (u64)(opl - ptr));
-        if (!decode.size)
+        if (decode.error)
             return (String32){0};
         
         *dptr = decode.codepoint;
@@ -1132,7 +1243,7 @@ function String16 Str8ToStr16(Arena* arena, String str)
     Str8Stream(str, ptr, opl)
     {
         StringDecode decode = StrDecodeUTF8(ptr, (u64)(opl - ptr));
-        if (!decode.size)
+        if (decode.error)
             return (String16){0};
         
         u32 encSize = StrEncodeWide(dptr, decode.codepoint);
@@ -1186,13 +1297,26 @@ function String StrFromStr16(Arena* arena, String16 str)
     return(String){ memory, size };
 }
 
-function u64 UTF8Len(String str)
+function String StrBackspace(String str)
+{
+    if (str.size)
+    {
+        u64 i = str.size - 1;
+        for (; i > 0; --i)
+            if (str.str[i] <= 0x7F || str.str[i] >= 0xC0)
+                break;
+        str.size = i;
+    }
+    return str;
+}
+
+function u64 UTF8Length(String str)
 {
     u64 result = 0;
     Str8Stream(str, ptr, opl)
     {
         StringDecode decode = StrDecodeUTF8(ptr, (u64)(opl - ptr));
-        if (!decode.size)
+        if (decode.error)
             return 0;
         
         ptr += decode.size;
@@ -1201,63 +1325,52 @@ function u64 UTF8Len(String str)
     return result;
 }
 
-function b32 UTF8Valid(String str)
+function u32 UTF8GetErr(String str, u64* index)
 {
+    StringDecode decode = {0};
+    u64 _index;
+    if (!index)
+        index = &_index;
+    
     Str8Stream(str, ptr, opl)
     {
-        StringDecode decode = StrDecodeUTF8(ptr, (u64)(opl - ptr));
-        if (!decode.size)
-            return 0;
-        
-        ptr += decode.size;
-    }
-    return 1;
-}
-
-//- NOTE(long): Convert Functions
-function f64 F64FromStr(String str, b32* error)
-{
-    
-}
-
-function f32 StrToF32(String str, b32* error)
-{
-    String numberStr = StrSkipUntil(str, StrLit(".e"), FindStr_NoCase);
-    if (numberStr.size != str.size)
-        numberStr = StrChop(SubstrSplit(str, numberStr).pre, 1);
-    String fracStr = StrSkip(StrChopAfter(SubstrSplit(str, numberStr).post, StrLit("e"), FindStr_NoCase|FindStr_LastMatch), 1);
-    String expStr = StrSkip(str, numberStr.size + fracStr.size + 1);
-    
-    i64 number = StrToI64(numberStr, error);
-    
-    i64 exp = StrToI64(expStr, error);
-    f64 e = 1;
-    for (u64 i = 0; i < AbsI32(exp); ++i)
-        e *= 10;
-    if (exp < 0)
-        e = 1. / e;
-    
-    f32 coefficient = 1;
-    f32 fractional = 0;
-    for (u64 i = 0; i < fracStr.size; ++i)
-    {
-        if (!ChrCompareArr(fracStr.str[i], StrLit(Digits), 0))
+        decode = StrDecodeUTF8(ptr, (u64)(opl - ptr));
+        if (decode.error)
         {
-            if (error)
-                *error = true;
+            *index = ptr - str.str;
             break;
         }
         
-        coefficient *= .1f;
-        fractional += (fracStr.str[i] - '0') * coefficient;
+        ptr += decode.size;
     }
-    f32 result = (number + fractional * GetUnsigned(number)) * e;
-    return result;
+    return decode.error;
 }
 
-function f64 StrToF64(String str, b32* error)
+//- NOTE(long): Convert Functions
+function f32 F32FromStr(String str, b32* error)
+{
+    b32 _err_ = 0;
+    f64 result = F64FromStr(str, &_err_);
+    if (result != (f64)((f32)result)) // TODO(long): Does this even work?
+        _err_ = 1;
+    if (error) *error = _err_;
+    return (f32)result;
+}
+
+function i32 I32FromStr(String str, u32 radix, b32* error)
+{
+    b32 _err_ = 0;
+    i64 result = I64FromStr(str, radix, &_err_);
+    if (result > MAX_I32 || result < MIN_I32)
+        _err_ = 1;
+    if (error) *error = _err_;
+    return (i32)result;
+}
+
+function f64 F64FromStr(String str, b32* error)
 {
     // TODO(long)
+    return 0;
 }
 
 function i64 I64FromStr(String str, u32 radix, b32* error)
@@ -1282,9 +1395,7 @@ function i64 I64FromStr(String str, u32 radix, b32* error)
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
     };
     
-    b32 _err_;
-    if (!error) error = &_err_;
-    *error = 1;
+    b32 _err_ = 1;
     
     i64 x = 0;
     if (str.size)
@@ -1306,175 +1417,29 @@ function i64 I64FromStr(String str, u32 radix, b32* error)
         
         if (negative)
             x = -x;
-        *error = 0;
+        _err_ = 0;
     }
     
     END:
-    return x;
+    if (error)
+        *error = _err_;
+    return _err_ ? 0 : x;
 }
 
-function i64 StrToI64(String str, b32* error)
+String StrFromF32(Arena* arena, f32 x, u32 prec)
 {
-    if (str.str == 0)
-        return 0;
-    
-    i64 result = 0;
-    i64 sign = 1;
-    StrTrimWspace(str);
-    if (str.str[0] == '-')
-        sign = -1;
-    
-    str = StrSkip(str, StrFindArr(str, StrLit(Digits), 0));
-    String digits = StrLit(Digits);
-    if (str.size >= 2)
-    {
-        if (str.str[0] == '0')
-        {
-            digits = StrLit(OctalDigits);
-            str = StrSkip(str, 1);
-            if (ChrCompareNoCase(str.str[0], 'x'))
-            {
-                digits = StrLit(HexadecimalDigits);
-                str = StrSkip(str, 1);
-            }
-            else if (ChrCompareNoCase(str.str[0], 'b'))
-            {
-                // TODO(long): Implement binary
-                digits = StrLit(Binary);
-                str = StrSkip(str, 1);
-            }
-        }
-    }
-    
-    for (u64 i = 0; i < str.size; ++i)
-    {
-        if (!ChrCompareArr(str.str[i], digits, 1))
-        {
-            if (error)
-                *error = true;
-            break;
-        }
-        
-        result *= digits.size;
-        char c = str.str[i];
-        {
-            if (ChrIsLower(c))
-                c = ChrToUpper(str.str[i]);
-            
-            if (c >= 'A')
-                c = c - 'A' + '9' + 1;
-        }
-        result += c - '0';
-    }
-    return result * sign;
+    return StrFromF64(arena, (f64)x, prec);
 }
 
 String StrFromF64(Arena* arena, f64 x, u32 prec)
 {
-    if (x == 0)
-        return StrCopy(arena, StrLit("0"));
-    
-    i64 v, e;
-    {
-        i32 exp;
-        f64 fr = FrExp_f64(x, &exp);
-        v = (i64)(fr * (1LL<<53LL));
-        e = exp - 53;
-    }
-    
-    BeginScratch(scratch, arena);
-    String result = {0};
-    String realStr = StrFromI64(scratch, v, 10);
-    if (realStr.size)
-    {
-        b32 negative = x < 0;
-        String str = negative ? StrSkip(realStr, 1) : realStr;
-        u64 n = str.size;
-        
-        for (; e > 0; --e)
-        {
-            u8 phi = str.str[0] >= '5' ? 1 : 0, x = 0;
-            
-            for (i64 i = n-1; i >= 0; --i)
-            {
-                x += 2*(str.str[i] - '0');
-                str.str[i+phi] = x%10 + '0';
-                x /= 10;
-            }
-            
-            if (phi)
-            {
-                str.str[0] = '1';
-                n++;
-            }
-        }
-        u64 dp = n;
-        
-        for (; e < 0; e++)
-        {
-            if (str.str[n-1] % 2 != 0)
-            {
-                str.str[n] = '0';
-                n++;
-            }
-            
-            u8 phi = 0, x = 0;
-            if (str.str[0] < '2')
-            {
-                phi = 1;
-                x = str.str[0] - '0';
-                n--;
-                dp--;
-            }
-            
-            for (i64 i = 0; i < n; ++i)
-            {
-                x = x*10 + str.str[i+phi] - '0';
-                str.str[i] = x/2 + '0';
-                x %= 2;
-            }
-        }
-        
-        str.size = n;
-        if (prec > 0)
-        {
-            if (n > prec)
-            {
-                if ( str.str[prec]  > '5' ||
-                    (str.str[prec] == '5' && (StrContainsChr(Substr(str, prec+1, n), "123456789") || str.str[prec-1]%2 == 1)))
-                {
-                    i64 i = prec - 1;
-                    while (i >= 0 && str.str[i] == '9')
-                    {
-                        str.str[i] = '0';
-                        i--;
-                    }
-                    
-                    if (i < 0)
-                    {
-                        str.str[0] = '1';
-                        dp++;
-                    }
-                    else str.str[i]++;
-                }
-                n = prec;
-            }
-            
-            if (n < prec)
-            {
-                SetMem(str.str + n, '0', prec - n);
-                n = prec;
-            }
-        }
-        
-        str.size = n;
-        String frStr = StrSkip(str, 1);
-        String deStr = StrPrefix(realStr, negative ? 2 : 1);
-        result = StrPushf(arena, "%.*s.%.*se%+d", StrExpand(deStr), StrExpand(frStr), dp-1);
-    }
-    
-    EndScratch(scratch);
+    String result = StrPushf(arena, "%.*e", prec, x);
     return result;
+}
+
+function String StrFromI32(Arena* arena, i32 x, u32 radix)
+{
+    return StrFromI64(arena, (i64)x, radix);
 }
 
 function String StrFromI64(Arena* arena, i64 x, u32 radix)
@@ -1510,73 +1475,126 @@ function String StrFromI64(Arena* arena, i64 x, u32 radix)
     return result;
 }
 
-//~ NOTE(long): Errors
+//~ NOTE(long): Logs/Errors
 
-global Arena* permArena = {0};
-
-typedef struct ERR_List ERR_List;
-struct ERR_List
+global String LogType_names[] =
 {
-    ERR_List* next;
+    StrConst("TRACE"),
+    StrConst("DEBUG"),
+    StrConst("INFO"),
+    StrConst("WARN"),
+    StrConst("ERROR"),
+    StrConst("FATAL"),
+};
+
+typedef struct LOG_Node LOG_Node;
+struct LOG_Node
+{
+    LOG_Node* next;
+    Record record;
+};
+
+typedef struct LOG_List LOG_List;
+struct LOG_List
+{
+    LOG_List* next;
     Arena* arena;
-    StringList errors;
+    LOG_Node* first;
+    LOG_Node* last;
+    u64 count;
+    LogInfo info;
 };
 
-typedef struct ERR_Thread ERR_Thread;
-struct ERR_Thread
+typedef struct LOG_Thread LOG_Thread;
+struct LOG_Thread
 {
-    ERR_List* stack;
-    ERR_List* free;
+    Arena* arena;
+    LOG_List* stack;
 };
 
-threadvar Arena* errArena;
-threadvar ERR_Thread errThread = {0};
+threadvar LOG_Thread logThread = {0};
 
-function void ErrorBegin(Arena* arena)
+function void LogBegin_(Arena* arena, LogInfo info)
 {
-    if (!errArena)
-        errArena = ArenaReserve(KB(4));
-    
-    ERR_List* list = errThread.free;
-    if (list)
-        errThread.free = errThread.free->next;
-    else
-        list = PushStruct(errArena, ERR_List);
-    *list = (ERR_List){ .arena = arena };
-    SLLStackPush(errThread.stack, list);
+    if (!logThread.arena)
+        logThread.arena = ArenaReserve(KB(4));
+    LOG_List* list = PushStruct(logThread.arena, LOG_List);
+    *list = (LOG_List){ .arena = arena, .info = info };
+    SLLStackPush(logThread.stack, list);
 }
 
-function StringList ErrorEnd(void)
+function Logger LogEnd(void)
 {
-    if (!errThread.stack) return (StringList){0};
-    
-    ERR_List* list = errThread.stack;
-    SLLStackPop (errThread.stack);
-    SLLStackPush(errThread.free, list);
-    
-    // NOTE(long): Format each message to whatever you want
-    StringList result = list->errors;
+    Logger result = {0};
+    LOG_List* list = logThread.stack;
+    if (list)
+    {
+        result.records = PushArray(list->arena, Record, list->count);
+        result.info = list->info;
+        for (LOG_Node* node = list->first; node; node = node->next)
+            result.records[result.count++] = node->record;
+        
+        SLLStackPop(logThread.stack);
+        ArenaPopTo(logThread.arena, (u8*)list - (u8*)logThread.arena);
+    }
     return result;
 }
 
-function void ErrorPush(String error)
+function StringList StrListFromLogger(Arena* arena, Logger* logger)
 {
-    ErrorPushf("%.*s", StrExpand(error));
+    StringList result = {0};
+    for (u64 i = 0; i < logger->count; ++i)
+        StrListPush(arena, &result, logger->records[i].log);
+    return result;
 }
 
-function void ErrorPushf(char* fmt, ...)
+function LogInfo* LogGetInfo(void)
 {
-    ERR_List* list = errThread.stack;
-    if (list)
+    return logThread.stack ? &logThread.stack->info : 0;
+}
+
+function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args)
+{
+    BeginScratch(scratch, arena);
+    DateTime time = TimeToDate(record->time);
+    String log = StrPushfv(scratch, fmt, args);
+    String file = StrGetSubstr(StrFromCStr(record->file), GetProcDir(), 0);
+    String level = GetEnumStr(LogType, record->level);
+    StrToUpper(level);
+    
+#ifdef BASE_LOG_COLOR // https://ss64.com/nt/syntax-ansi.html
+    local const char* colors[] = { "\x1b[36m", "\x1b[94m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[95m" };
+    record->log = StrPushf(arena, "[%02u:%02u:%02u] %s%5s \x1b[90m%.*s:%d: \x1b[97m%s\x1b[0m",
+                           time.hour, time.min, time.sec,
+                           colors[record->level], level.str,
+                           StrExpand(file), record->line,
+                           log.str);
+#else
+    record->log = StrPushf(arena, "%02u:%02u:%02u %-5s %.*s:%d: %s", time.hour, time.min, time.sec,
+                           level.str, StrExpand(file), record->line, log.str);
+#endif
+    
+    EndScratch(scratch);
+}
+
+function void LogPushf(i32 level, char* file, i32 line, char* fmt, ...)
+{
+    LOG_List* list = logThread.stack;
+    if (list && level >= list->info.level)
     {
-        String error;
-        {
-            va_list args;
-            va_start(args, fmt);
-            error = StrPushfv(list->arena, fmt, args);
-            va_end(args);
-        }
-        StrListPush(list->arena, &list->errors, error);
+        LOG_Node* node = PushStruct(logThread.arena, LOG_Node);
+        SLLQueuePush(list->first, list->last, node);
+        list->count++;
+        
+        node->record = (Record){ .file = file, .line = line, .level = level };
+        DateTime date = NowUniversalTime();
+        date = ToLocalTime(&date);
+        node->record.time = TimeToDense(&date);
+        
+        va_list args;
+        va_start(args, fmt);
+        list->info.callback(list->arena, &node->record, fmt, args);
+        va_end(args);
     }
 }
 

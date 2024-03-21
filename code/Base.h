@@ -7,10 +7,28 @@
 
 #define ENABLE_ASSERT 1
 
-//- NOTE(long): Compiler/OS/Architecture
+//- NOTE(long): Compiler
 #if defined(__clang__)
 #define COMPILER_CLANG 1
+#elif defined(_MSC_VER)
+#define COMPILER_CL 1
+#elif defined(__GNUC__)
+#define COMPILER_GCC 1
+#else
+#error No context cracking for this compiler
+#endif
 
+#ifndef COMPILER_CL
+#define COMPILER_CL 0
+#endif
+#ifndef COMPILER_CLANG
+#define COMPILER_CLANG 0
+#endif
+#ifndef COMPILER_GCC
+#define COMPILER_GCC 0
+#endif
+
+//- NOTE(long): OS
 #ifdef _WIN32
 #define OS_WIN 1
 #elif defined(__gnu_linux__)
@@ -21,28 +39,23 @@
 #error Missing OS detection
 #endif
 
-// TODO(long): verify this works on clang
-#ifdef __amd64__
-#define ARCH_X64 1
-#elif defined(__i386__)
-#define ARCH_X86 1
-#elif defined(__arm__)
-#define ARCH_ARM 1
-#elif defined(__aarch64__)
-#define ARCH_ARM64 1
-#else
+#ifndef OS_WIN
+#define OS_WIN 0
+#endif
+#ifndef OS_LINUX
+#define OS_LINUX 0
+#endif
+#ifndef OS_MAC
+#define OS_MAC 0
+#endif
+
+// @RECONSIDER(long): Do I even need this?
+#if COMPILER_CL && !OS_WIN
 #error Missing ARCH detection
 #endif
 
-#elif defined(_MSC_VER)
-#define COMPILER_CL 1
-
-#ifdef _WIN32
-#define OS_WIN 1
-#else
-#error Missing OS detection!
-#endif
-
+//- NOTE(long): Architecture
+#if COMPILER_CL
 #ifdef _M_AMD64
 #define ARCH_X64 1
 #elif defined(_M_I68)
@@ -54,19 +67,19 @@
 #error Missing ARCH detection
 #endif
 
-#elif defined(_GNUC__)
-#define COMPILER_GCC 1
-
-#ifdef _WIN32
-#define OS_WIN 1
-#elif defined(__gnu_linux__)
-#define OS_LINUX 1
-#elif defined(__APPLE__) && defined(__MACH__)
-#define OS_MAC 1
+// NOTE(long): While GCC and Clang have predefined macros for SSE, MSVC doesn't
+// https://stackoverflow.com/questions/18563978/detect-the-availability-of-sse-sse2-instruction-set-in-visual-studio
+#if (defined(_M_AMD64) || defined(_M_X64))
+#define __SSE2__ //SSE2 x64
+#elif _M_IX86_FP == 2
+#define __SSE2__ //SSE2 x32
+#elif _M_IX86_FP == 1
+#define __SSE__  //SSE x32
 #else
-#error Missing OS detection
+// TODO(long): Maybe error out?
 #endif
 
+#else // TODO(long): verify this works on clang and gcc
 #ifdef __amd64__
 #define ARCH_X64 1
 #elif defined(__i386__)
@@ -78,47 +91,17 @@
 #else
 #error Missing ARCH detection
 #endif
-
-#else
-#error No context cracking for this compiler
-#endif
-
-#ifndef COMPILER_CL
-#define COMPILER_CL 0
-#endif
-
-#ifndef COMPILER_CLANG
-#define COMPILER_CLANG 0
-#endif
-
-#ifndef COMPILER_GCC
-#define COMPILER_GCC 0
-#endif
-
-#ifndef OS_WIN
-#define OS_WIN 0
-#endif
-
-#ifndef OS_LINUX
-#define OS_LINUX 0
-#endif
-
-#ifndef OS_MAC
-#define OS_MAC 0
 #endif
 
 #ifndef ARCH_X64
 #define ARCH_X64 0
 #endif
-
 #ifndef ARCH_X86
 #define ARCH_X86 0
 #endif
-
 #ifndef ARCH_ARM
 #define ARCH_ARM 0
 #endif
-
 #ifndef ARCH_ARM64
 #define ARCH_ARM64 0
 #endif
@@ -126,38 +109,38 @@
 // @RECONSIDER(long)
 #if COMPILER_CLANG
 #define CURRENT_COMPILER_NUMBER 1
-#define CURRENT_COMPILER_NAME "CLANG"
+#define CURRENT_COMPILER_NAME   "CLANG"
 #elif COMPILER_CL
 #define CURRENT_COMPILER_NUMBER 2
-#define CURRENT_COMPILER_NAME "CL"
+#define CURRENT_COMPILER_NAME   "CL"
 #elif COMPILER_GCC
 #define CURRENT_COMPILER_NUMBER 3
-#define CURRENT_COMPILER_NAME "GCC"
+#define CURRENT_COMPILER_NAME   "GCC"
 #endif
 
 #if OS_WIN
 #define CURRENT_OS_NUMBER 1
-#define CURRENT_OS_NAME "WIN"
+#define CURRENT_OS_NAME   "WIN"
 #elif OS_LINUX
 #define CURRENT_OS_NUMBER 2
-#define CURRENT_OS_NAME "LINUX"
+#define CURRENT_OS_NAME   "LINUX"
 #elif OS_MAC
 #define CURRENT_OS_NUMBER 3
-#define CURRENT_OS_NAME "MAC"
+#define CURRENT_OS_NAME   "MAC"
 #endif
 
 #if ARCH_X64
 #define CURRENT_ARCH_NUMBER 1
-#define CURRENT_ARCH_NAME "X64"
+#define CURRENT_ARCH_NAME   "X64"
 #elif ARCH_X86
 #define CURRENT_ARCH_NUMBER 2
-#define CURRENT_ARCH_NAME "x86"
+#define CURRENT_ARCH_NAME   "x86"
 #elif ARCH_ARM
 #define CURRENT_ARCH_NUMBER 3
-#define CURRENT_ARCH_NAME "ARM"
+#define CURRENT_ARCH_NAME   "ARM"
 #elif ARCH_ARM64
 #define CURRENT_ARCH_NUMBER 4
-#define CURRENT_ARCH_NAME "ARM64"
+#define CURRENT_ARCH_NAME   "ARM64"
 #endif
 
 //- NOTE(long): Language
@@ -244,7 +227,7 @@
 #define MagicP(T,x,s) ((T)(x) << (s))
 #define MagicU32(a,b,c,d) (MagicP(U32,a,0) | MagicP(U32,b,8) | MagicP(U32,c,16) | MagicP(U32,d,24))
 
-#define Boolify(x) ((x) != 0) // NOTE(long): Do I need this? Can't I just use `!!`
+#define Boolify(x) ((x) != 0) // @RECONSIDER(long): Do I need this? Can't I just use `!!`?
 
 #define KB(x) ((x) << 10)
 #define MB(x) ((x) << 20)
@@ -405,6 +388,15 @@ StaticAssert(sizeof(u64) == 8, CheckU64Size);
 StaticAssert(sizeof(iptr) == ARCH_SIZE/8, CheckIPTRSize);
 StaticAssert(sizeof(uptr) == ARCH_SIZE/8, CheckUPTRSize);
 
+#define  I8(x) (x)
+#define I16(x) (x)
+#define I32(x) (x)
+#define I64(x) (x ## LL)
+#define  U8(x) (x)
+#define U16(x) (x)
+#define U32(x) (x ## U)
+#define U64(x) (x ## ULL)
+
 #ifdef LANG_C
 #define false 0
 #define true  1
@@ -423,20 +415,20 @@ typedef void VoidFuncVoid(void*);
 
 //~ NOTE(long): Basic Constants
 
-#define MIN_I8  ((i8)0x80)
-#define MIN_I16 ((i16)0x8000)
-#define MIN_I32 ((i32)0x80000000)
-#define MIN_I64 ((i64)0x8000000000000000ll)
+#define MIN_I8  I8(0x80)
+#define MIN_I16 I16(0x8000)
+#define MIN_I32 I32(0x80000000)
+#define MIN_I64 I64(0x8000000000000000)
 
-#define MAX_I8  ((i8)0x7f)
-#define MAX_I16 ((i16)0x7fff)
-#define MAX_I32 ((i32)0x7fffffff)
-#define MAX_I64 ((i64)0x7fffffffffffffffll)
+#define MAX_I8  I8(0x7f)
+#define MAX_I16 I16(0x7fff)
+#define MAX_I32 I32(0x7fffffff)
+#define MAX_I64 I64(0x7fffffffffffffff)
 
-#define MAX_U8  ((u8)0xff)
-#define MAX_U16 ((u16)0xffff)
-#define MAX_U32 ((u32)0xffffffff)
-#define MAX_U64 ((u64)0xffffffffffffffffllu)
+#define MAX_U8  U8(0xff)
+#define MAX_U16 U16(0xffff)
+#define MAX_U32 U32(0xffffffff)
+#define MAX_U64 U64(0xffffffffffffffff)
 
 #if ARCH_SIZE == 64
 #define MIN_IPTR MIN_I64
@@ -464,21 +456,24 @@ typedef void VoidFuncVoid(void*);
 
 //~ NOTE(long): Symbolic Constants
 
-typedef enum Axis
+typedef enum Axis Axis;
+enum Axis
 {
     Axis_X,
     Axis_Y,
     Axis_Z,
     Axis_W,
-} Axis;
+};
 
-typedef enum Side
+typedef enum Side Side;
+enum Side
 {
     Side_Min,
     Side_Max,
-} Side;
+};
 
-typedef enum Compiler
+typedef enum Compiler Compiler;
+enum Compiler
 {
     Compiler_None,
     
@@ -487,9 +482,10 @@ typedef enum Compiler
     Compiler_GCC,
     
     Compiler_Count
-} Compiler;
+};
 
-typedef enum Arch
+typedef enum Arch Arch;
+enum Arch
 {
     Arch_None,
     
@@ -499,9 +495,10 @@ typedef enum Arch
     Arch_ARM64,
     
     Arch_Count
-} Arch;
+};
 
-typedef enum OS
+typedef enum OS OS;
+enum OS
 {
     OS_None,
     
@@ -510,9 +507,10 @@ typedef enum OS
     OS_Mac,
     
     OS_Count
-} OS;
+};
 
-typedef enum Month
+typedef enum Month Month;
+enum Month
 {
     Month_None,
     
@@ -530,9 +528,10 @@ typedef enum Month
     Month_Dec,
     
     Month_Count
-} Month;
+};
 
-typedef enum Day
+typedef enum Day Day;
+enum Day
 {
     Day_None,
     
@@ -545,13 +544,14 @@ typedef enum Day
     Day_Saturday,
     
     Day_Count
-} Day;
+};
 
 //~ NOTE(long): Time
 
 typedef u64 DenseTime;
 
-typedef struct DateTime
+typedef struct DateTime DateTime;
+struct DateTime
 {
     u16 msec;
     u8 sec;
@@ -560,7 +560,7 @@ typedef struct DateTime
     u8 day;
     u8 mon;
     i16 year;
-} DateTime;
+};
 
 function DateTime  TimeToDate (DenseTime time);
 function DenseTime TimeToDense(DateTime* time);
@@ -568,12 +568,12 @@ function DenseTime TimeToDense(DateTime* time);
 //~ NOTE(long): File Properties
 
 typedef u32 DataAccessFlags;
-typedef enum
+enum
 {
     DataAccessFlag_Read = (1 << 0),
     DataAccessFlag_Write = (1 << 1),
     DataAccessFlag_Execute = (1 << 2),
-} DataAccessFlag;
+};
 
 typedef u32 FilePropertyFlags;
 enum
@@ -581,14 +581,15 @@ enum
     FilePropertyFlag_IsFolder = (1 << 0)
 };
 
-typedef struct FileProperties
+typedef struct FileProperties FileProperties;
+struct FileProperties
 {
     u64 size;
     FilePropertyFlags flags;
     DenseTime createTime;
     DenseTime modifyTime;
     DataAccessFlags access;
-} FileProperties;
+};
 
 //~ NOTE(long): Base Memory Pre-Requisites
 
@@ -607,19 +608,21 @@ typedef struct FileProperties
 
 //~ NOTE(long): Arena Types
 
-typedef struct Arena
+typedef struct Arena Arena;
+struct Arena
 {
     u64 cap;
     u64 pos;
     u64 commitPos;
     u64 highWaterMark;
-} Arena;
+};
 
-typedef struct TempArena
+typedef struct TempArena TempArena;
+struct TempArena
 {
     Arena* arena;
     u64 pos;
-} TempArena;
+};
 
 #ifndef DEFAULT_RESERVE_SIZE
 #define DEFAULT_RESERVE_SIZE KB(64)
@@ -692,11 +695,23 @@ enum
     SplitStr_AllowEmptyMember = 1 << 2,
 };
 
-typedef struct StringDecode
+typedef enum DecodeError DecodeError;
+enum DecodeError
+{
+    DecodeError_EOF         = (1 << 0),
+    DecodeError_Overlong    = (1 << 1),
+    DecodeError_Surrogate   = (1 << 2),
+    DecodeError_OutOfRange  = (1 << 3),
+    DecodeError_InvalidBits = (1 << 4),
+};
+
+typedef struct StringDecode StringDecode;
+struct StringDecode
 {
     u32 codepoint;
     u32 size;
-} StringDecode;
+    u32 error;
+};
 
 #define  Str8Stream(str, ptr, opl) for (u8  *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
 #define Str16Stream(str, ptr, opl) for (u16 *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
@@ -724,6 +739,7 @@ function f32 Floor_f32(f32 x);
 function f32 Ceil_f32(f32 x);
 function f32 Mod_f32(f32 x, f32 m);
 function f32 Sqrt_f32(f32 x);
+function f32 RSqrt_f32(f32 x);
 function f32 Ln_f32(f32 x);
 function f32 Pow_f32(f32 base, f32 x);
 function f32 FrExp_f32(f32 x, i32* exp);
@@ -865,6 +881,7 @@ function i64 StrFindStr(String str, String val, StringFindFlags flags);
 function i64 StrFindArr(String str, String arr, StringFindFlags flags);
 function StringNode* StrFindList(String str, StringList* list, StringFindFlags flags);
 
+function String StrGetSubstr(String a, String b, StringFindFlags flags);
 function String StrChopAfter(String str, String arr, StringFindFlags flags);
 function String StrSkipUntil(String str, String arr, StringFindFlags flags);
 
@@ -879,8 +896,8 @@ function String StrSkipUntil(String str, String arr, StringFindFlags flags);
 #define StrIsPrefix(str, prefix) ((str).str == (prefix).str && (str).size >= (prefix).size)
 #define StrIsPostfix(str, postfix) (((str).str + (str).size == (postfix).str + (postfix).size) && (str).str <= (postfix).str)
 
-#define StrStartsWith(str, val) (StrCompare(StrPrefix ((str), (val).size), (val)))
-#define   StrEndsWith(str, val) (StrCompare(StrPostfix((str), (val).size), (val)))
+#define StrStartsWith(str, val, noCase) (StrCompare(StrPrefix ((str), (val).size), (val), noCase))
+#define   StrEndsWith(str, val, noCase) (StrCompare(StrPostfix((str), (val).size), (val), noCase))
 
 #define StrFindChr(str, chr, flags) StrFindArr((str), StrLit(chr), (flags))
 #define StrContainsChr(str, chr) (StrFindArr((str), StrLit(chr), 0) > -1)
@@ -906,31 +923,43 @@ function String32 StrToStr32(Arena* arena, String   str);
 function String16 StrToStr16(Arena* arena, String   str);
 function String StrFromStr32(Arena* arena, String32 str);
 function String StrFromStr16(Arena* arena, String16 str);
-
-#define StrFromRune(arena, rune) StrFromStr32((arena), (String32){ &(rune), 1 })
 function String StrBackspace(String str);
 
-function u64 UTF8Len  (String str);
-function b32 UTF8Valid(String str);
+function u64 UTF8Length(String str);
+function u32 UTF8GetErr(String str, u64* index); // returns the first invalid character
+
+#define StrFromRune(arena, rune) StrFromStr32((arena), (String32){ &(rune), 1 })
+#define UTF8IsValid(str) (UTF8GetErr(str) == -1)
 
 // TODO(long): https://dev.to/rdentato/utf-8-strings-in-c-3-3-2pc7
 function u32 RuneFolding(u32 rune); // NOTE(long): Should StrToLow(Upp)er use this?
 function b32 RuneIsBlank(u32 rune); // NOTE(long): Should StrIsWhitespace use this?
 
-//- TODO(long): Convert Functions
-function f32 StrToF32(String str, b32* error);
-function f64 StrToF64(String str, b32* error);
-function i64 StrToI64(String str, b32* error);
-function i32 StrToI32(String str, b32* error);
-
+//- NOTE(long): Convert Functions
 function String StrFromF32(Arena* arena, f32 x, u32 prec);
 function String StrFromF64(Arena* arena, f64 x, u32 prec);
 function String StrFromI32(Arena* arena, i32 x, u32 radix);
 function String StrFromI64(Arena* arena, i64 x, u32 radix);
 
-//~ TODO(long): Logs
+function f32 F32FromStr(String str, b32* error);
+function f64 F64FromStr(String str, b32* error);
+function i32 I32FromStr(String str, u32 radix, b32* error);
+function i64 I64FromStr(String str, u32 radix, b32* error);
 
-typedef enum Log
+//~ NOTE(long): Logs/Errors
+
+typedef struct Record Record;
+struct Record
+{
+    String log;
+    char* file;
+    i32 line;
+    i32 level;
+    DenseTime time;
+};
+
+typedef enum LogType LogType;
+enum LogType
 {
     LOG_TRACE,
     LOG_DEBUG,
@@ -939,30 +968,40 @@ typedef enum Log
     LOG_ERROR,
     LOG_FATAL,
     
-    LOG_COUNT
-} Log;
+    LogType_Count
+};
 
-function void       LogBegin(Arena* arena, i32 level);
-function StringList LogEnd(void);
+typedef void LogHandler(Arena* arena, Record* record, char* fmt, va_list args);
 
-function void LogSetLevel(i32 level);
-function void LogSetQuiet(b32 enable);
-function void LogPushf(i32 level, char* file, int line, char* fmt, ...);
+typedef struct LogInfo LogInfo;
+struct LogInfo
+{
+    i64 level;
+    LogHandler* callback;
+};
 
-#define LogPush(level, log, ...) LogPushf((level), __FILE__, __LINE__, log, __VA_ARGS__)
-#define LogPushStr(level, str) LogPush(level, "%.*s", StrExpand(str))
+typedef struct Logger Logger;
+struct Logger
+{
+    Record* records;
+    u64 count;
+    LogInfo info;
+};
 
-//~ NOTE(long): Errors
+#define LogBegin(arena, ...) LogBegin_((arena), (LogInfo){ .level = 0, .callback = LogFmtStd, __VA_ARGS__ })
+function void   LogBegin_(Arena* arena, LogInfo info);
+function Logger LogEnd(void);
+function StringList StrListFromLogger(Arena* arena, Logger* logger);
 
-function void       ErrorBegin(Arena* arena);
-function StringList ErrorEnd  (void);
+function LogInfo* LogGetInfo(void);
+function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args);
+function void LogPushf(i32 level, char* file, i32 line, char* fmt, ...);
+#define LogPush(level, log, ...) LogPushf((level), __FILE__, __LINE__, (log), __VA_ARGS__)
 
-function void ErrorPush (String error);
-function void ErrorPushf(char* fmt, ...);
-
-#define ErrorLit(error) ErrorPushf("%s(%d): %s", __FILE__, __LINE__, (error))
-#define ErrorSet(error, errno) ((errno) = 1, ErrorLit(error))
-#define ErrorFmt(error, ...) ErrorPushf("%s(%d): " error, __FILE__, __LINE__, __VA_ARGS__)
+#define ErrorBegin(arena, ...) LogBegin(arena, .level = LOG_ERROR, __VA_ARGS__)
+#define ErrorEnd() LogEnd()
+#define ErrorSet(error, errno) ((errno) = 1, ErrorFmt(error))
+#define ErrorFmt(error, ...) LogPush(LOG_ERROR, error, __VA_ARGS__)
 
 //~ NOTE(long): Buffer Functions
 
@@ -972,11 +1011,12 @@ function String* BufferUninterleave(Arena* arena, void*  in, u64 laneCount, u64 
 
 //~ NOTE(long): PRNG Functions
 
-typedef struct RNG
+typedef struct RNG RNG;
+struct RNG
 {
     u32 seed;
     u32 pos;
-} RNG;
+};
 
 #define BIT_NOISE1 0x68E31DA4
 #define BIT_NOISE2 0xB5297A4D

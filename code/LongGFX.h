@@ -51,6 +51,8 @@ function b32 IsGFXWindowMaximized(GFXWindow window);
 
 function b32  WaitForGFXInput(void);
 function void GFXMessageBox(String title, String message);
-function void GFXErrorBox(StringList* errors, i32 code);
+function void GFXErrorBox(Logger* logger, i32 code);
+function void GFXErrorFmt(Arena* arena, Record* record, char* fmt, va_list args);
+#define GFXCheckError(...) do { Logger _errors_ = ErrorEnd(); GFXErrorBox(&_errors_, (i32){ __VA_ARGS__+0 }); } while (0)
 
 #endif //_LONG_G_F_X_H
