@@ -202,7 +202,7 @@ function MetaInfo* FindMetaType(TypeTable* table, String name);
 function MetaInfo* AddForwardType(TypeTable* table, MetaInfoKind kind, String name);
 function void      AddMetaInfo(TypeTable* table, MetaInfo* currentType, MetaInfo* info);
 function MetaInfo* BeginTypeInfo(TypeTable* table, MetaInfoKind kind, String name);
-function void      EndTypeInfo(TypeTable* table, MetaInfo* info);
+function void      EndTypeInfo(MetaInfo* info);
 
 function MetaInfo* PushType(TypeTable* table, MetaInfo* info);
 function MetaInfo* PushMember(TypeTable* table, MetaInfo* type, MetaInfo* info);

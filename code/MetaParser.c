@@ -78,8 +78,13 @@ function String SkipStrUntil(String str, String characters, StringMatchFlags fla
     
     u64 size;
     for (size = 0; size < str.size; ++size)
-        if (result = (ChrCompareArr(str.str[size], characters, noCase) == equal))
+    {
+        if (ChrCompareArr(str.str[size], characters, noCase) == equal)
+        {
+            result = 1;
             break;
+        }
+    }
     
     if (!result)
     {
@@ -332,9 +337,9 @@ function Token RequireIdentifier(Lexer* lexer, String match)
 
 function b32 OptionalToken(Lexer* lexer, MetaTokenType desiredType)
 {
-    b32 result = false;
     Token token = PeekToken(lexer);
-    if (result = (token.type == desiredType))
+    b32 result = token.type == desiredType;
+    if (result)
         GetToken(lexer);
     return result;
 }
@@ -443,7 +448,7 @@ function MetaInfo* PushMember(TypeTable* table, MetaInfo* type, MetaInfo* info)
     if (!type)
         type = table->last;
     if (type)
-        member->indexWithinTypeTable = type->count++;
+        member->indexWithinTypeTable = (u32)type->count++;
     SLLQueuePush(type->first, type->last, member);
     return member;
 }
@@ -467,7 +472,7 @@ function MetaInfo* BeginTypeInfo(TypeTable* table, MetaInfoKind kind, String nam
     return typeInfo;
 }
 
-function void EndTypeInfo(TypeTable* table, MetaInfo* info)
+function void EndTypeInfo(MetaInfo* info)
 {
     u32 maxSize = 0;
     for (MetaInfo* member = info->first; member; member = member->next)
@@ -623,6 +628,6 @@ function MetaInfo* ParseType(Parser* parser, MetaInfoKind kind, String typeName)
             break; // TODO: Handle declaring global variables
     }
     
-    EndTypeInfo(parser->table, typeInfo);
+    EndTypeInfo(typeInfo);
     return typeInfo;
 }

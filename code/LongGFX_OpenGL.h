@@ -3,8 +3,7 @@
 #ifndef _LONG_O_S_G_L_H
 #define _LONG_O_S_G_L_H
 
-// --------------------------------------------------
-// NOTE: System OpenGL Functions
+//~ NOTE(long): System OpenGL Functions
 
 function b32 InitGL(void);
 function b32 EquipGLWindow(GFXWindow window);

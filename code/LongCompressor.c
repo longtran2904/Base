@@ -16,8 +16,8 @@
 #define STBI_FREE
 
 Arena* stbArena;
-#define STBI_MALLOC(sz) ArenaPush(stbArena, sz)
-#define STBI_REALLOC_SIZED(p, oldsz, newsz) CopyMem(ArenaPush(stbArena, newsz), p, oldsz)
+#define STBI_MALLOC(sz) ArenaPushNZ(stbArena, sz)
+#define STBI_REALLOC_SIZED(p, oldsz, newsz) CopyMem(ArenaPushNZ(stbArena, newsz), p, oldsz)
 #include "stb_image.h"
 
 #define CHANNEL_COUNT 4
@@ -48,42 +48,43 @@ typedef struct PatternTable
 function Image LoadImageFromFile(Arena* arena, String file, u32 blockSize)
 {
     Image result = { .blockSize = blockSize };
-    BeginScratch(scratch, arena);
-    stbArena = scratch;
-    
-    i32 channelCount = 0;
-    String data = ReadOSFile(scratch, file, false);
-    u8* pixels = stbi_load_from_memory(data.str, data.size, &result.width, &result.height, &channelCount, 4);
-    //Assert(channelCount == CHANNEL_COUNT);
-    
-    u32 size = result.width * result.height;
-    result.r = ArenaPushZero(arena, size * CHANNEL_COUNT);
-    result.g = result.r + size;
-    result.b = result.g + size;
-    result.a = result.b + size;
-    
-#if 0
-    for (u32 i = 0; i < size; ++i)
+    ScratchBlock(scratch, arena)
     {
-        // TODO: add padding when size isn't a multiple of blockSize
-        u32 index = i * CHANNEL_COUNT;
-        result.r[i] = pixels[index + 0];
-        result.g[i] = pixels[index + 1];
-        result.b[i] = pixels[index + 2];
-        result.a[i] = pixels[index + 3];
-    }
+        stbArena = scratch;
+        
+        i32 channelCount = 0;
+        String data = OSReadFile(scratch, file, false);
+        u8* pixels = stbi_load_from_memory(data.str, (i32)data.size, &result.width, &result.height, &channelCount, 4);
+        //Assert(channelCount == CHANNEL_COUNT);
+        
+        u32 size = result.width * result.height;
+        result.r = ArenaPush(arena, size * CHANNEL_COUNT);
+        result.g = result.r + size;
+        result.b = result.g + size;
+        result.a = result.b + size;
+        
+#if 0
+        for (u32 i = 0; i < size; ++i)
+        {
+            // TODO: add padding when size isn't a multiple of blockSize
+            u32 index = i * CHANNEL_COUNT;
+            result.r[i] = pixels[index + 0];
+            result.g[i] = pixels[index + 1];
+            result.b[i] = pixels[index + 2];
+            result.a[i] = pixels[index + 3];
+        }
 #else
-    result.r = CopyMem(result.r, pixels, result.width * result.height);
+        result.r = CopyMem(result.r, pixels, result.width * result.height);
 #endif
+    }
     
-    EndScratch(scratch);
     return result;
 }
 
 function PatternTable CreateTable(Arena* arena, u32 maxBlocks, u32 blockSize)
 {
     PatternTable result = { .blockSize = blockSize, .maxBlockCount = maxBlocks };
-    result.hashes = ArenaPushZero(arena, maxBlocks * (sizeof(*result.hashes) + sizeof(*result.patterns)));
+    result.hashes = ArenaPush(arena, maxBlocks * (sizeof(*result.hashes) + sizeof(*result.patterns)));
     result.patterns = (u8**)(result.hashes + maxBlocks);
     return result;
 }
@@ -93,7 +94,7 @@ function u8* GetBlockPattern(Arena* arena, Image image, u32 index, u32 channel)
     u8* result = 0;
     if (channel < CHANNEL_COUNT && index < image.width * image.height)
     {
-        result = ArenaPushZero(arena, image.blockSize);
+        result = ArenaPush(arena, image.blockSize);
         if (result)
         {
             u8* block = image.channels[channel] + index;
@@ -101,7 +102,7 @@ function u8* GetBlockPattern(Arena* arena, Image image, u32 index, u32 channel)
                 result[i] = block[i] - block[i - 1];
 #if 0
             block = result;
-            result = ArenaPushZero(arena, image.blockSize);
+            result = ArenaPush(arena, image.blockSize);
             if (result)
             {
                 for (u32 i = 2; i < image.blockSize; ++i)
@@ -140,10 +141,10 @@ function u8* HashBlockPattern(PatternTable* table, u8* pattern)
 
 int main(int argc, char** argv)
 {
-    InitOSMain(argc, argv);
+    OSInit(argc, argv);
     Arena* arena = ArenaReserve(GB(1));
     
-    StringList args = GetOSArgs();;
+    StringList args = OSCmdArgs();;
     if (args.nodeCount != 2)
         return 0;
     
@@ -156,43 +157,45 @@ int main(int argc, char** argv)
     u32 total = 0;
     
     String path = args.first->next->string;
-    OSFileIter iter = InitFileIter(path);
+    OSFileIter iter = FileIterInit(path);
     PatternTable totalTable = CreateTable(arena, MB(1), BLOCK_SIZE);
-    for (String name; NextFileIter(arena, &iter, &name, 0);)
+    for (String name; FileIterNext(arena, &iter, &name, 0);)
     {
-        BeginScratch(scratch);
-        String finalPath = StrJoin3(scratch, path, StrLit("\\"));
-        Image image = LoadImageFromFile(scratch, finalPath, BLOCK_SIZE);
-        if (!image.width || !image.height)
-            goto END;
-        u32 size = image.width * image.height;
-        u32 blockCount = size / BLOCK_SIZE;
-        PatternTable table = CreateTable(scratch, blockCount, BLOCK_SIZE);
-        u8* writter = ArenaPush(scratch, image.width * image.height);;
-        
-        for (i32 i = 0; i < size; i += BLOCK_SIZE)
+        ScratchBlock(scratch)
         {
-            u8* pattern = GetBlockPattern(scratch, image, i, 0);
-            Assert(pattern);
-            u8* hash = HashBlockPattern(&table, pattern);
-            HashBlockPattern(&totalTable, CopyMem(ArenaPush(arena, BLOCK_SIZE), pattern, BLOCK_SIZE));
-            //writter += WriteBlockPattern(hash, pattern, writter);
+            String finalPath = StrJoin3(scratch, path, StrLit("\\"));
+            Image image = LoadImageFromFile(scratch, finalPath, BLOCK_SIZE);
+            if (!image.width || !image.height)
+                goto END;
+            u32 size = image.width * image.height;
+            u32 blockCount = size / BLOCK_SIZE;
+            PatternTable table = CreateTable(scratch, blockCount, BLOCK_SIZE);
+            u8* writter = ArenaPushNZ(scratch, image.width * image.height);;
+            
+            for (u32 i = 0; i < size; i += BLOCK_SIZE)
+            {
+                u8* pattern = GetBlockPattern(scratch, image, i, 0);
+                Assert(pattern);
+                u8* hash = HashBlockPattern(&table, pattern);
+                HashBlockPattern(&totalTable, CopyMem(ArenaPushNZ(arena, BLOCK_SIZE), pattern, BLOCK_SIZE));
+                //writter += WriteBlockPattern(hash, pattern, writter);
+            }
+            
+            totalCount++;
+            totalBlocks += table.usedBlocks;
+            total += blockCount;
+            f32 rate = table.usedBlocks/(f32)blockCount;
+            if (table.usedBlocks < minBlock)
+            {
+                minBlock = table.usedBlocks;
+                minName = name;
+                minBlockSize = blockCount;
+            }
+            printf("%-50.*s: %3u/%u blocks, %f%%\n", StrExpand(name), table.usedBlocks, blockCount, rate);
+            END:;
         }
-        
-        totalCount++;
-        totalBlocks += table.usedBlocks;
-        total += blockCount;
-        f32 rate = table.usedBlocks/(f32)blockCount;
-        if (table.usedBlocks < minBlock)
-        {
-            minBlock = table.usedBlocks;
-            minName = name;
-            minBlockSize = blockCount;
-        }
-        printf("%-50.*s: %3u/%u blocks, %f%%\n", StrExpand(name), table.usedBlocks, blockCount, rate);
-        END:
-        EndScratch(scratch);
     }
+    FileIterEnd(&iter);
     
     printf("\n");
     printf("MIN: %.*s: %u, %f\n", StrExpand(minName), minBlock, minBlock / (f32)minBlockSize);

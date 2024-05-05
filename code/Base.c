@@ -186,11 +186,16 @@ function f32 Abs_f32(f32 x)
 function f64 Abs_f64(f64 x)
 {
     u64 u = *(u64*)&x;
-    u &= 0x7fffffffffffffff;
+    u &= 0x7fffffffffffffff; // 1 + epsilon != 1
     return x;
 }
 
 #ifdef __SSE4__
+function f32 Round_f32(f32 x)
+{
+    return _mm_cvtss_f32(_mm_round_ss(_mm_set_ss(x), _MM_FROUND_TO_NEAREST_INT|_MM_FROUND_NO_EXC))
+}
+
 function f32 Trunc_f32(f32 x)
 {
     return _mm_cvtss_f32(_mm_round_ss(_mm_set_ss(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
@@ -206,77 +211,96 @@ function f32 Ceil_f32(f32 x)
     return _mm_cvtss_f32(_mm_ceil_ss((__m128){0}, _mm_set_ss(x)));
 }
 
+function f64 Round_f64(f64 x)
+{
+    return _mm_cvtsd_f64(_mm_round_sd(_mm_set_sd(x), _MM_FROUND_TO_NEAREST_INT|_MM_FROUND_NO_EXC))
+}
+
 function f64 Trunc_f64(f64 x)
 {
-    return _mm_cvtss_f64(_mm_round_sd(_mm_set_sd(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
+    return _mm_cvtsd_f64(_mm_round_sd(_mm_set_sd(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
 }
 
 function f64 Floor_f64(f64 x)
 {
-    return _mm_cvtss_f64(_mm_floor_sd((__m128){0}, _mm_set_sd(x)));
+    return _mm_cvtsd_f64(_mm_floor_sd((__m128){0}, _mm_set_sd(x)));
 }
 
 function f64 Ceil_f64(f64 x)
 {
-    return _mm_cvtss_f64(_mm_ceil_sd((__m128){0}, _mm_set_sd(x)));
+    return _mm_cvtsd_f64(_mm_ceil_sd((__m128){0}, _mm_set_sd(x)));
 }
 #elif defined(__SSE2__)
-function f32 Trunc_f32(f32 x)
+#define ROUND_F32(x, callback) \
+    __m128 f = _mm_set_ss(x); \
+    __m128 r = _mm_cvtepi32_ps(_mm_cvttps_epi32(f)); /*r = (f32)(i32)f*/ \
+    callback; \
+    __m128 m = _mm_cmpgt_ss(_mm_set1_ps(0x1p31f), _mm_andnot_ps(_mm_set1_ps(-0.f), f)); \
+    r = _mm_or_ps(_mm_and_ps(m, r), _mm_andnot_ps(m, f)); /*if (!(2**31 > abs(f))) r = f;*/ \
+    x = _mm_cvtss_f32(r)
+
+#define ROUND_F64(x, callback) \
+    __m128d f = _mm_set_sd(x); \
+    __m128d r = _mm_cvtsi64_sd((__m128d){0}, _mm_cvttsd_si64(f)); /*r = (f64)(i64)f*/ \
+    callback; \
+    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63f), _mm_andnot_pd(_mm_set1_pd(-0.), f)); \
+    r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); /*if (!(2**63 > abs(f))) r = f;*/ \
+    x = _mm_cvtsd_f64(r);
+
+function f32 Round_f32(f32 x)
 {
     __m128 f = _mm_set_ss(x);
-    __m128 r = _mm_cvtepi32_ps(_mm_cvttps_epi32(f)); // r = (f32)(i32)f
+    __m128 max_mantissa = _mm_set1_ps(x > 0 ? 0x1p23f : -0x1p23f);
+    __m128 r = _mm_sub_ss(_mm_add_ss(f, max_mantissa), max_mantissa); // f + 0x1p23f - 0x1p23f;
     __m128 m = _mm_cmpgt_ss(_mm_set1_ps(0x1p31f), _mm_andnot_ps(_mm_set1_ps(-0.f), f));
-    r = _mm_or_ps(_mm_and_ps(m, r), _mm_andnot_ps(m, f)); // if (!(2**31 > abs(f))) r = f + 1;
+    r = _mm_or_ps(_mm_and_ps(m, r), _mm_andnot_ps(m, f)); //if (!(2**31 > abs(f))) r = f;
     return _mm_cvtss_f32(r);
+}
+
+function f32 Trunc_f32(f32 x)
+{
+    ROUND_F32(x, 0);
+    return x;
 }
 
 function f32 Floor_f32(f32 x)
 {
-    __m128 f = _mm_set_ss(x);
-    __m128 r = _mm_cvtepi32_ps(_mm_cvttps_epi32(f)); // r = (f32)(i32)f
-    r = _mm_sub_ss(r, _mm_and_ps(_mm_cmplt_ss(f, r), _mm_set1_ps(1.f))); // if (f < r) r -= 1
-    __m128 m = _mm_cmpgt_ss(_mm_set1_ps(0x1p31f), _mm_andnot_ps(_mm_set1_ps(-0.f), f));
-    r = _mm_or_ps(_mm_and_ps(m, r), _mm_andnot_ps(m, f)); // if (!(2**31 > abs(f))) r = f + 1;
-    return _mm_cvtss_f32(r);
+    ROUND_F32(x, r = _mm_sub_ss(r, _mm_and_ps(_mm_cmplt_ss(f, r), _mm_set1_ps(1.f)))); // if (f < r) r -= 1
+    return x;
 }
 
 function f32 Ceil_f32(f32 x)
 {
-    __m128 f = _mm_set_ss(x);
-    __m128 r = _mm_cvtepi32_ps(_mm_cvttps_epi32(f)); // r = (f32)(i32)f
-    r = _mm_add_ss(r, _mm_and_ps(_mm_cmpgt_ss(f, r), _mm_set1_ps(1.f))); // if (f > r) r += 1
-    __m128 m = _mm_cmpgt_ss(_mm_set1_ps(0x1p31f), _mm_andnot_ps(_mm_set1_ps(-0.f), f));
-    r = _mm_or_ps(_mm_and_ps(m, r), _mm_andnot_ps(m, f)); // if (!(2**31 > abs(f))) r = f + 1;
-    return _mm_cvtss_f32(r);
+    ROUND_F32(x, r = _mm_add_ss(r, _mm_and_ps(_mm_cmpgt_ss(f, r), _mm_set1_ps(1.f)))); // if (f > r) r += 1
+    return x;
+}
+
+function f64 Round_f64(f64 x)
+{
+    __m128d f = _mm_set_sd(x);
+    __m128d max_mantissa = _mm_set1_pd(x > 0 ? 0x1p52f : -0x1p52f);
+    __m128d r = _mm_sub_sd(_mm_add_sd(f, max_mantissa), max_mantissa);
+    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63f), _mm_andnot_pd(_mm_set1_pd(-0.), f));
+    r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); //if (!(2**63 > abs(f))) r = f;
+    return _mm_cvtsd_f64(r);
 }
 
 function f64 Trunc_f64(f64 x)
 {
-    __m128d f = _mm_set_sd(x);
-    __m128d r = _mm_cvtsi64_sd((__m128d){0}, _mm_cvttsd_si64(f)); // r = (f64)(i64)f
-    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63f), _mm_andnot_pd(_mm_set1_pd(-0.), f));
-    r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); // if (!(2**63 > abs(f))) r = f + 1;
-    return _mm_cvtss_f64(r);
+    ROUND_F64(x, 0);
+    return x;
 }
 
 function f64 Floor_f64(f64 x)
 {
-    __m128d f = _mm_set_sd(x);
-    __m128d r = _mm_cvtsi64_sd((__m128d){0}, _mm_cvttsd_si64(f)); // r = (f64)(i64)f
-    r = _mm_sub_sd(r, _mm_and_pd(_mm_cmplt_sd(f, r), _mm_set1_pd(1.))); // if (f < r) r -= 1
-    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63f), _mm_andnot_pd(_mm_set1_pd(-0.), f));
-    r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); // if (!(2**63 > abs(f))) r = f + 1;
-    return _mm_cvtss_f64(r);
+    ROUND_F64(x, r = _mm_sub_sd(r, _mm_and_pd(_mm_cmplt_sd(f, r), _mm_set1_pd(1.)))); // if (f < r) r -= 1
+    return x;
 }
 
 function f64 Ceil_f64(f64 x)
 {
-    __m128d f = _mm_set_sd(x);
-    __m128d r = _mm_cvtsi64_sd((__m128d){0}, _mm_cvttsd_si64(f)); // r = (f64)(i64)f
-    r = _mm_add_sd(r, _mm_and_pd(_mm_cmpgt_sd(f, r), _mm_set1_pd(1.))); // if (f > r) r += 1
-    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63f), _mm_andnot_pd(_mm_set1_pd(-0.), f));
-    r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); // if (!(2**63 > abs(f))) r = f + 1;
-    return _mm_cvtss_f64(r);
+    ROUND_F64(x, r = _mm_add_sd(r, _mm_and_pd(_mm_cmpgt_sd(f, r), _mm_set1_pd(1.)))); // if (f > r) r += 1
+    return x;
 }
 #endif
 
@@ -312,7 +336,12 @@ function u64 Hash64(u8* values, u64 count)
 {
     u64 result = BIT_NOISE5;
     for (u64 i = 0; i < count / 8; ++i)
-        result = Noise1D(result, *((u64*)values + i) >> (i % 16));
+    {
+        u64 value = *((u64*)values + i);
+        u32 hi = Noise1D((u32)i, (u32)(value >> (i % 16)));
+        u32 lo = Noise1D((u32)i, (u32)(value >> (i % 16)));
+        result = hi|(((u64)lo) << 32);
+    }
     for (u8* i = values + (count / 8) * 8; i < values + count; ++i)
         result += BIT_NOISE4 * (*i) + BIT_NOISE5;
     return result;
@@ -336,7 +365,7 @@ function DateTime TimeToDate(DenseTime time)
     result.mon = time % 12;
     time /= 12;
     i32 encodedYear = (i32)time;
-    result.year = (encodedYear - 0x8000);
+    result.year = (i16)(encodedYear - 0x8000);
     return result;
 }
 
@@ -362,7 +391,7 @@ function DenseTime TimeToDense(DateTime* time)
 
 //~ NOTE(long): Arena Functions
 
-function void* ChangeMemoryNoOp(void* ptr, u64 size) { return ptr; }
+function void* ChangeMemoryNoOp(void* ptr, u64 size) { UNUSED(size); return ptr; }
 
 #define INITIAL_COMMIT KB(4)
 StaticAssert(sizeof(Arena) <= INITIAL_COMMIT, CheckArenaSize);
@@ -391,7 +420,7 @@ function void ArenaRelease(Arena* arena)
     MemRelease(arena);
 }
 
-function void* ArenaPush(Arena* arena, u64 size)
+function void* ArenaPushNZ(Arena* arena, u64 size)
 {
     void* result = 0;
     if (arena->pos + size <= arena->cap)
@@ -433,30 +462,36 @@ function void ArenaPopTo(Arena* arena, u64 pos)
             MemDecommit(arena + nextCommitPos, decommitSize);
             arena->commitPos = nextCommitPos;
         }
+        
+#if BASE_ZERO_ON_POP
+        ZeroMem(((u8*)arena) + arena->pos, arena->commitPos - arena->pos);
+#endif
     }
 }
 
-function void* ArenaPushZero(Arena* arena, u64 size)
+function void* ArenaPush(Arena* arena, u64 size)
 {
-    void* result = ArenaPush(arena, size);
+    void* result = ArenaPushNZ(arena, size);
+#if !BASE_ZERO_ON_POP
     ZeroMem(result, size);
+#endif
     return result;
 }
 
-function void  ArenaAlign(Arena* arena, u64 alignment)
+function void ArenaAlignNZ(Arena* arena, u64 alignment)
 {
     u64 alignedPos = AlignUpPow2(arena->pos, alignment);
     u64 size = alignedPos - arena->pos;
     if (size > 0)
-        ArenaPush(arena, size);
+        ArenaPushNZ(arena, size);
 }
 
-function void  ArenaAlignZero(Arena* arena, u64 aligment)
+function void  ArenaAlign(Arena* arena, u64 aligment)
 {
     u64 alignedPos = AlignUpPow2(arena->pos, aligment);
     u64 size = alignedPos - arena->pos;
     if (size > 0)
-        ArenaPushZero(arena, size);
+        ArenaPush(arena, size);
 }
 
 function TempArena TempBegin(Arena* arena)
@@ -596,22 +631,24 @@ function String StrTrim(String str, String arr, i32 dir)
 //- NOTE(long): Allocation Functions
 function String StrCopy(Arena* arena, String str)
 {
-    String result = { PushZeroArray(arena, u8, str.size + 1), str.size };
+    String result = { PushArray(arena, u8, str.size + 1), str.size };
     CopyMem(result.str, str.str, str.size);
     return result;
 }
 
 function String GetFlagName_(Arena* arena, String* names, u64 nameCount, u64 flags)
 {
-    BeginScratch(scratch, arena);
+    String result = {0};
     StringList list = {0};
     
-    for (u64 i = 0; i < nameCount; ++i)
-        if (flags & (1ULL << i))
-            StrListPush(scratch, &list, names[i]);
-    String result = StrJoin(arena, &list, .mid = StrLit(" | "));
+    ScratchBlock(scratch, arena)
+    {
+        for (u64 i = 0; i < nameCount; ++i)
+            if (flags & (1ULL << i))
+                StrListPush(scratch, &list, names[i]);
+        result = StrJoin(arena, &list, .mid = StrLit(" | "));
+    }
     
-    EndScratch(scratch);
     return result;
 }
 
@@ -620,7 +657,7 @@ function StringList StrList(Arena* arena, String* strArr, u64 count)
     StringList result = {0};
     if (strArr != 0 && count != 0)
     {
-        result.first = PushArray(arena, StringNode, count);
+        result.first = PushArrayNZ(arena, StringNode, count);
         result.last = result.first + count - 1;
         for (u64 i = 0; i < count; ++i)
             StrListPushNode(&result, strArr[i], &result.first[i]);
@@ -669,11 +706,11 @@ function String StrPushfv(Arena* arena, char* fmt, va_list args)
     va_copy(args2, args);
     
     // try to build the string in 1024 bytes
-    u64 bufferSize = 1024;
-    u8* buffer = PushZeroArray(arena, u8, bufferSize);
+    u32 bufferSize = 1024;
+    u8* buffer = PushArray(arena, u8, bufferSize);
     // NOTE(long): vsnprintf doens't count the null terminator
-    u64 size = stbsp_vsnprintf((char*)buffer, bufferSize, fmt, args);
-    u64 allocSize = size + 1;
+    u32 size = stbsp_vsnprintf((char*)buffer, bufferSize, fmt, args);
+    u32 allocSize = size + 1;
     
     String result = {0};
     if (allocSize <= bufferSize)
@@ -686,7 +723,7 @@ function String StrPushfv(Arena* arena, char* fmt, va_list args)
     {
         // if first try failed, reset and try again with the correct size
         ArenaPopAmount(arena, bufferSize);
-        u8* newBuffer = PushZeroArray(arena, u8, allocSize);
+        u8* newBuffer = PushArray(arena, u8, allocSize);
         stbsp_vsnprintf((char*)newBuffer, allocSize, fmt, args2);
         result = Str(newBuffer, size);
     }
@@ -695,7 +732,7 @@ function String StrPushfv(Arena* arena, char* fmt, va_list args)
     return result;
 }
 
-function String StrPushf(Arena* arena, char* fmt, ...)
+function String StrPushf(Arena* arena, _Printf_format_string_ char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -708,7 +745,7 @@ function String StrPad(Arena* arena, String str, char chr, u32 count, i32 dir)
 {
     // @RECONSIDER(long): This will always alloc a new string, even if the count is zero
     u64 size = (dir == 0 ? count * 2 : count) + str.size;
-    String result = { PushZeroArray(arena, u8, size + 1), size };
+    String result = { PushArray(arena, u8, size + 1), size };
     if (dir <= 0) SetMem(result.str, chr, count);
     if (dir >= 0) SetMem(result.str + size - count, chr, count);
     return result;
@@ -718,7 +755,7 @@ function String StrInsert(Arena* arena, String str, u64 index, String value)
 {
     index = ClampTop(index, str.size - 1);
     String result = { 0, str.size + value.size };
-    result.str = PushZeroArray(arena, u8, result.size + 1);
+    result.str = PushArray(arena, u8, result.size + 1);
     CopyMem(result.str, str.str, index);
     CopyMem(result.str + index, value.str, value.size);
     CopyMem(result.str + index + value.size, str.str + index, value.size - index);
@@ -733,7 +770,7 @@ function String StrRemove(Arena* arena, String str, u64 index, u64 count)
         return StrChop(str, count); // @RECONSIDER(long): Maybe just alloc a new null-terminated string
     
     String result = { 0, count };
-    result.str = PushZeroArray(arena, u8, count + 1);
+    result.str = PushArray(arena, u8, count + 1);
     CopyMem(result.str, str.str, index);
     CopyMem(result.str + index, str.str + index + count, count);
     return result;
@@ -743,9 +780,9 @@ function String StrRepeat(Arena* arena, String str, u64 count)
 {
     u64 size = count * str.size;
     // @RECONSIDER(long): This will always alloc a new string, even if the count is zero
-    String result = { PushArray(arena, u8, size + 1), size };
+    String result = { PushArrayNZ(arena, u8, size + 1), size };
     for (u64 i = 0; i < count; ++i)
-        CopyMem(result.str + i * count, str.str, str.size);
+        CopyMem(result.str + i * str.size, str.str, str.size);
     result.str[size] = 0;
     return result;
 }
@@ -753,7 +790,7 @@ function String StrRepeat(Arena* arena, String str, u64 count)
 function String ChrRepeat(Arena* arena, char chr, u64 count)
 {
     // @RECONSIDER(long): This will always alloc a new string, even if the count is zero
-    String result = { PushArray(arena, u8, count + 1), count };
+    String result = { PushArrayNZ(arena, u8, count + 1), count };
     SetMem(result.str, chr, count);
     result.str[count] = 0;
     return result;
@@ -768,7 +805,7 @@ function String StrJoinList(Arena* arena, StringList* list, StringJoin* join)
     String pre = join->pre, mid = join->mid, post = join->post;
     
     u64 size = (pre.size + post.size + mid.size * (ClampBot(list->nodeCount , 1) - 1) + list->totalSize);
-    u8* str = PushZeroArray(arena, u8, size + 1);
+    u8* str = PushArray(arena, u8, size + 1);
     u8* ptr = str;
     
     CopyMem(ptr, pre.str, pre.size);
@@ -858,7 +895,6 @@ function StringList StrSplitArr(Arena* arena, String str, String splits, StringS
         u8* ptr = str.str;
         u8* firstWord = ptr;
         u8* opl = str.str + str.size;
-        u64 size = 1;
         
         // NOTE(long): < rather than <= because firstWord = ptr + 1 can crash at the end of buffer
         for (;ptr < opl; ++ptr)
@@ -919,8 +955,6 @@ function b32 ChrCompare(char a, char b, b32 noCase)
 
 function b32 StrCompare(String a, String b, b32 noCase)
 {
-    b32 result = false;
-    
     if (a.size == b.size)
     {
         if (a.str != b.str)
@@ -1062,14 +1096,14 @@ function void StrSwapChr(String str, char o, char n)
 #define InvalidDecoder (StringDecode){ InvalidRune, 2 }
 
 //- NOTE(long): Unicode Functions
-function StringDecode StrDecodeUTF8(u8* str, u32 cap)
+function StringDecode StrDecodeUTF8(u8* str, u64 cap)
 {
     local u8 length[] = {
-        1, 1, 1, 1, // 000xx
+        1, 1, 1, 1, // 0xxxx
         1, 1, 1, 1,
         1, 1, 1, 1,
         1, 1, 1, 1,
-        0, 0, 0, 0, // 100xx
+        0, 0, 0, 0, // 10xxx
         0, 0, 0, 0,
         2, 2, 2, 2, // 110xx
         3, 3,       // 1110x
@@ -1103,7 +1137,7 @@ function StringDecode StrDecodeUTF8(u8* str, u32 cap)
             result = (StringDecode){cp, l};
             
             // NOTE(long): Accumulate the various error conditions
-            local u8 mins[] = { 4194304, 0, 128, 2048, 65536 };
+            local u32 mins[] = { 4194304, 0, 128, 2048, 65536 };
             result.error |= (cp < mins[l]) ? DecodeError_Overlong : 0; // non-canonical encoding
             result.error |= ((cp >> 11) == 0x1b) ? DecodeError_Surrogate : 0;
             result.error |= (cp > 0x10FFFF) ? DecodeError_OutOfRange : 0;
@@ -1124,7 +1158,7 @@ function StringDecode StrDecodeUTF8(u8* str, u32 cap)
     return result;
 }
 
-function StringDecode StrDecodeWide(u16* str, u32 cap)
+function StringDecode StrDecodeWide(u16* str, u64 cap)
 {
     StringDecode result = InvalidDecoder;
     
@@ -1151,21 +1185,21 @@ function u32 StrEncodeUTF8(u8* dst, u32 codepoint)
     u32 size;
     if (codepoint < (1 << 7))
     {
-        dst[0] = codepoint;
+        dst[0] = (u8)codepoint;
         size = 1;
     }
     
     else if (codepoint < (1 << 11))
     {
-        dst[0] = 0xC0 | (codepoint >> 6);
-        dst[1] = 0x80 | (codepoint & 0x3F);
+        dst[0] = 0xC0 | (u8)(codepoint >> 6);
+        dst[1] = 0x80 | (u8)(codepoint & 0x3F);
         size = 2;
     }
     
     else if (codepoint < (1 << 16))
     {
         CP16:
-        dst[0] = 0xE0 | (codepoint >> 12);
+        dst[0] = 0xE0 | (u8)(codepoint >> 12);
         dst[1] = 0x80 | ((codepoint >> 6) & 0x3F);
         dst[2] = 0x80 | (codepoint & 0x3F);
         size = 3;
@@ -1173,7 +1207,7 @@ function u32 StrEncodeUTF8(u8* dst, u32 codepoint)
     
     else if (codepoint < (1 << 21))
     {
-        dst[0] = 0xF0 | (codepoint >> 18);
+        dst[0] = 0xF0 | (u8)(codepoint >> 18);
         dst[1] = 0x80 | ((codepoint >> 12) & 0x3F);
         dst[2] = 0x80 | ((codepoint >> 6) & 0x3F);
         dst[3] = 0x80 | (codepoint & 0x3F);
@@ -1193,13 +1227,13 @@ function u32 StrEncodeWide(u16* dst, u32 codepoint)
     u32 size;
     if (codepoint < 0x10000)
     {
-        dst[0] = codepoint;
+        dst[0] = (u16)codepoint;
         size = 1;
     }
     else if (codepoint < 0x10FFFF)
     {
         u32 cpj = codepoint - 0x10000;
-        dst[0] = (cpj >>   10) + 0xD800;
+        dst[0] = (u16)(cpj >>   10) + 0xD800;
         dst[1] = (cpj & 0x3FF) + 0xDC00;
         size = 2;
     }
@@ -1211,10 +1245,10 @@ function u32 StrEncodeWide(u16* dst, u32 codepoint)
     return size;
 }
 
-function String32 Str8ToStr32(Arena* arena, String str)
+function String32 StrToStr32(Arena* arena, String str)
 {
     u64 expectedSize = str.size;
-    u32* memory = PushArray(arena, u32, expectedSize + 1);
+    u32* memory = PushArrayNZ(arena, u32, expectedSize + 1);
     
     u32* dptr = memory;
     Str8Stream(str, ptr, opl)
@@ -1234,10 +1268,10 @@ function String32 Str8ToStr32(Arena* arena, String str)
     return (String32){ memory, size };
 }
 
-function String16 Str8ToStr16(Arena* arena, String str)
+function String16 StrToStr16(Arena* arena, String str)
 {
     u64 expectedSize = str.size;
-    u16* memory = PushArray(arena, u16, expectedSize + 1);
+    u16* memory = PushArrayNZ(arena, u16, expectedSize + 1);
     
     u16* dptr = memory;
     Str8Stream(str, ptr, opl)
@@ -1247,7 +1281,6 @@ function String16 Str8ToStr16(Arena* arena, String str)
             return (String16){0};
         
         u32 encSize = StrEncodeWide(dptr, decode.codepoint);
-        *dptr = decode.codepoint;
         ptr += decode.size;
         dptr += encSize;
     }
@@ -1261,7 +1294,7 @@ function String16 Str8ToStr16(Arena* arena, String str)
 function String StrFromStr32(Arena* arena, String32 str)
 {
     u64 expectedSize = str.size*4;
-    u8* memory = PushArray(arena, u8, expectedSize + 1);
+    u8* memory = PushArrayNZ(arena, u8, expectedSize + 1);
     
     u8* dptr = memory;
     Str32Stream(str, ptr, opl)
@@ -1280,13 +1313,13 @@ function String StrFromStr32(Arena* arena, String32 str)
 function String StrFromStr16(Arena* arena, String16 str)
 {
     u64 expectedSize = str.size*2;
-    u8* memory = PushArray(arena, u8, expectedSize + 1);
+    u8* memory = PushArrayNZ(arena, u8, expectedSize + 1);
     
     u8* dptr = memory;
     Str16Stream(str, ptr, opl)
     {
         StringDecode decode = StrDecodeWide(ptr, (u64)(opl - ptr));
-        u16 encSize = StrEncodeUTF8(dptr, decode.codepoint);
+        u32 encSize = StrEncodeUTF8(dptr, decode.codepoint);
         ptr += 1;
         dptr += encSize;
     }
@@ -1364,12 +1397,14 @@ function i32 I32FromStr(String str, u32 radix, b32* error)
     if (result > MAX_I32 || result < MIN_I32)
         _err_ = 1;
     if (error) *error = _err_;
-    return (i32)result;
+    return (i32)result; // NOTE(long): UB or Iplementation define?
 }
 
 function f64 F64FromStr(String str, b32* error)
 {
     // TODO(long)
+    UNUSED(str);
+    UNUSED(error);
     return 0;
 }
 
@@ -1477,6 +1512,19 @@ function String StrFromI64(Arena* arena, i64 x, u32 radix)
 
 //~ NOTE(long): Logs/Errors
 
+//- NOTE(long): This was heavily inspired by Ryan, Allen, and rxi
+// https://www.rfleury.com/p/the-easiest-way-to-handle-errors
+// https://youtu.be/-XethY-QrR0?t=133
+// https://github.com/rxi/log.c
+
+// @RECONSIDER(long): Rather than take in an arena at the Begin function, Allen just pushes on to an
+// internal thread-local arena. Then later, the End function takes in a user arena and "paste" to it.
+// The problem with my approach is if the user passes in a scratch arena, there could be a collision
+// later down in the call stack. This means that part of the log can get rewritten or freed.
+// I can fix this by changing it to Allen's way, or somehow "lock" that scratch arena for the
+// entire duration between a Begin/End pair. For the latter, adding a flag to the arena to stop it
+// from being returned from GetScratch and force the user to call ArenaLockPush/Pop is probably enough.
+
 global String LogType_names[] =
 {
     StrConst("TRACE"),
@@ -1529,7 +1577,7 @@ function Logger LogEnd(void)
     LOG_List* list = logThread.stack;
     if (list)
     {
-        result.records = PushArray(list->arena, Record, list->count);
+        result.records = PushArrayNZ(list->arena, Record, list->count);
         result.info = list->info;
         for (LOG_Node* node = list->first; node; node = node->next)
             result.records[result.count++] = node->record;
@@ -1555,26 +1603,26 @@ function LogInfo* LogGetInfo(void)
 
 function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args)
 {
-    BeginScratch(scratch, arena);
-    DateTime time = TimeToDate(record->time);
-    String log = StrPushfv(scratch, fmt, args);
-    String file = StrGetSubstr(StrFromCStr(record->file), GetProcDir(), 0);
-    String level = GetEnumStr(LogType, record->level);
-    StrToUpper(level);
-    
-#ifdef BASE_LOG_COLOR // https://ss64.com/nt/syntax-ansi.html
-    local const char* colors[] = { "\x1b[36m", "\x1b[94m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[95m" };
-    record->log = StrPushf(arena, "[%02u:%02u:%02u] %s%5s \x1b[90m%.*s:%d: \x1b[97m%s\x1b[0m",
-                           time.hour, time.min, time.sec,
-                           colors[record->level], level.str,
-                           StrExpand(file), record->line,
-                           log.str);
+    ScratchBlock(scratch, arena)
+    {
+        DateTime time = TimeToDate(record->time);
+        String log = StrPushfv(scratch, fmt, args);
+        String file = StrGetSubstr(StrFromCStr((u8*)record->file), OSProcessDir(), 0);
+        String level = GetEnumStr(LogType, record->level);
+        StrToUpper(level);
+        
+#if BASE_LOG_COLOR // https://ss64.com/nt/syntax-ansi.html
+        local const char* colors[] = { "\x1b[36m", "\x1b[94m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[95m" };
+        record->log = StrPushf(arena, "[%02u:%02u:%02u] %s%5s \x1b[90m%.*s:%d: \x1b[97m%s\x1b[0m",
+                               time.hour, time.min, time.sec,
+                               colors[record->level], level.str,
+                               StrExpand(file), record->line,
+                               log.str);
 #else
-    record->log = StrPushf(arena, "%02u:%02u:%02u %-5s %.*s:%d: %s", time.hour, time.min, time.sec,
-                           level.str, StrExpand(file), record->line, log.str);
+        record->log = StrPushf(arena, "%02u:%02u:%02u %-5s %.*s:%d: %s", time.hour, time.min, time.sec,
+                               level.str, StrExpand(file), record->line, log.str);
 #endif
-    
-    EndScratch(scratch);
+    }
 }
 
 function void LogPushf(i32 level, char* file, i32 line, char* fmt, ...)
@@ -1587,8 +1635,8 @@ function void LogPushf(i32 level, char* file, i32 line, char* fmt, ...)
         list->count++;
         
         node->record = (Record){ .file = file, .line = line, .level = level };
-        DateTime date = NowUniversalTime();
-        date = ToLocalTime(&date);
+        DateTime date = OSNowUniTime();
+        date = OSToLocTime(&date);
         node->record.time = TimeToDense(&date);
         
         va_list args;
@@ -1608,7 +1656,7 @@ BufferInterleave(Arena *arena, void **in,
     // setup buffer
     String result = {0};
     result.size = laneCount*elementSize*elementCount;
-    result.str = PushArray(arena, u8, result.size);
+    result.str = PushArrayNZ(arena, u8, result.size);
     
     // fill loop
     u8 *out_ptr = result.str;
@@ -1631,12 +1679,11 @@ BufferUninterleave(Arena *arena, void *in,
     
     // compute sizes
     u64 bytes_per_lane = elementSize*elementCount;
-    u64 total_size = laneCount*bytes_per_lane;
     
     // allocate outs
-    String *result = PushArray(arena, String, laneCount);
+    String *result = PushArrayNZ(arena, String, laneCount);
     for (u64 i = 0; i < laneCount; i += 1){
-        result[i].str = PushArray(arena, u8, bytes_per_lane);
+        result[i].str = PushArrayNZ(arena, u8, bytes_per_lane);
         result[i].size = bytes_per_lane;
     }
     

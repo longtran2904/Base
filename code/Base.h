@@ -166,17 +166,18 @@
 
 //~ NOTE(long): Helper Macros
 
-#if 1 // @RECONSIDER(long)
-#define tdef(type, name) typedef type name name; type name
-#define sdef(name) tdef(struct, name)
-#define edef(name) tdef(enum, name)
-#define udef(name) tdef(union, name)
-#endif
-
 #define Stmnt(S) do { S } while (0)
+#define UNUSED(x) ((void)(x))
 
+// https://nullprogram.com/blog/2022/06/26/
 #ifndef AssertBreak
-#define AssertBreak() (*(int*)0 = 0)
+#  if COMPILER_GCC || COMPILER_CLANG
+#    define AssertBreak() __builtin_trap()
+#  elif COMPILER_CL
+#    define AssertBreak() __debugbreak()
+#  else // NOTE(long): This probably doesn't work on GCC and Clang because of UB
+#    define AssertBreak() (*(volatile int *)0 = 0)
+#  endif
 #endif
 
 #if ENABLE_ASSERT
@@ -196,13 +197,20 @@
 #define ArrayCount(a) (sizeof(a)/sizeof(*(a)))
 #define ArrayExpand(type, ...) (type[]){ __VA_ARGS__ }, ArrayCount((type[]){ __VA_ARGS__ })
 
+#define HasAnyFlags(flags, fl) ((flags) & (fl))
+#define HasAllFlags(flags, fl) (((flags) & (fl)) == (fl))
+#define     NoFlags(flags, fl) (!HasAnyFlags(flags, fl))
+
+#define Implies(a,b) (!(a) || (b))
+
 #define IntFromPtr(p) (unsigned long long)((char*)p - (char*)0)
 #define PtrFromInt(n) (void*)((char*)0 + (n))
 
 #define Member(T, m) (((T*)0)->m)
 #define OffsetOf(T, m) IntFromPtr(&Member(T, m))
 
-#define Implies(a,b) (!(a) || (b))
+#define BitCast(type, var) (*((type)*)(&(var))) // NOTE(long): UB
+#define PrcCast(a, b) ((*(VoidFunc**)(&(a))) = (VoidFunc*)(b))
 
 #define Min(a, b) ((a)<(b)?(a):(b))
 #define Max(a, b) ((a)>(b)?(a):(b))
@@ -221,8 +229,6 @@
 #define UnLerp(x, a, b) (((x) - (a))/((b) - (a)))
 #define GetSign(n) ((n) > 0 ? 1 : ((n) < 0 ? -1 : 0))
 #define GetUnsigned(n) ((n) >= 0 ? 1 : -1)
-
-#define BitCast(type, var) (*((type)*)(&(var))) // NOTE(long): UB
 
 #define MagicP(T,x,s) ((T)(x) << (s))
 #define MagicU32(a,b,c,d) (MagicP(U32,a,0) | MagicP(U32,b,8) | MagicP(U32,c,16) | MagicP(U32,d,24))
@@ -284,9 +290,10 @@
 #endif
 
 #if COMPILER_CL
-#define sharedexport __declspec(dllexport)
+#define libexport __declspec(dllexport)
+#define libimport __declspec(dllimport)
 #else
-#error sharedexport not defined for this compiler
+#error libexport and libimport are not defined for this compiler
 #endif
 
 #include <string.h> // TODO(long): Replace memset, memcpy, and memcmp
@@ -307,17 +314,16 @@
 #define C4(str) (*(u32*)(str))
 #define ExpandC4(x) (i32)(sizeof(x)), (i8*)(&(x))
 
-// @RECONSIDER(long)
-#define Using(type, name, ...) for (b32 done = !Begin##type(__VA_ARGS__); !done; done = End##type(__VA_ARGS__))
+#define DeferBlock(begin, end) for (int _i_ = ((begin), 0); _i_ == 0; (_i_ += 1), (end))
 
 //~ NOTE(long): Linked List Macros
 
-#define PushBackDLL_NP(f, l, n, next, prev) (((f)==0?\
+#define DLLPushBack_NP(f, l, n, next, prev) (((f)==0?\
                                               (f)=(l)=(n):\
                                               ((l)->next=(n),(l)=(n))),\
                                              (n)->next=(n)->prev=0)
-#define PushBackDLL(f, l, n) DLLPushBack_NP(f, l, n, next, prev)
-#define PushFrontDLL(f, l, n) DLLPushBack_NP(l, f, n, prev, next)
+#define DLLPushBack(f, l, n) DLLPushBack_NP(f, l, n, next, prev)
+#define DLLPushFront(f, l, n) DLLPushBack_NP(l, f, n, prev, next)
 
 #define DLLRemove_NP(f, l, n, next, prev) (((f)==(n)?\
                                             ((f)=(f)->next, (f)->prev=0):\
@@ -734,6 +740,7 @@ function i64 AbsI64(i64 x);
 function f32 Abs_f32(f32 x);
 function f64 Abs_f64(f64 x);
 
+function f32 Round_f32(f32 x);
 function f32 Trunc_f32(f32 x);
 function f32 Floor_f32(f32 x);
 function f32 Ceil_f32(f32 x);
@@ -744,6 +751,7 @@ function f32 Ln_f32(f32 x);
 function f32 Pow_f32(f32 base, f32 x);
 function f32 FrExp_f32(f32 x, i32* exp);
 
+function f64 Round_f64(f64 x);
 function f64 Trunc_f64(f64 x);
 function f64 Floor_f64(f64 x);
 function f64 Ceil_f64(f64 x);
@@ -771,33 +779,49 @@ function f64 Atan2_f64(f64 x, f64 y);
 function Arena* ArenaReserve(u64 reserve);
 function void   ArenaRelease(Arena* arena);
 
-function void* ArenaPush(Arena* arena, u64 size);
-function void ArenaPopTo(Arena* arena, u64 pos );
+// NOTE(long): NZ stands for no zero.
+// There used to be Push functions which won't zero out the memory and PushZero functions which will.
+// Later, it was changed so that Push would zero the memory while PushNoZero(NZ) wouldn't.
+// If zero-on-pop is defined then Push/PushNZ will be the same.
+#ifndef BASE_ZERO_ON_POP
+#define BASE_ZERO_ON_POP 1
+#endif
+
+function void* ArenaPushNZ(Arena* arena, u64 size);
+function void  ArenaPopTo (Arena* arena, u64 pos );
 
 #define ArenaMake() ArenaReserve(DEFAULT_RESERVE_SIZE)
 #define ArenaPopAmount(arena, amount) ArenaPopTo((arena), (arena)->pos - (amount))
 
-function void* ArenaPushZero (Arena* arena, u64 size);
-function void  ArenaAlignZero(Arena* arena, u64 aligment);
-function void  ArenaAlign    (Arena* arena, u64 alignment);
+function void* ArenaPush   (Arena* arena, u64 size);
+function void  ArenaAlign  (Arena* arena, u64 aligment);
+function void  ArenaAlignNZ(Arena* arena, u64 alignment);
 
-#define    PushStruct(arena, type)        (type*)ArenaPushZero((arena), sizeof(type))
-#define     PushArray(arena, type, count) (type*)    ArenaPush((arena), sizeof(type) * (count))
-#define PushZeroArray(arena, type, count) (type*)ArenaPushZero((arena), sizeof(type) * (count))
+#define   PushStruct(arena, type)        (type*)  ArenaPush((arena), sizeof(type))
+#define PushStructNZ(arena, type)        (type*)ArenaPushNZ((arena), sizeof(type))
+#define    PushArray(arena, type, count) (type*)  ArenaPush((arena), sizeof(type) * (count))
+#define  PushArrayNZ(arena, type, count) (type*)ArenaPushNZ((arena), sizeof(type) * (count))
 
 function TempArena TempBegin(Arena* arena);
+function TempArena GetScratch(Arena** conflictArray, u32 count);
 function void      TempEnd(TempArena temp);
 
-function TempArena GetScratch(Arena** conflictArray, u32 cout);
-#define            ReleaseScratch(temp) TempEnd(temp)
-
 #define ScratchName(name) Concat(_tempArenaOf_, name)
-#define ResetScratch(scratch) ReleaseScratch(ScratchName(scratch))
+#define ScratchClear(scratch) TempEnd(ScratchName(scratch))
 
-#define BeginScratch(name, ...) \
-    TempArena ScratchName(name) = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)); \
-    Arena* name = ScratchName(name).arena
-#define EndScratch(scratch) Stmnt(ResetScratch(scratch); ScratchName(scratch) = (TempArena){0}; scratch = 0;)
+#define ScratchBegin(name, ...) \
+    TempArena ScratchName(name) = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)); Arena* name = ScratchName(name).arena; \
+    i32 Concat(_debugVarOf_, name);
+#define ScratchEnd(scratch) Stmnt(ScratchClear(scratch); ScratchName(scratch) = (TempArena){0}; scratch = 0; \
+                                  Concat(_debugVarOf_, scratch);)
+
+#define TempBlock(name, arena) for (TempArena name = TempBegin(arena); name.arena != 0; TempEnd(temp), temp = (TempArena){0})
+
+#define ScratchBlock(name, ...) struct { i32 i; TempArena temp; } Concat(_i_, __LINE__) = \
+    { .temp = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)) }; \
+    for (Arena* name = Concat(_i_, __LINE__).temp.arena; \
+         Concat(_i_, __LINE__).i == 0; \
+         Concat(_i_, __LINE__).i++, Concat(_i_, __LINE__).temp = (TempEnd(Concat(_i_, __LINE__).temp), (TempArena){0}))
 
 //~ NOTE(long): String Functions
 
@@ -846,7 +870,7 @@ function void StrListPush(Arena* arena, StringList* list, String str);
 function void StrListPushNode(StringList* list, String str, StringNode* nodeMem);
 
 function String StrPushfv(Arena* arena, char* fmt, va_list args);
-function String StrPushf (Arena* arena, char* fmt, ...);
+function String StrPushf (Arena* arena, _Printf_format_string_ char* fmt, ...);
 #define StrListPushf(arena, list, fmt, ...) StrListPush((arena), (list), StrPushf((arena), (fmt), __VA_ARGS__))
 
 function String StrPad(Arena* arena, String str, char chr, u32 count, i32 dir);
@@ -914,8 +938,8 @@ function void StrToUpper(String str);
 function void StrSwapChr(String str, char o, char n);
 
 //- NOTE(long): Unicode Functions
-function StringDecode StrDecodeUTF8(u8 * str, u32 cap);
-function StringDecode StrDecodeWide(u16* str, u32 cap);
+function StringDecode StrDecodeUTF8(u8 * str, u64 cap);
+function StringDecode StrDecodeWide(u16* str, u64 cap);
 function u32          StrEncodeUTF8(u8 * dst, u32 codepoint);
 function u32          StrEncodeWide(u16* dst, u32 codepoint);
 
@@ -947,6 +971,10 @@ function i32 I32FromStr(String str, u32 radix, b32* error);
 function i64 I64FromStr(String str, u32 radix, b32* error);
 
 //~ NOTE(long): Logs/Errors
+
+#ifndef BASE_LOG_COLOR
+#define BASE_LOG_COLOR 0
+#endif
 
 typedef struct Record Record;
 struct Record

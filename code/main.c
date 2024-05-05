@@ -1,4 +1,4 @@
-#define BASE_LOG_COLOR
+#define BASE_LOG_COLOR 1
 #include "DefaultMemory.h"
 #include "Base.h"
 #include "LongOS.h"
@@ -31,14 +31,49 @@ typedef struct Test
 global i32 snapshot;
 void TestLogCallback(Arena* arena, Record* record, char* fmt, va_list args)
 {
-    BeginScratch(scratch, arena);
-    fmt = StrPushf(scratch, "%s, snapshot: %d", fmt, snapshot++).str;
-    LogFmtStd(arena, record, fmt, args);
-    EndScratch(scratch);
+    ScratchBlock(scratch, arena)
+    {
+        fmt = (char*)StrPushf(scratch, "%s, snapshot: %d", fmt, snapshot++).str;
+        LogFmtStd(arena, record, fmt, args);
+    }
+    
+    ScratchBlock(scratch, arena)
+    {
+        record->log = StrPushf(scratch, "%.*s, arena: %lld", StrExpand(record->log), arena->pos);
+        record->log = StrCopy(arena, record->log);
+    }
+}
+
+libexport void PrintSnapshot()
+{
+    printf("Snapshot: %d\n", snapshot++);
 }
 
 int main(void)
 {
+    {
+        i64 dx = 0x77E435B08;
+        while (dx)
+            putchar(0x726F6C6564574820 >> (((dx >>= 3) & 7) << 3) & 0xFF);
+        printf("\n");
+    }
+    
+    i64 _b = (1LL << 23)|1;
+    f32 _a = (f32)_b;
+    printf("%lld %f\n", _b, _a);
+    _a = 5.f;
+    printf("%08x\n", *(i32*)&_a);
+    
+    {
+        f32 x = 1.1f;
+        if (x != 1.1f)
+            printf("A\n");
+        
+        //x = 1.1;
+        if (x != 1.1)
+            printf("B\n");
+    }
+    
     printf("cl = %d\n", COMPILER_CL);
     printf("clang = %d\n", COMPILER_CLANG);
     printf("gcc = %d\n", COMPILER_GCC);
@@ -168,6 +203,124 @@ int main(void)
     
     EvalPrintLine;
     
+    f32 zero_f32 = 0.f;
+    f64 zero_f64 = 0.;
+    
+    printf("these should output 2.0\n");
+    EvalPrintF(Trunc_f32(2.0f));
+    EvalPrintF(Trunc_f64(2.0));
+    EvalPrintF(Trunc_f32(2.3f));
+    EvalPrintF(Trunc_f64(2.3));
+    EvalPrintF(Trunc_f32(2.5f));
+    EvalPrintF(Trunc_f64(2.5));
+    EvalPrintF(Trunc_f32(2.6f));
+    EvalPrintF(Trunc_f64(2.6));
+    printf("these should output -2.0\n");
+    EvalPrintF(Trunc_f32(-2.0f));
+    EvalPrintF(Trunc_f64(-2.0));
+    EvalPrintF(Trunc_f32(-2.3f));
+    EvalPrintF(Trunc_f64(-2.3));
+    EvalPrintF(Trunc_f32(-2.5f));
+    EvalPrintF(Trunc_f64(-2.5));
+    EvalPrintF(Trunc_f32(-2.6f));
+    EvalPrintF(Trunc_f64(-2.6));
+    printf("special values\n");
+    EvalPrintF(Trunc_f32(1.f/zero_f32));  // +inf
+    EvalPrintF(Trunc_f64(1./zero_f64));  // +inf
+    EvalPrintF(Trunc_f32(-1.f/zero_f32)); // -inf
+    EvalPrintF(Trunc_f64(-1./zero_f64)); // -inf
+    EvalPrintF(Trunc_f32(0.f/zero_f32));  // nan
+    EvalPrintF(Trunc_f64(0./zero_f64));  // nan
+    
+    EvalPrintLine;
+    
+    printf("these should output 2.0\n");
+    EvalPrintF(Floor_f32(2.0f));
+    EvalPrintF(Floor_f64(2.0));
+    EvalPrintF(Floor_f32(2.3f));
+    EvalPrintF(Floor_f64(2.3));
+    EvalPrintF(Floor_f32(2.5f));
+    EvalPrintF(Floor_f64(2.5));
+    EvalPrintF(Floor_f32(2.6f));
+    EvalPrintF(Floor_f64(2.6));
+    printf("these should output -2.0\n");
+    EvalPrintF(Floor_f32(-2.0f));
+    EvalPrintF(Floor_f64(-2.0));
+    printf("these should output -3.0\n");
+    EvalPrintF(Floor_f32(-2.3f));
+    EvalPrintF(Floor_f64(-2.3));
+    EvalPrintF(Floor_f32(-2.5f));
+    EvalPrintF(Floor_f64(-2.5));
+    EvalPrintF(Floor_f32(-2.6f));
+    EvalPrintF(Floor_f64(-2.6));
+    printf("special values\n");
+    EvalPrintF(Floor_f32(1.f/zero_f32));  // +inf
+    EvalPrintF(Floor_f64(1./zero_f64));  // +inf
+    EvalPrintF(Floor_f32(-1.f/zero_f32)); // -inf
+    EvalPrintF(Floor_f64(-1./zero_f64)); // -inf
+    EvalPrintF(Floor_f32(0.f/zero_f32));  // nan
+    EvalPrintF(Floor_f64(0./zero_f64));  // nan
+    
+    EvalPrintLine;
+    
+    printf("these should output 2.0\n");
+    EvalPrintF(Ceil_f32(2.0f));
+    EvalPrintF(Ceil_f64(2.0));
+    
+    printf("these should output 3.0\n");
+    EvalPrintF(Ceil_f32(2.3f));
+    EvalPrintF(Ceil_f64(2.3));
+    EvalPrintF(Ceil_f32(2.5f));
+    EvalPrintF(Ceil_f64(2.5));
+    EvalPrintF(Ceil_f32(2.6f));
+    EvalPrintF(Ceil_f64(2.6));
+    printf("these should output -2.0\n");
+    EvalPrintF(Ceil_f32(-2.0f));
+    EvalPrintF(Ceil_f64(-2.0));
+    EvalPrintF(Ceil_f32(-2.3f));
+    EvalPrintF(Ceil_f64(-2.3));
+    EvalPrintF(Ceil_f32(-2.5f));
+    EvalPrintF(Ceil_f64(-2.5));
+    EvalPrintF(Ceil_f32(-2.6f));
+    EvalPrintF(Ceil_f64(-2.6));
+    printf("special values\n");
+    EvalPrintF(Ceil_f32(1.f/zero_f32));  // +inf
+    EvalPrintF(Ceil_f32(-1.f/zero_f32)); // -inf
+    EvalPrintF(Ceil_f32(0.f/zero_f32));  // nan
+    EvalPrintF(Ceil_f64(1./zero_f64));  // +inf
+    EvalPrintF(Ceil_f64(-1./zero_f64)); // -inf
+    EvalPrintF(Ceil_f64(0./zero_f64));  // nan
+    
+    EvalPrintLine;
+    
+    printf("these should output +-2.0\n");
+    EvalPrintF(Round_f32(2.3f));
+    EvalPrintF(Round_f64(2.3));
+    EvalPrintF(Round_f32(2.5f));
+    EvalPrintF(Round_f64(2.5));
+    EvalPrintF(Round_f32(-2.0f));
+    EvalPrintF(Round_f64(-2.0));
+    EvalPrintF(Round_f32(-2.3f));
+    EvalPrintF(Round_f64(-2.3));
+    EvalPrintF(Round_f32(-2.5f));
+    EvalPrintF(Round_f64(-2.5));
+    
+    printf("these should output +-3.0\n");
+    EvalPrintF(Round_f32(2.6f));
+    EvalPrintF(Round_f64(2.6));
+    EvalPrintF(Round_f32(-2.6f));
+    EvalPrintF(Round_f64(-2.6));
+    
+    printf("special values\n");
+    EvalPrintF(Round_f32(1.f/zero_f32));  // +inf
+    EvalPrintF(Round_f32(-1.f/zero_f32)); // -inf
+    EvalPrintF(Round_f32(0.f/zero_f32));  // nan
+    EvalPrintF(Round_f64(1./zero_f64));  // +inf
+    EvalPrintF(Round_f64(-1./zero_f64)); // -inf
+    EvalPrintF(Round_f64(0./zero_f64));  // nan
+    
+    EvalPrintLine;
+    
     EvalPrintF(F32FromStr(StrLit("15.75")  , 0));
     EvalPrintF(F32FromStr(StrLit("1.575E1"), 0));
     EvalPrintF(F32FromStr(StrLit("1575e-2"), 0));
@@ -241,7 +394,7 @@ int main(void)
     
     Arena* arena = ArenaMake();
     
-    InitOSMain(0, 0);
+    OSInit(0, 0);
     
     EvalPrintPtr(arena);
     EvalPrintU(arena->cap);
@@ -250,28 +403,24 @@ int main(void)
     
     EvalPrintLine;
     
-    TempArena temp = TempBegin(arena);
-    
-    u64 arrayCount = 10;
-    int* array = PushZeroArray(arena, int, arrayCount);
-    for (u64 i = 0; i < arrayCount; ++i)
-        EvalPrint(array[i]);
-    for (u64 i = 0; i < arrayCount; ++i)
-        array[i] = i;
-    for (u64 i = 0; i < arrayCount; ++i)
-        EvalPrint(array[i]);
-    
-    EvalPrintPtr(arena);
-    EvalPrintU(arena->cap);
-    EvalPrintU(arena->pos);
-    EvalPrintU(arena->commitPos);
-    
-    u32 testVal = 1 << 24 | 3;
-    f32 testFloat = testVal;
-    
-    EvalPrintLine;
-    
-    TempEnd(temp);
+    TempBlock(temp, arena)
+    {
+        u64 arrayCount = 10;
+        i64* array = PushArray(arena, i64, arrayCount);
+        for (u64 i = 0; i < arrayCount; ++i)
+            EvalPrint(array[i]);
+        for (u64 i = 0; i < arrayCount; ++i)
+            array[i] = i;
+        for (u64 i = 0; i < arrayCount; ++i)
+            EvalPrint(array[i]);
+        
+        EvalPrintPtr(arena);
+        EvalPrintU(arena->cap);
+        EvalPrintU(arena->pos);
+        EvalPrintU(arena->commitPos);
+        
+        EvalPrintLine;
+    }
     
     EvalPrintPtr(arena);
     EvalPrintU(arena->cap);
@@ -304,7 +453,7 @@ int main(void)
     
     typedef struct FloatTest
     {
-        i64 prec;
+        u32 prec;
         f64 f;
         String str;
     } FloatTest;
@@ -390,99 +539,105 @@ int main(void)
         { 12, ldexp(13248074, + 95), }, 
         
         // Table 20
-        {  1, ldexp(50883641005312716, -172), },
-        {  2, ldexp(38162730753984537, -170), },
-        {  3, ldexp(50832789069151999, -101), },
-        {  4, ldexp(51822367833714164, -109), },
-        {  5, ldexp(66840152193508133, -172), },
-        {  6, ldexp(55111239245584393, -138), },
-        {  7, ldexp(71704866733321482, -112), },
-        {  8, ldexp(67160949328233173, -142), },
-        {  9, ldexp(53237141308040189, -152), },
-        { 10, ldexp(62785329394975786, -112), },
-        { 11, ldexp(48367680154689523, - 77), },
-        { 12, ldexp(42552223180606797, -102), },
-        { 13, ldexp(63626356173011241, -112), },
-        { 14, ldexp(43566388595783643, - 99), },
-        { 15, ldexp(54512669636675272, -159), },
-        { 16, ldexp(52306490527514614, -167), },
-        { 17, ldexp(52306490527514614, -168), },
-        { 18, ldexp(41024721590449423, - 89), },
-        { 19, ldexp(37664020415894738, -132), },
-        { 20, ldexp(37549883692866294, - 93), },
-        { 21, ldexp(69124110374399839, -104), },
-        { 22, ldexp(69124110374399839, -105), },
+        {  1, ldexp(50883641005312716., -172), },
+        {  2, ldexp(38162730753984537., -170), },
+        {  3, ldexp(50832789069151999., -101), },
+        {  4, ldexp(51822367833714164., -109), },
+        {  5, ldexp(66840152193508133., -172), },
+        {  6, ldexp(55111239245584393., -138), },
+        {  7, ldexp(71704866733321482., -112), },
+        {  8, ldexp(67160949328233173., -142), },
+        {  9, ldexp(53237141308040189., -152), },
+        { 10, ldexp(62785329394975786., -112), },
+        { 11, ldexp(48367680154689523., - 77), },
+        { 12, ldexp(42552223180606797., -102), },
+        { 13, ldexp(63626356173011241., -112), },
+        { 14, ldexp(43566388595783643., - 99), },
+        { 15, ldexp(54512669636675272., -159), },
+        { 16, ldexp(52306490527514614., -167), },
+        { 17, ldexp(52306490527514614., -168), },
+        { 18, ldexp(41024721590449423., - 89), },
+        { 19, ldexp(37664020415894738., -132), },
+        { 20, ldexp(37549883692866294., - 93), },
+        { 21, ldexp(69124110374399839., -104), },
+        { 22, ldexp(69124110374399839., -105), },
         
         // Table 21
-        {  1, ldexp(49517601571415211, - 94), },
-        {  2, ldexp(49517601571415211, - 95), },
-        {  3, ldexp(54390733528642804, -133), },
-        {  4, ldexp(71805402319113924, -157), },
-        {  5, ldexp(40435277969631694, -179), },
-        {  6, ldexp(57241991568619049, -165), },
-        {  7, ldexp(65224162876242886, + 58), },
-        {  8, ldexp(70173376848895368, -138), },
-        {  9, ldexp(37072848117383207, - 99), },
-        { 10, ldexp(56845051585389697, -176), },
-        { 11, ldexp(54791673366936431, -145), },
-        { 12, ldexp(66800318669106231, -169), },
-        { 13, ldexp(66800318669106231, -170), },
-        { 14, ldexp(66574323440112438, -119), },
-        { 15, ldexp(65645179969330963, -173), },
-        { 16, ldexp(61847254334681076, -109), },
-        { 17, ldexp(39990712921393606, -145), },
-        { 18, ldexp(59292318184400283, -149), },
-        { 19, ldexp(69116558615326153, -143), },
-        { 20, ldexp(69116558615326153, -144), },
-        { 21, ldexp(39462549494468513, -152), },
-        { 22, ldexp(39462549494468513, -153), },
+        {  1, ldexp(49517601571415211., - 94), },
+        {  2, ldexp(49517601571415211., - 95), },
+        {  3, ldexp(54390733528642804., -133), },
+        {  4, ldexp(71805402319113924., -157), },
+        {  5, ldexp(40435277969631694., -179), },
+        {  6, ldexp(57241991568619049., -165), },
+        {  7, ldexp(65224162876242886., + 58), },
+        {  8, ldexp(70173376848895368., -138), },
+        {  9, ldexp(37072848117383207., - 99), },
+        { 10, ldexp(56845051585389697., -176), },
+        { 11, ldexp(54791673366936431., -145), },
+        { 12, ldexp(66800318669106231., -169), },
+        { 13, ldexp(66800318669106231., -170), },
+        { 14, ldexp(66574323440112438., -119), },
+        { 15, ldexp(65645179969330963., -173), },
+        { 16, ldexp(61847254334681076., -109), },
+        { 17, ldexp(39990712921393606., -145), },
+        { 18, ldexp(59292318184400283., -149), },
+        { 19, ldexp(69116558615326153., -143), },
+        { 20, ldexp(69116558615326153., -144), },
+        { 21, ldexp(39462549494468513., -152), },
+        { 22, ldexp(39462549494468513., -153), },
     };
     
 #define MAX_TEST_COUNT 100
     
-    u64 elapsed = NowMicroseconds();
+    b32 printErr = 0;
+    
+    u64 elapsed = OSNowMS();
     for (u64 _ = 0; _ < MAX_TEST_COUNT; ++_)
     {
         for (u64 i = 0; i < ArrayCount(test); ++i)
         {
-            TempArena temp = TempBegin(arena);
-            String fStr = StrFromF64(arena, test[i].f, test[i].prec);
-            /*if (test[i].str.size && !StrCompare(fStr, test[i].str, 0))
-            printf("Expected: %.*s, Result: %.*s\n", StrExpand(test[i].str), StrExpand(fStr));*/
-            TempEnd(temp);
+            TempBlock(temp, arena)
+            {
+                String fStr = StrFromF64(arena, test[i].f, test[i].prec);
+                if (printErr)
+                    if (test[i].str.size && !StrCompare(fStr, test[i].str, 0))
+                        printf("Expected: %.*s, Result: %.*s\n", StrExpand(test[i].str), StrExpand(fStr));
+            }
         }
     }
-    elapsed = NowMicroseconds() - elapsed;
+    elapsed = OSNowMS() - elapsed;
     elapsed /= MAX_TEST_COUNT;
     EvalPrintULL(elapsed);
     
-    elapsed = NowMicroseconds();
+    elapsed = OSNowMS();
     for (u64 _ = 0; _ < MAX_TEST_COUNT; ++_)
     {
         for (u64 i = 0; i < ArrayCount(test); ++i)
         {
             u8 buf[1000];
             String fStr = Str(buf, sprintf(buf, "%.*e", (i32)test[i].prec, test[i].f));
-            /*if (test[i].str.size && !StrCompare(fStr, test[i].str, 0))
-            printf("Expected: %.*s, Result: %.*s\n", StrExpand(test[i].str), StrExpand(fStr));*/
+            if (printErr)
+                if (test[i].str.size && !StrCompare(fStr, test[i].str, 0))
+                    printf("Expected: %.*s, Result: %.*s\n", StrExpand(test[i].str), StrExpand(fStr));
         }
     }
-    elapsed = NowMicroseconds() - elapsed;
+    elapsed = OSNowMS() - elapsed;
     elapsed /= MAX_TEST_COUNT;
     EvalPrintULL(elapsed);
     
-    elapsed = NowMicroseconds();
+    elapsed = OSNowMS();
     for (u64 _ = 0; _ < MAX_TEST_COUNT; ++_)
     {
         for (u64 i = 0; i < ArrayCount(test); ++i)
         {
             u8 buf[1000];
             String fStr = Str(buf, stbsp_sprintf(buf, "%.*e", (i32)test[i].prec, test[i].f));
-            /*if (test[i].str.size && !StrCompare(fStr, test[i].str, 0))
-            printf("Expected: %.*s, Result: %.*s\n", StrExpand(test[i].str), StrExpand(fStr));*/
+            if (printErr)
+                if (test[i].str.size && !StrCompare(fStr, test[i].str, 0))
+                    printf("Expected: %.*s, Result: %.*s\n", StrExpand(test[i].str), StrExpand(fStr));
         }
     }
-    elapsed = NowMicroseconds() - elapsed;
+    elapsed = OSNowMS() - elapsed;
     elapsed /= MAX_TEST_COUNT;
     EvalPrintULL(elapsed);
     
@@ -533,23 +688,23 @@ int main(void)
     
     EvalPrintLine;
     
-    String fileData = ReadOSFile(arena, StrLit("data/Test.txt"), true);
+    String fileData = OSReadFile(arena, StrLit("data/Test.txt"), true);
     EvalPrintS(fileData.str);
-    EvalPrint(WriteOSFile(StrLit("data/Test2.txt"), data));
+    EvalPrint(OSWriteFile(StrLit("data/Test2.txt"), data));
     EvalPrintStr(data);
     
-    EvalPrintStr(GetCurrDir(arena));
-    EvalPrintStr(GetProcDir());
-    EvalPrintStr(GetUserDir());
-    EvalPrintStr(GetTempDir());
+    EvalPrintStr(OSCurrentDir(arena));
+    EvalPrintStr(OSProcessDir());
+    EvalPrintStr(OSAppDataDir());
+    EvalPrintStr(OSAppTempDir());
     
     EvalPrintLine;
     
     {
         String currentName;
         FileProperties currentProp;
-        OSFileIter iter = InitFileIter(StrLit("code"));
-        while(NextFileIter(arena, &iter, &currentName, &currentProp))
+        OSFileIter iter = FileIterInit(StrLit("code"));
+        while(FileIterNext(arena, &iter, &currentName, &currentProp))
         {
             EvalPrintStr(currentName);
             EvalPrintULL(currentProp.createTime);
@@ -561,19 +716,23 @@ int main(void)
     EvalPrintLine;
     
     u64 entropy;
-    GetOSEntropy(&entropy, sizeof(entropy));
+    OSGetEntropy(&entropy, sizeof(entropy));
     EvalPrintULL(entropy);
     
     EvalPrintLine;
     
-    OSLib testLib = LoadOSLib(StrLit("build/TestDLL.dll"));
+    OSLib testLib = OSLoadLib(StrLit("build/TestDLL.dll"));
     EvalPrintPtr(testLib.v);
-    u32(*func)(u32*, u64) = (u32 (*)(u32*, u64))GetOSProc(testLib, "Sum");
+    VoidFunc* init = OSGetProc(testLib, "DLLInit");
+    init();
+    u32(*func)(u32*, u64);
+    PrcCast(func, OSGetProc(testLib, "Sum"));
     EvalPrintU(func((u32*)&entropy, 2));
-    i32* dllVar = (i32*)GetOSProc(testLib, "globalInt");
+    i32* dllVar = (i32*)OSGetProc(testLib, "globalInt");
     EvalPrint(*dllVar);
+    init();
     
-    RenameOSFile(StrLit("build/TestDLL.dll"), StrLit("build/NewTestDLL.dll"));
+    OSRenameFile(StrLit("build/TestDLL.dll"), StrLit("build/NewTestDLL.dll"));
     
     FileProperties file = GetFileProperties(StrLit("build/NewTestDLL.dll"));
     EvalPrintULL(file.createTime);
@@ -610,23 +769,24 @@ int main(void)
         LogPush(LOG_FATAL, "Log fatal");
         
         Logger logger = LogEnd();
-        StringList list = StrListFromLogger(arena, &logger);
-        for (StringNode* node = list.first; node; node = node->next)
+        StringList errors = StrListFromLogger(arena, &logger);
+        for (StringNode* node = errors.first; node; node = node->next)
             printf("%.*s\n", StrExpand(node->string));
     }
     
     EvalPrintLine;
     
-    EvalPrintULL(NowMicroseconds());
-    DateTime now = NowUniversalTime();
+    EvalPrintULL(OSNowMS());
+    DateTime now = OSNowUniTime();
     EvalPrint(now.msec);
-    EvalPrint(ToLocalTime(&now).msec);
+    EvalPrint(OSToLocTime(&now).msec);
     
     EvalPrintU(arena->highWaterMark);
     ArenaRelease(arena);
     
     return 0;
 }
+
 #elif CODE_PATH == 1
 #include "LongGFX.h"
 #include "LongGFX_Win32.c"
@@ -643,7 +803,10 @@ enum
 
 function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
 {
-	u32 renderer = IntFromPtr(GetGFXWindowUserData(window));
+    UNUSED(width);
+    UNUSED(height);
+    
+	u32 renderer = (u32)IntFromPtr(GetGFXWindowUserData(window));
 	switch (renderer)
 	{
 		case Renderer_GL:
@@ -672,129 +835,603 @@ function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
 	}
 }
 
+#define TEST_WINDOW_COUNT 4
+
 int WinMain(HINSTANCE hInstance,
             HINSTANCE hPrevInstance,
             LPSTR lpCmdLine,
             int nShowCmd)
 {
     W32WinMainInit(hInstance, hPrevInstance, lpCmdLine, nShowCmd);
-    BeginScratch(scratch);
     
-    ErrorBegin(scratch, .callback = GFXErrorFmt);
+    ScratchBlock(scratch)
     {
-        InitGFX();
-        InitGL();
-        InitD3D11();
-        
-        //ErrorFmt("Test Error 1");
-        //ErrorFmt("Test Error 2");
-    }
-    GFXCheckError(1);
-    
-	SetGFXResizeFunc(WindowResizeHandler);
-	
-#define TEST_WINDOW_COUNT 4
-	GFXWindow windows[TEST_WINDOW_COUNT] = {0};
-	for (u32 i = 0; i < TEST_WINDOW_COUNT; ++i)
-	{
-		i32 w = 400, h = 200;
-		i32 isGL = i % 2;
-		//if (i > 0) GetGFXWindowInnerRect(windows[i - 1], 0, 0, &w, &h);
-        
-		w = w * (i + 1);
-		h = h * (i + 1);
-        
-        ErrorBegin(scratch);
+        GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
         {
-            windows[i] = CreateGFXWindowEx(StrPushf(scratch, "Window: %d", i), CW_USEDEFAULT, CW_USEDEFAULT, w, h);
-            if (isGL == 0)
-                EquipGLWindow(windows[i]);
-            else
-                EquipD3D11Window(windows[i]);
+            GFXInit();
+            InitGL();
+            InitD3D11();
+            
+            //ErrorFmt("Test Error 1");
+            //ErrorFmt("Test Error 2");
         }
-        GFXCheckError(1);
         
-		SetGFXWindowUserData(windows[i], PtrFromInt(isGL));
-		ShowGFXWindow(windows[i]);
-	}
-	
-    ID3D11DeviceContext* ctx = GetD3D11DeviceCtx();
+        SetGFXResizeFunc(WindowResizeHandler);
+        
+        GFXWindow windows[TEST_WINDOW_COUNT] = {0};
+        for (u32 i = 0; i < TEST_WINDOW_COUNT; ++i)
+        {
+            i32 w = 400, h = 200;
+            i32 isGL = i % 2;
+            //if (i > 0) GetGFXWindowInnerRect(windows[i - 1], 0, 0, &w, &h);
+            
+            w = w * (i + 1);
+            h = h * (i + 1);
+            
+            GFXErrorBlock(scratch, 1)
+            {
+                windows[i] = GFXCreateWindowEx(StrPushf(scratch, "Window: %d", i), CW_USEDEFAULT, CW_USEDEFAULT, w, h);
+                if (isGL == 0)
+                    EquipGLWindow(windows[i]);
+                else
+                    EquipD3D11Window(windows[i]);
+            }
+            
+            SetGFXWindowUserData(windows[i], PtrFromInt(isGL));
+            GFXShowWindow(windows[i]);
+        }
+        
+        u32 count = 0;
+        b32 visible = false;
+        for (;;)
+        {
+            if (!GFXWaitForInput())
+                break;
+            
+            //OutputDebugString(StrPushf(scratch, "Count: %d\n", count).str);
+            count++;
+            if (count % 50 == 0)
+            {
+                if (false)
+                {
+                    GFXWindow window = windows[TEST_WINDOW_COUNT-1];
+                    if (GFXIsWindowValid(window))
+                    {
+                        SetGFXWindowVisible(window, visible);
+                        if (visible)
+                            SetGFXWindowTitle(window, StrPushf(scratch, "Toggle Windows: %d", count / 100));
+                        visible = !visible;
+                    }
+                }
+                
+                if (false)
+                {
+                    GFXWindow window = windows[TEST_WINDOW_COUNT-2];
+                    if (GFXIsWindowValid(window))
+                    {
+                        i32 x, y, w, h;
+                        GetGFXWindowOuterRect(window, &x, &y, &w, &h);
+                        SetGFXWindowInnerRect(window, x, y, w, h);
+                    }
+                }
+                
+                if (false)
+                {
+                    GFXWindow window = windows[TEST_WINDOW_COUNT-2];
+                    if (GFXIsWindowValid(window))
+                        SetGFXWindowFullScreen(window, count % 100 == 0);
+                }
+                
+                {
+                    GFXWindow window = windows[1];
+                    if (GFXIsWindowValid(window))
+                    {
+                        OutputDebugString(StrPushf(scratch, "Before: %d\n", IsGFXWindowResizable(window)).str);
+                        SetGFXWindowResizable(window, count % 100);
+                        OutputDebugString(StrPushf(scratch, "After: %d\n", IsGFXWindowResizable(window)).str);
+                    }
+                }
+            }
+            
+            u32 activeWindowCount = 0;
+            for (u32 i = 0; i < TEST_WINDOW_COUNT; ++i)
+            {
+                if (GFXIsWindowValid(windows[i]))
+                {
+                    activeWindowCount++;
+                    WindowResizeHandler(windows[i], 0, 0);
+                    if (IsGFXWindowMinimized(windows[i]))
+                        GFXCloseWindow(windows[i]);
+                }
+            }
+            
+            if (!activeWindowCount)
+                break;
+        }
+        
+        {
+            ID3D11Device_Release(device);
+            ID3D11DeviceContext_Release(GetD3D11DeviceCtx());
+            ID3D11Debug_Release(dbg);
+        }
+    }
     
-	u32 count = 0;
-	b32 visible = false;
-    for (;;)
-    {
-        if (!WaitForGFXInput())
-			break;
-        
-		//OutputDebugString(StrPushf(scratch, "Count: %d\n", count).str);
-		count++;
-		if (count % 50 == 0)
-		{
-			if (false)
-			{
-				GFXWindow window = windows[TEST_WINDOW_COUNT-1];
-				if (IsGFXWindowValid(window))
-				{
-					SetGFXWindowVisible(window, visible);
-					if (visible)
-						SetGFXWindowTitle(window, StrPushf(scratch, "Toggle Windows: %d", count / 100));
-					visible = !visible;
-				}
-			}
-			
-			if (false)
-			{
-				GFXWindow window = windows[TEST_WINDOW_COUNT-2];
-				if (IsGFXWindowValid(window))
-				{
-					i32 x, y, w, h;
-					GetGFXWindowOuterRect(window, &x, &y, &w, &h);
-					SetGFXWindowInnerRect(window, x, y, w, h);
-				}
-			}
-			
-			if (false)
-			{
-				GFXWindow window = windows[TEST_WINDOW_COUNT-2];
-				if (IsGFXWindowValid(window))
-					SetGFXWindowFullScreen(window, count % 100 == 0);
-			}
-			
-			{
-				GFXWindow window = windows[1];
-				if (IsGFXWindowValid(window))
-				{
-					OutputDebugString(StrPushf(scratch, "Before: %d\n", IsGFXWindowResizable(window)).str);
-					SetGFXWindowResizable(window, count % 100);
-					OutputDebugString(StrPushf(scratch, "After: %d\n", IsGFXWindowResizable(window)).str);
-				}
-			}
-		}
-		
-		u32 activeWindowCount = 0;
-		for (u32 i = 0; i < TEST_WINDOW_COUNT; ++i)
-		{
-			if (IsGFXWindowValid(windows[i]))
-			{
-				activeWindowCount++;
-				WindowResizeHandler(windows[i], 0, 0);
-				if (IsGFXWindowMinimized(windows[i]))
-					CloseGFXWindow(windows[i]);
-			}
-		}
-		
-		if (!activeWindowCount)
-			break;
-	}
-	
-	{
-		ID3D11Device_Release(device);
-		ID3D11DeviceContext_Release(ctx);
-		ID3D11Debug_Release(dbg);
-	}
-	
-	EndScratch(scratch);
 	return 0;
+}
+#elif CODE_PATH == 2
+
+#define MD_DEFAULT_SPRINTF 0
+#define MD_IMPL_Vsnprintf stbsp_vsnprintf
+#include "md\md.h"
+#include "md\md.c"
+
+#define C_LIKE_OPS_NO_SIDE_EFFECTS(X) \
+    X(ArraySubscript,      "[]",        Postfix,                18) \
+    X(Member,              ".",         Binary,                 18) \
+    X(PointerMember,       "->",        Binary,                 18) \
+    X(UnaryPlus,           "+",         Prefix,                 17) \
+    X(UnaryMinus,          "-",         Prefix,                 17) \
+    X(LogicalNot,          "!",         Prefix,                 17) \
+    X(BitwiseNot,          "~",         Prefix,                 17) \
+    X(Dereference,         "*",         Prefix,                 17) \
+    X(AddressOf,           "&",         Prefix,                 17) \
+    X(SizeOf,              "sizeof",    Prefix,                 17) \
+    X(Multiplication,      "*",         Binary,                 15) \
+    X(Division,            "/",         Binary,                 15) \
+    X(Modulo,              "%",         Binary,                 15) \
+    X(Addition,            "+",         Binary,                 14) \
+    X(Subtraction,         "-",         Binary,                 14) \
+    X(LeftShift,           "<<",        Binary,                 13) \
+    X(RightShift,          ">>",        Binary,                 13) \
+    X(LessThan,            "<",         Binary,                 11) \
+    X(LessThanOrEqual,     "<=",        Binary,                 11) \
+    X(GreaterThan,         ">",         Binary,                 11) \
+    X(GreaterThanOrEqual,  ">=",        Binary,                 11) \
+    X(Equal,               "==",        Binary,                 10) \
+    X(NotEqual,            "!=",        Binary,                 10) \
+    X(BitwiseAnd,          "&",         Binary,                  9) \
+    X(BitwiseXor,          "^",         Binary,                  8) \
+    X(BitwiseOr,           "|",         Binary,                  7) \
+    X(LogicalAnd,          "&&",        Binary,                  6) \
+    X(LogicalOr,           "||",        Binary,                  5)
+
+#define C_LIKE_OPS_CALLS(X) \
+    X(Call,                "()",        Postfix,                18)
+
+#define C_LIKE_OPS_WITH_SIDE_EFFECTS(X) \
+    X(PostFixIncrement,    "++",        Postfix,                18) \
+    X(PostFixDecrement,    "--",        Postfix,                18) \
+    X(PreFixIncrement,     "++",        Prefix,                 17) \
+    X(PreFixDecrement,     "--",        Prefix,                 17) \
+    X(Assign,              "=",         BinaryRightAssociative,  3) \
+    X(AssignAddition,      "+=",        BinaryRightAssociative,  3) \
+    X(AssignSubtraction,   "-=",        BinaryRightAssociative,  3) \
+    X(AssignMultiplication,"*=",        BinaryRightAssociative,  3) \
+    X(AssignDivision,      "/=",        BinaryRightAssociative,  3) \
+    X(AssignModulo,        "%=",        BinaryRightAssociative,  3) \
+    X(AssignLeftShift,     "<<=",       BinaryRightAssociative,  3) \
+    X(AssignRightShift,    ">>=",       BinaryRightAssociative,  3) \
+    X(AssignBitwiseAnd,    "&=",        BinaryRightAssociative,  3) \
+    X(AssignBitwiseXor,    "^=",        BinaryRightAssociative,  3) \
+    X(AssignBitwiseOr,     "|=",        BinaryRightAssociative,  3)
+
+enum Op
+{
+#define DEF_ENUM(e,t,k,p) Op##e,
+    C_LIKE_OPS_NO_SIDE_EFFECTS(DEF_ENUM)
+        C_LIKE_OPS_CALLS(DEF_ENUM)
+        C_LIKE_OPS_WITH_SIDE_EFFECTS(DEF_ENUM)
+#undef DEF_ENUM
+};
+
+void print_expression(Arena* arena, StringList* list, MD_Expr *expr)
+{
+    MD_ExprOpr *op = expr->op;
+    if (op == 0)
+    {
+        MD_Node *node = expr->md_node;
+        if (node->raw_string.size != 0)
+        {
+            StrListPushf(arena, list, "%.*s", MD_S8VArg(node->raw_string));
+        }
+        else if (!MD_NodeIsNil(node->first_child))
+        {
+            char c1 = 0;
+            char c2 = 0;
+            
+            if (node->flags & MD_NodeFlag_HasParenLeft  ) c1 = '(';
+            if (node->flags & MD_NodeFlag_HasBraceLeft  ) c1 = '{';
+            if (node->flags & MD_NodeFlag_HasBracketLeft) c1 = '[';
+            
+            if (node->flags & MD_NodeFlag_HasParenRight  ) c2 = ')';
+            if (node->flags & MD_NodeFlag_HasBraceRight  ) c2 = '}';
+            if (node->flags & MD_NodeFlag_HasBracketRight) c2 = ']';
+            
+            StrListPushf(arena, list, "%c...%c", c1, c2);
+        }
+        else
+        {
+            MD_CodeLoc loc = MD_CodeLocFromNode(node);
+            MD_PrintMessage(stderr, loc, MD_MessageKind_Error,
+                            MD_S8Lit("the expression system does not expect this kind of node"));
+        }
+    }
+    else
+    {
+        switch (op->kind)
+        {
+            default:
+            {
+                MD_Node *node = expr->md_node;
+                MD_CodeLoc loc = MD_CodeLocFromNode(node);
+                MD_PrintMessage(stderr, loc, MD_MessageKind_FatalError,
+                                MD_S8Lit("this is an unknown kind of operator"));
+            } break;
+            
+            case MD_ExprOprKind_Prefix:
+            {
+                StrListPushf(arena, list, "%.*s(", MD_S8VArg(op->string));
+                print_expression(arena, list, expr->unary_operand);
+                StrListPushf(arena, list, ")");
+            } break;
+            
+            case MD_ExprOprKind_Postfix:
+            {
+                StrListPushf(arena, list, "(");
+                print_expression(arena, list, expr->unary_operand);
+                MD_String8 op_string = op->string;
+                if ((expr->md_node->flags & MD_NodeFlag_MaskSetDelimiters) != 0)
+                    StrListPushf(arena, list, ")%c...%c", op_string.str[0], op_string.str[1]);
+                else
+                    StrListPushf(arena, list, ")%.*s", MD_S8VArg(op_string));
+            } break;
+            
+            case MD_ExprOprKind_Binary:
+            case MD_ExprOprKind_BinaryRightAssociative:
+            {
+                StrListPushf(arena, list, "(");
+                print_expression(arena, list, expr->left);
+                StrListPushf(arena, list, " %.*s ", MD_S8VArg(op->string));
+                print_expression(arena, list, expr->right);
+                StrListPushf(arena, list, ")");
+            } break;
+        }
+    }
+}
+
+typedef struct Parser Parser;
+struct Parser
+{
+    MD_Arena* arena;
+    
+    MD_Node* current;
+    MD_Node* parent;
+    
+    MD_Message* error;
+    MD_Node* list;
+};
+
+function b32 IsPreProcError(MD_Message* error)
+{
+    b32 result = 0;
+    if (error)
+        result = MD_S8Match(error->string, MD_S8Lit("Unexpected reserved symbol \"#\""), 0);
+    return result;
+}
+
+function b32 ParserInc(Parser* parser, b32 skipPreProc)
+{
+    b32 result = 0;
+    
+    if (!MD_NodeIsNil(parser->current))
+    {
+        parser->current = parser->current->next;
+        result = 1;
+        
+        if (skipPreProc)
+        {
+            REPEAT_1:
+            if (parser->error)
+            {
+                if (!IsPreProcError(parser->error))
+                {
+                    parser->error = parser->error->next;
+                    goto REPEAT_1;
+                }
+                else
+                {
+                    MD_CodeLoc procLoc = MD_CodeLocFromNode(parser->error->node);
+                    
+                    REPEAT_2:
+                    if (!MD_NodeIsNil(parser->current))
+                    {
+                        MD_CodeLoc currLoc = MD_CodeLocFromNode(parser->current);
+                        if (procLoc.line == currLoc.line)
+                        {
+                            parser->current = parser->current->next;
+                            goto REPEAT_2;
+                        }
+                        else if (procLoc.line < currLoc.line)
+                        {
+                            parser->error = parser->error->next;
+                            goto REPEAT_1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return result;
+}
+
+function MD_Node* GetNodeBody(MD_Node* node)
+{
+    MD_Node* result = 0;
+    for (i32 i = 0; i < 2 && !MD_NodeIsNil(node) && !result; ++i, node = node->next)
+        if (HasAllFlags(node->flags, MD_NodeFlag_HasBraceLeft|MD_NodeFlag_HasBraceRight))
+            result = node;
+    return result;
+}
+
+function MD_Node* GetNodeBase(MD_Node* node)
+{
+    return node->first_tag;
+}
+
+function MD_String8 GetNodeType(MD_Node* node, MD_Node* base)
+{
+    MD_String8 string = base->string;
+    return string;
+}
+
+function void PrintNode(MD_Node* node)
+{
+    MD_ArenaTemp temp = MD_GetScratch(0, 0);
+    MD_String8List stream = {0};
+    MD_Node* name = node->ref_target;
+    MD_DebugDumpFromNode(temp.arena, &stream, name, 0, MD_S8Lit(" "), MD_GenerateFlags_Tree|MD_GenerateFlag_NodeFlags);
+    MD_String8 str = MD_S8ListJoin(temp.arena, stream, 0);
+    MD_Node* base = GetNodeBase(node);
+    MD_String8 type = GetNodeType(name, base);
+    ScratchBegin(scratch);
+    String pointers = ChrRepeat(scratch, '*', base->offset);
+    fprintf(stdout, "// Base Type: %.*s%.*s\n%.*s\n\n", MD_S8VArg(type), StrExpand(pointers), MD_S8VArg(str));
+    MD_ReleaseScratch(temp);
+    ScratchEnd(scratch);
+}
+
+function MD_Node* PushParent(Parser* parser, MD_Node* parent)
+{
+    MD_Node* result = parser->parent;
+    parser->parent = parent;
+    return result;
+}
+
+function void PopParent(Parser* parser)
+{
+    if (!MD_NodeIsNil(parser->parent))
+        parser->parent = parser->parent->parent;
+}
+
+function MD_Node* PushNode(Parser* parser, MD_Node* name, MD_Node* base, u32 pointerLevel)
+{
+    MD_Node* result = MD_PushNewReference(parser->arena, parser->list, name);
+    result->parent = parser->parent;
+    
+    MD_Node* tag = MD_MakeNode(parser->arena, MD_NodeKind_Tag, base->string, base->raw_string, base->offset);
+    tag->ref_target = base;
+    tag->offset = pointerLevel;
+    
+    MD_PushTag(result, tag);
+    PrintNode(result);
+    
+    return result;
+}
+
+function b32 ParseToken(Parser* parser, MD_String8 token)
+{
+    b32 result = 0;
+    if (!MD_NodeIsNil(parser->current) && MD_S8Match(parser->current->string, token, 0))
+    {
+        result = 1;
+        ParserInc(parser, 1);
+    }
+    return result;
+}
+
+function MD_Node* ParseFlag(Parser* parser, MD_NodeFlags flags)
+{
+    MD_Node* result = 0;
+    if (!MD_NodeIsNil(parser->current) && ((parser->current->flags & flags)/* == flags*/))
+    {
+        result = parser->current;
+        ParserInc(parser, 1);
+    }
+    return result;
+}
+
+function u32 ParsePointer(Parser* parser, b32* error)
+{
+    u32 result = 0;
+    b32 _err_ = 0;
+    if (!error) error = &_err_;
+    
+    REPEAT:
+    if (!MD_NodeIsNil(parser->current))
+    {
+        MD_String8 str = parser->current->string;
+        u32 i = 0;
+        for (; i < str.size; ++i)
+            if (str.str[i] != '*')
+                break;
+        
+        if (i)
+        {
+            result += i;
+            ParserInc(parser, 1);
+            
+            if (i == str.size)
+                goto REPEAT;
+            else
+                *error = 1;
+        }
+    }
+    return result;
+}
+
+function u32 ParseArray(Parser* parser)
+{
+    u32 result = 0;
+    while (!MD_NodeIsNil(parser->current))
+    {
+        if (HasAllFlags(parser->current->flags, MD_NodeFlag_HasBracketLeft|MD_NodeFlag_HasBracketRight))
+            result++;
+        else
+            break;
+        ParserInc(parser, 1);
+    }
+    return result;
+}
+
+function MD_Node* ParseIdentifier(Parser* parser, b32 ignoreFlags)
+{
+    MD_Node* result = 0;
+    if (!MD_NodeIsNil(parser->current))
+    {
+        MD_NodeFlags flags = MD_NodeFlag_IsBeforeSemicolon|MD_NodeFlag_IsBeforeComma;
+        if (HasAnyFlags(parser->current->flags, MD_NodeFlag_Identifier) && (ignoreFlags || NoFlags(parser->current->flags, flags)))
+        {
+            result = parser->current;
+            ParserInc(parser, 1);
+        }
+    }
+    return result;
+}
+
+int main(int argc, char** argv)
+{
+    OSInit(0, 0);
+    
+    // setup the global arena
+    MD_Arena* arena = MD_ArenaAlloc();
+    
+    // parse all files passed to the command line
+    MD_Node *list = MD_MakeList(arena);
+    for (int i = 1; i < argc; i += 1)
+    {
+        MD_String8 file_name = MD_S8CString(argv[i]);
+        MD_ParseResult parse_result = MD_ParseWholeFile(arena, file_name);
+        
+        for (MD_Message *message = parse_result.errors.first; message != 0; message = message->next)
+        {
+            if (IsPreProcError(message))
+            {
+                MD_CodeLoc code_loc = MD_CodeLocFromNode(message->node);
+                MD_PrintMessage(stdout, code_loc, message->kind, message->string);
+                MD_String8List stream = {0};
+                MD_DebugDumpFromNode(arena, &stream, message->node, 0, MD_S8Lit(" "), MD_GenerateFlags_Tree|MD_GenerateFlag_NodeFlags|MD_GenerateFlag_NodeKind);
+                MD_String8 str = MD_S8ListJoin(arena, stream, 0);
+                fprintf(stdout, "%.*s\n\n", MD_S8VArg(str));
+            }
+        }
+        
+        //if (parse_result.errors.max_message_kind < MD_MessageKind_Error)
+        {
+            MD_PushNewReference(arena, list, parse_result.node);
+        }
+        
+        Parser* parser = &(Parser){
+            .arena = arena,
+            .current = parse_result.node->first_child,
+            .error = parse_result.errors.first,
+            .list = MD_MakeList(arena),
+        };
+        
+        while (!MD_NodeIsNil(parser->current))
+        {
+            Parser restore = *parser;
+            b32 handled = 0;
+            
+            MD_Node* name = 0;
+            MD_Node* base = 0;
+            
+            if (base = ParseIdentifier(parser, 0))
+            {
+                REPEAT:
+                b32 error = 0;
+                u32 pointerLevel = ParsePointer(parser, &error);
+                if (!error && (name = ParseIdentifier(parser, 1)))
+                {
+                    //- NOTE(long): Functions
+                    if (ParseFlag(parser, MD_NodeFlag_HasParenLeft|MD_NodeFlag_HasParenRight))
+                    {
+                        PushNode(parser, name, base, pointerLevel);
+                        handled = 1;
+                    }
+                    
+                    //- NOTE(long): Types
+                    else if (ParseFlag(parser, MD_NodeFlag_HasBraceLeft|MD_NodeFlag_HasBraceRight))
+                    {
+                        PushNode(parser, name, base, pointerLevel);
+                        handled = 1;
+                    }
+                    
+                    //- NOTE(long): Decls
+                    else
+                    {
+                        u32 arrayCount = ParseArray(parser);
+                        MD_NodeFlags flags = MD_NodeFlag_IsAfterSemicolon|MD_NodeFlag_IsAfterComma;
+                        if (HasAnyFlags(parser->current->flags, flags) || MD_S8Match(parser->current->string, MD_S8Lit("="), 0))
+                        {
+                            MD_Node* decl = PushNode(parser, name, base, pointerLevel);
+                            handled = 1;
+                            
+                            if (HasAnyFlags(parser->current->flags, MD_NodeFlag_IsAfterComma))
+                                goto REPEAT;
+                        }
+                        
+                        // TODO(long): Handle parens inside a declaration
+                    }
+                }
+            }
+            
+            if (!handled)
+            {
+                *parser = restore;
+                ParserInc(parser, 1);
+            }
+        }
+    }
+    
+    // setup the expression system
+    MD_ExprOprTable table = {0};
+    {
+        MD_ExprOprList exprList = {0};
+        
+#define PUSH_OP(e,t,k,p) \
+    MD_ExprOprPush(arena, &exprList, MD_ExprOprKind_##k, p, MD_S8Lit(t), Op##e, 0);
+        C_LIKE_OPS_NO_SIDE_EFFECTS(PUSH_OP);
+        C_LIKE_OPS_CALLS(PUSH_OP);
+        C_LIKE_OPS_WITH_SIDE_EFFECTS(PUSH_OP);
+#undef PUSH_OP
+        
+        table = MD_ExprBakeOprTableFromList(arena, &exprList);
+    }
+    
+#if 0
+    for (MD_EachNode(root_it, list->first_child))
+    {
+        MD_Node *root = MD_ResolveNodeFromReference(root_it);
+        for (MD_EachNode(node, root->first_child))
+        {
+            MD_String8List stream = {0};
+            MD_DebugDumpFromNode(arena, &stream, node, 0, MD_S8Lit(" "),
+                                 MD_GenerateFlags_Tree|MD_GenerateFlag_NodeFlags|MD_GenerateFlag_NodeKind);
+            MD_String8 str = MD_S8ListJoin(arena, stream, 0);
+            fprintf(stdout, "%.*s\n\n", MD_S8VArg(str));
+        }
+    }
+#endif
 }
 #endif

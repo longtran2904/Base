@@ -1,6 +1,5 @@
 
-// --------------------------------------------------
-// NOTE: Internal Win32 APIs
+//~ NOTE(long): Internal Win32 APIs
 
 typedef struct W32Window W32Window;
 struct W32Window
@@ -55,7 +54,7 @@ LRESULT W32GraphicsWindowProc(HWND   hwnd,
 			{
 				GFXWindow window = W32GFXHandleFromHWND(hwnd);
 				u16 width = (lParam & 0xFFFF);
-				u16 height = (lParam >> 16);
+				u16 height = (u16)(lParam >> 16);
 				w32ResizingFunc(window, width, height);
 			}
 		} break;
@@ -64,7 +63,7 @@ LRESULT W32GraphicsWindowProc(HWND   hwnd,
         {
 			GFXWindow window = W32GFXHandleFromHWND(hwnd);
 			if (window)
-				CloseGFXWindow(window);
+				GFXCloseWindow(window);
         } break;
 		
         default:
@@ -75,10 +74,9 @@ LRESULT W32GraphicsWindowProc(HWND   hwnd,
     return result;
 }
 
-// --------------------------------------------------
-// NOTE: GFX APIs
+//~ NOTE(long): GFX APIs
 
-function b32 IsGFXWindowValid(GFXWindow window)
+function b32 GFXIsWindowValid(GFXWindow window)
 {
     return (1 <= window) && (window <= ArrayCount(w32WindowSlots)) && (w32WindowSlots + window - 1)->wnd != 0;
 }
@@ -115,12 +113,12 @@ function void SetGFXWindowEquippedData(GFXWindow window, void* ptr, GFXDestroyWi
 	slot->destroyFunc = destroy;
 }
 
-function b32 IsGFXWindowEquipped(GFXWindow window)
+function b32 GFXIsWindowEquipped(GFXWindow window)
 {
     return W32WindowFromGFXHandle(window)->equippedData != 0;
 }
 
-function b32 InitGFX(void)
+function b32 GFXInit(void)
 {
     // Setup window slots
     {
@@ -144,12 +142,7 @@ function b32 InitGFX(void)
     return !error;
 }
 
-function GFXWindow CreateGFXWindow(void)
-{
-	return CreateGFXWindowEx(StrLit("TITLE ME"), CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT);
-}
-
-function GFXWindow CreateGFXWindowEx(String title, i32 x, i32 y, i32 width, i32 height)
+function GFXWindow GFXCreateWindowEx(String title, i32 x, i32 y, i32 width, i32 height)
 {
     b32 error = 0;
     W32Window* slotPtr = w32WindowFree;
@@ -180,7 +173,7 @@ function GFXWindow CreateGFXWindowEx(String title, i32 x, i32 y, i32 width, i32 
     return result;
 }
 
-function void ShowGFXWindow(GFXWindow window)
+function void GFXShowWindow(GFXWindow window)
 {
 	W32Window* slot = W32WindowFromGFXHandle(window);
 	ShowWindow(slot->wnd, SW_SHOW);
@@ -193,9 +186,9 @@ function b32 SetGFXWindowVisible(GFXWindow window, b32 visible)
 
 function b32 SetGFXWindowTitle(GFXWindow window, String title)
 {
-	BeginScratch(scratch);
-	b32 result = SetWindowText(W32WindowFromGFXHandle(window)->wnd, StrToCStr(scratch, title));
-	EndScratch(scratch);
+    b32 result = 0;
+	ScratchBlock(scratch)
+        result = SetWindowText(W32WindowFromGFXHandle(window)->wnd, StrToCStr(scratch, title));
 	return result;
 }
 
@@ -252,7 +245,7 @@ function b32 GetGFXWindowOuterRect(GFXWindow window, i32* x, i32* y, i32* w, i32
 	return result;
 }
 
-function void CloseGFXWindow(GFXWindow window)
+function void GFXCloseWindow(GFXWindow window)
 {
     W32Window* slot = W32WindowFromGFXHandle(window);
     if (slot->wnd)
@@ -353,7 +346,7 @@ function b32 IsGFXWindowMaximized(GFXWindow window)
     return result;
 }
 
-function b32 WaitForGFXInput(void)
+function b32 GFXWaitForInput(void)
 {
     b32 result = true;
     
@@ -376,19 +369,20 @@ function void GFXErrorBox(Logger* logger, i32 code)
 {
     if (logger->count)
     {
-        BeginScratch(scratch);
-        StringList errors = {0};
-        for (u64 i = 0; i < logger->count; ++i)
-            StrListPush(scratch, &errors, logger->records[i].log);
-        
-        String error = StrJoin(scratch, &errors,
-                               .pre = StrPushf(scratch, "The process has encountered %d error(s):\n", errors.nodeCount),
-                               .mid = StrLit(".\n"), .post = StrLit(".\n"));
-        MessageBoxA(0, error.str, "Error", MB_OK|MB_ICONERROR);
-        EndScratch(scratch);
+        ScratchBlock(scratch)
+        {
+            StringList errors = {0};
+            for (u64 i = 0; i < logger->count; ++i)
+                StrListPush(scratch, &errors, logger->records[i].log);
+            
+            String error = StrJoin(scratch, &errors,
+                                   .pre = StrPushf(scratch, "The process has encountered %d error(s):\n", errors.nodeCount),
+                                   .mid = StrLit(".\n"), .post = StrLit(".\n"));
+            MessageBoxA(0, error.str, "Error", MB_OK|MB_ICONERROR);
+        }
         
         if (code)
-            ExitOSProcess(code);
+            OSExitProcess(code);
     }
 }
 

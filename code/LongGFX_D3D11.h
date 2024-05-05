@@ -12,8 +12,7 @@
 // initguid.h so I don't need to link with dxguid.lib
 // COBJMACROS is for COM objects in C
 
-// --------------------------------------------------
-// NOTE: Standard Colors (DirectXColors.h)
+//~ NOTE(long): Standard Colors (DirectXColors.h)
 
 #define AliceBlue             (f32[4]){ 0.941176534f, 0.972549081f, 1.000000000f, 1.000000000f }
 #define AntiqueWhite          (f32[4]){ 0.980392218f, 0.921568692f, 0.843137324f, 1.000000000f }

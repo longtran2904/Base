@@ -1,5 +1,4 @@
-// --------------------------------------------------
-// NOTE: Win32 OpenGL Types
+//~ NOTE(long): Win32 OpenGL Types
 
 typedef struct W32OpenGLWindow W32OpenGLWindow;
 struct W32OpenGLWindow
@@ -7,8 +6,7 @@ struct W32OpenGLWindow
     int dummy;
 };
 
-// --------------------------------------------------
-// NOTE: WGL Definitions
+//~ NOTE(long): WGL Definitions
 
 #define WGL_FUNCS(X) \
     X(HGLRC, CreateContext, (HDC dc)) \
@@ -96,8 +94,7 @@ struct W32OpenGLWindow
 #define ERROR_INVALID_VERSION_ARB               0x2095
 #define ERROR_INVALID_PROFILE_ARB               0x2096
 
-// --------------------------------------------------
-// NOTE: GL Definitions
+//~ NOTE(long): GL Definitions
 
 typedef f32 GLFloat;
 typedef u32 GLBitfield;
@@ -110,8 +107,7 @@ typedef u32 GLBitfield;
 
 #define GL_COLOR_BUFFER_BIT 0x00004000
 
-// --------------------------------------------------
-// NOTE: Win32 OpenGL Globals
+//~ NOTE(long): Win32 OpenGL Globals
 
 global W32OpenGLWindow w32OpenGLSlots[GFX_MAX_WINDOW_SLOTS] = {0};
 global HMODULE w32OpenGLModule = 0;
@@ -120,8 +116,7 @@ global int w32OpenGLPixelFormat = 0;
 
 #define BOOTSTRAP_WINDOW_CLASS_NAME "LongOpenGLBootstrap"
 
-// --------------------------------------------------
-// NOTE: System OpenGL Functions
+//~ NOTE(long): System OpenGL Functions
 
 function b32 InitGL(void)
 {
@@ -366,9 +361,9 @@ function void W32CloseOpenGLWindow(GFXWindow window)
 function b32 EquipGLWindow(GFXWindow window)
 {
     b32 error = 1;
-	if (!IsGFXWindowValid(window))
+	if (!GFXIsWindowValid(window))
 		ErrorFmt("Invalid window handle: %d", window);
-	else if (IsGFXWindowEquipped(window))
+	else if (GFXIsWindowEquipped(window))
 		ErrorFmt("Window is already equipped: %d", window);
     else
         error = 0;
@@ -407,7 +402,7 @@ global HWND w32RenderWnd = 0;
 
 function void BeginGLRender(GFXWindow window)
 {
-    if (IsGFXWindowValid(window) && w32RenderDC == 0)
+    if (GFXIsWindowValid(window) && w32RenderDC == 0)
     {
         W32Window* slot = W32WindowFromGFXHandle(window);
         w32RenderWnd = slot->wnd;

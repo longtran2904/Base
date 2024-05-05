@@ -107,7 +107,7 @@ global Arena* win32PermArena = {0};
 
 //~ NOTE(long): Setup
 
-function void InitOSMain(int argc, char **argv)
+function void OSInit(int argc, char **argv)
 {
     // Setup precision time
     LARGE_INTEGER perfFreq = {0};
@@ -115,27 +115,26 @@ function void InitOSMain(int argc, char **argv)
         win32TicksPerSecond = ((u64)perfFreq.HighPart << 32) | perfFreq.LowPart;
     timeBeginPeriod(1);
     
-    BeginScratch(scratch);
-    
     // Setup arena
     win32PermArena = ArenaMake();
     
     for (int i = 0; i <argc; ++i)
     {
-        String arg = StrFromCStr((u8*)argv[i]);
+        String arg = StrFromCStr(argv[i]);
         StrListPush(win32PermArena, &win32CmdLine, arg);
     }
     
+    ScratchBegin(scratch);
     {
         DWORD cap = 2048;
         u8* buffer = 0;
         DWORD size = 0;
         for (u64 r = 0; r < 4; ++r, cap *= 4)
         {
-            u8* tryBuffer = PushArray(scratch, u8, cap);
+            u8* tryBuffer = PushArrayNZ(scratch, u8, cap);
             DWORD trySize = GetModuleFileNameA(0, tryBuffer, cap);
             if (trySize == cap && GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-                ResetScratch(scratch);
+                ScratchClear(scratch);
             else
             {
                 buffer = tryBuffer;
@@ -152,11 +151,11 @@ function void InitOSMain(int argc, char **argv)
     {
         HANDLE token = GetCurrentProcessToken();
         DWORD cap = 2048;
-        u8* buffer = PushArray(scratch, u8, cap);
+        u8* buffer = PushArrayNZ(scratch, u8, cap);
         if (!GetUserProfileDirectoryA(token, buffer, &cap))
         {
-            ResetScratch(scratch);
-            buffer = PushArray(scratch, u8, cap);
+            ScratchClear(scratch);
+            buffer = PushArrayNZ(scratch, u8, cap);
             if (!GetUserProfileDirectoryA(token, buffer, &cap))
                 buffer = 0;
         }
@@ -169,12 +168,12 @@ function void InitOSMain(int argc, char **argv)
     
     {
         DWORD cap = 2048;
-        u8* buffer = PushArray(scratch, u8, cap);
+        u8* buffer = PushArrayNZ(scratch, u8, cap);
         DWORD size = GetTempPathA(cap, buffer);
         if (size >= cap)
         {
-            ResetScratch(scratch);
-            buffer = PushArray(scratch, u8, size);
+            ScratchClear(scratch);
+            buffer = PushArrayNZ(scratch, u8, size);
             size = GetTempPathA(size, buffer);
         }
         
@@ -184,17 +183,17 @@ function void InitOSMain(int argc, char **argv)
         win32TempPath = StrCopy(win32PermArena, Str(buffer, size - 1));
     }
     
-    EndScratch(scratch);
+    ScratchEnd(scratch);
 }
 
-function StringList GetOSArgs(void)
+function StringList OSCmdArgs(void)
 {
     return win32CmdLine;
 }
 
 //~ NOTE(long): Exit
 
-function void ExitOSProcess(u32 code)
+function void OSExitProcess(u32 code)
 {
     ExitProcess(code);
 }
@@ -209,7 +208,13 @@ function void W32WinMainInit(HINSTANCE hInstance,
     int argc = __argc;
     char** argv = __argv;
     win32Instance = hInstance;
-    InitOSMain(argc, argv);
+    UNUSED(hPrevInstance);
+    
+    // TODO(long): Handle CLI and std(in/out/err)
+    UNUSED(lpCmdLine);
+    UNUSED(nShowCmd);
+    
+    OSInit(argc, argv);
 }
 
 function HINSTANCE W32GetInstance(void)
@@ -224,13 +229,13 @@ function HINSTANCE W32GetInstance(void)
 function DateTime W32DateTimeFromSystemTime(SYSTEMTIME* time)
 {
     DateTime result = {0};
-    result.year = time->wYear;
+    result.year = (u8)time->wYear;
     result.mon = (u8)time->wMonth;
-    result.day = time->wDay - 1;
-    result.hour = time->wHour;
-    result.min = time->wMinute;
-    result.sec = time->wSecond;
-    result.msec = time->wMilliseconds;
+    result.day = (u8)time->wDay - 1;
+    result.hour = (u8)time->wHour;
+    result.min = (u8)time->wMinute;
+    result.sec = (u8)time->wSecond;
+    result.msec = (u8)time->wMilliseconds;
     return result;
 }
 
@@ -256,12 +261,12 @@ function DenseTime W32DenseTimeFromFileTime(FILETIME* fileTime)
     return result;
 }
 
-function void SleepOSMillisecond(u32 t)
+function void OSSleepMS(u32 ms)
 {
-    Sleep(t);
+    Sleep(ms);
 }
 
-function u64 NowMicroseconds(void)
+function u64 OSNowMS(void)
 {
     u64 result = 0;
     LARGE_INTEGER perfCounter = {0};
@@ -273,7 +278,7 @@ function u64 NowMicroseconds(void)
     return result;
 }
 
-function DateTime NowUniversalTime(void)
+function DateTime OSNowUniTime(void)
 {
     SYSTEMTIME systemTime = {0};
     GetSystemTime(&systemTime);
@@ -281,7 +286,7 @@ function DateTime NowUniversalTime(void)
     return result;
 }
 
-function DateTime ToLocalTime(DateTime* universalTime)
+function DateTime OSToLocTime(DateTime* universalTime)
 {
     SYSTEMTIME universalSystemTime = W32SystemTimeFromDateTime(universalTime);
     FILETIME universalFileTime = {0};
@@ -294,7 +299,7 @@ function DateTime ToLocalTime(DateTime* universalTime)
     return result;
 }
 
-function DateTime ToUniversalTime(DateTime* localTime)
+function DateTime OSToUniTime(DateTime* localTime)
 {
     SYSTEMTIME localSystemTime = W32SystemTimeFromDateTime(localTime);
     FILETIME localFileTime = {0};
@@ -302,16 +307,15 @@ function DateTime ToUniversalTime(DateTime* localTime)
     FILETIME universalFileTime = {0};
     LocalFileTimeToFileTime(&localFileTime, &universalFileTime);
     SYSTEMTIME universalSystemTime = {0};
-    FileTimeToSystemTIme(&universalFileTime, &universalSystemTime);
+    FileTimeToSystemTime(&universalFileTime, &universalSystemTime);
     DateTime result = W32DateTimeFromSystemTime(&universalSystemTime);
     return result;
 }
 
 //~ NOTE(long): File Handling
 
-function String ReadOSFile(Arena* arena, String fileName, b32 terminateData)
+function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
 {
-    BeginScratch(scratch, arena);
     HANDLE file = CreateFileA(fileName.str,
                               GENERIC_READ, 0, 0,
                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
@@ -325,7 +329,7 @@ function String ReadOSFile(Arena* arena, String fileName, b32 terminateData)
         u64 totalSize = (((u64)highSize << 32) | (u64)lowSize);
         
         TempArena restorePoint = TempBegin(arena);
-        u8* buffer = PushZeroArray(arena, u8, totalSize + (terminateData ? 1 : 0));
+        u8* buffer = PushArray(arena, u8, totalSize + (terminateData ? 1 : 0));
         
         u8* ptr = buffer;
         u8* opl = buffer + totalSize;
@@ -333,7 +337,7 @@ function String ReadOSFile(Arena* arena, String fileName, b32 terminateData)
         for (; ptr < opl;)
         {
             u64 totalAmount = (u64)(opl - ptr);
-            DWORD readAmount = ClampTop(totalAmount, MAX_U32);
+            DWORD readAmount = (u32)ClampTop(totalAmount, MAX_U32);
             DWORD actualRead = 0;
             if (!ReadFile(file, ptr, readAmount, &actualRead, 0))
             {
@@ -351,13 +355,11 @@ function String ReadOSFile(Arena* arena, String fileName, b32 terminateData)
         CloseHandle(file);
     }
     
-    EndScratch(scratch);
     return result;
 }
 
-function b32 WriteOSList(String fileName, StringList* data)
+function b32 OSWriteList(String fileName, StringList* data)
 {
-    BeginScratch(scratch);
     HANDLE file = CreateFileA(fileName.str,
                               GENERIC_WRITE, 0, 0,
                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
@@ -376,7 +378,7 @@ function b32 WriteOSList(String fileName, StringList* data)
             for (; ptr < opl;)
             {
                 u64 totalAmount = (u64)(opl - ptr);
-                DWORD writeAmount = ClampTop(totalAmount, MAX_U32);
+                DWORD writeAmount = (u32)ClampTop(totalAmount, MAX_U32);
                 DWORD actualWrite = 0;
                 if (!WriteFile(file, ptr, writeAmount, &actualWrite, 0))
                 {
@@ -392,7 +394,6 @@ function b32 WriteOSList(String fileName, StringList* data)
         CloseHandle(file);
     }
     
-    EndScratch(scratch);
     return result;
 }
 
@@ -416,8 +417,6 @@ function DataAccessFlags W32AccessFromAttributes(DWORD attributes)
 
 function FileProperties GetFileProperties(String fileName)
 {
-    BeginScratch(scratch);
-    
     FileProperties result = {0};
     WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
     if (GetFileAttributesEx(fileName.str, GetFileExInfoStandard, &attributes))
@@ -435,37 +434,37 @@ function FileProperties GetFileProperties(String fileName)
     return result;
 }
 
-function String GetProcDir(void) { return win32BinaryPath; }
-function String GetUserDir(void) { return win32UserPath; }
-function String GetTempDir(void) { return win32TempPath; }
+function String OSProcessDir(void) { return win32BinaryPath; }
+function String OSAppDataDir(void) { return win32UserPath; }
+function String OSAppTempDir(void) { return win32TempPath; }
 
-function String GetCurrDir(Arena* arena)
+function String OSCurrentDir(Arena* arena)
 {
     DWORD size = GetCurrentDirectoryA(0, 0);
-    u8* buffer = PushArray(arena, u8, size);
+    u8* buffer = PushArrayNZ(arena, u8, size);
     size = GetCurrentDirectoryA(size + 1, buffer);
     return (String){ buffer, size };
 }
 
-function b32 DeleteOSFile(String fileName)
+function b32 OSDeleteFile(String fileName)
 {
     b32 result = DeleteFile(fileName.str);
     return result;
 }
 
-function b32 RenameOSFile(String oldName, String newName)
+function b32 OSRenameFile(String oldName, String newName)
 {
     b32 result = MoveFile(oldName.str, newName.str);
     return result;
 }
 
-function b32 MakeOSDir(String path)
+function b32 OSCreateDir(String path)
 {
     b32 result = CreateDirectory(path.str, 0);
     return result;
 }
 
-function b32 DeleteOSDir(String path)
+function b32 OSDeleteDir(String path)
 {
     b32 result = RemoveDirectory(path.str);
     return result;
@@ -482,20 +481,19 @@ typedef struct W32FileIter
 
 StaticAssert(sizeof(W32FileIter) <= sizeof(OSFileIter), w32fileiter);
 
-function OSFileIter InitFileIter(String path)
+function OSFileIter FileIterInit(String path)
 {
-    BeginScratch(scratch);
-    
-    path = StrJoin3(scratch, path, StrLit("\\*"));
     OSFileIter result = {0};
-    W32FileIter* w32Iter = (W32FileIter*)&result;
-    w32Iter->handle = FindFirstFile(path.str, &w32Iter->findData);
-    
-    EndScratch(scratch);
+    ScratchBlock(scratch)
+    {
+        path = StrJoin3(scratch, path, StrLit("\\*"));
+        W32FileIter* w32Iter = (W32FileIter*)&result;
+        w32Iter->handle = FindFirstFile(path.str, &w32Iter->findData);
+    }
     return result;
 }
 
-function b32 NextFileIter(Arena* arena, OSFileIter* iter, String* outName, FileProperties* outProp)
+function b32 FileIterNext(Arena* arena, OSFileIter* iter, String* outName, FileProperties* outProp)
 {
     b32 result = false;
     
@@ -545,7 +543,7 @@ function b32 NextFileIter(Arena* arena, OSFileIter* iter, String* outName, FileP
     return result;
 }
 
-function void EndFileIter(OSFileIter* iter)
+function void FileIterEnd(OSFileIter* iter)
 {
     W32FileIter* w32Iter = (W32FileIter*)iter;
     if (w32Iter->handle != 0 && w32Iter->handle != INVALID_HANDLE_VALUE)
@@ -554,21 +552,21 @@ function void EndFileIter(OSFileIter* iter)
 
 //~ NOTE(long): Libraries
 
-function OSLib LoadOSLib(String path)
+function OSLib OSLoadLib(String path)
 {
     OSLib result = {0};
     result.v[0] = (u64)LoadLibraryA(path.str);
     return result;
 }
 
-function VoidFunc* GetOSProc(OSLib lib, char* name)
+function VoidFunc* OSGetProc(OSLib lib, char* name)
 {
     HMODULE module = (HMODULE)lib.v[0];
     VoidFunc* result = (VoidFunc*)(GetProcAddress(module, name));
     return result;
 }
 
-function void ReleaseOSLib(OSLib lib)
+function void OSFreeLib(OSLib lib)
 {
     HMODULE module = (HMODULE)lib.v[0];
     FreeLibrary(module);
@@ -576,10 +574,10 @@ function void ReleaseOSLib(OSLib lib)
 
 //~ NOTE(long): Entropy
 
-function void GetOSEntropy(void* data, u64 size)
+function void OSGetEntropy(void* data, u64 size)
 {
     HCRYPTPROV prov = 0;
     CryptAcquireContextA(&prov, 0, 0, PROV_DSS, CRYPT_VERIFYCONTEXT);
-    CryptGenRandom(prov, size, (BYTE*)data);
+    CryptGenRandom(prov, (u32)ClampTop(size, MAX_U32), (BYTE*)data);
     CryptReleaseContext(prov, 0);
 }

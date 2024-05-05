@@ -239,8 +239,7 @@ global IID* iid_ID3D11Debug;
 #define iid_ID3D11Debug (&IID_ID3D11Debug)
 #endif
 
-// --------------------------------------------------
-// NOTE: Win32 OpenGL Globals
+//~ NOTE(long): Win32 OpenGL Globals
 
 global String win32GraphicsError = {0};
 //global HMODULE win32D3D11Module = {0};
@@ -264,7 +263,7 @@ struct W32D3D11Window
 global W32D3D11Window  win32WindowSlots[64];
 global W32D3D11Window* win32WindowFree = 0;
 
-#define GET_PROC_ADDR(f, m, n) (*(PROC*)(&(f))) = GetProcAddress((m), (n))
+#define  GET_PROC_ADDR(f, m, n) (*(PROC*)(&(f))) = GetProcAddress((m), (n))
 #define GRAPHICS_WINDOW_CLASS_NAME "LongD3D11Graphics"
 
 #define W32HandleFromSlot(s) (GFXWindow)(((s) - win32WindowSlots) + 1)
@@ -273,7 +272,7 @@ global W32D3D11Window* win32WindowFree = 0;
                              ((h) <= ArrayCount(win32WindowSlots)))
 
 ID3D11Device* device = 0;
-ID3D11DeviceContext* ctx = 0;
+ID3D11DeviceContext* context = 0;
 ID3D11Debug* dbg = 0;
 
 IDXGIFactory* factory = 0;
@@ -389,7 +388,7 @@ function b32 InitD3D11(void)
         if (error.size == 0)
         {
             HRESULT result = w32D3D11CreateDevice(0, D3D_DRIVER_TYPE_HARDWARE, 0, D3D11_CREATE_DEVICE_DEBUG,
-                                                  0, 0, D3D11_SDK_VERSION, &device, 0, &ctx);
+                                                  0, 0, D3D11_SDK_VERSION, &device, 0, &context);
             if (result != S_OK)
                 error = StrLit("Error: Failed to create device\n");
         }
@@ -454,13 +453,6 @@ function GFXWindow CreateD3D11Window(void)
     ID3D11RenderTargetView* view = 0;
     ID3D11Texture2D* backBuffer = 0;
     
-    ID3D11VertexShader* vshader = 0;
-    ID3D11InputLayout* inLayout = 0;
-    ID3D11PixelShader* pshader = 0;
-    
-    ID3D11Buffer* vbuffer = 0;
-    ID3D11Buffer* ibuffer = 0;
-    
     if (error.size == 0)
     {
         // Create swapChain
@@ -505,7 +497,7 @@ function GFXWindow CreateD3D11Window(void)
             .MinDepth = 0.0f,
             .MaxDepth = 1.0f,
         };
-        ID3D11DeviceContext_RSSetViewports(ctx, 1, &viewport);
+        ID3D11DeviceContext_RSSetViewports(context, 1, &viewport);
     }
     
     GFXWindow result = 0;
@@ -534,7 +526,7 @@ function void ShowD3D11Window(GFXWindow window)
 
 function ID3D11DeviceContext* GetD3D11DeviceCtx(void)
 {
-    return ctx;
+    return context;
 }
 
 function ID3D11RenderTargetView* GetD3D11ViewFromWindow(GFXWindow window)
@@ -562,16 +554,13 @@ int WinMain(HINSTANCE hInstance,
             int nShowCmd)
 {
     W32WinMainInit(hInstance, hPrevInstance, lpCmdLine, nShowCmd);
-    BeginScratch(scratch);
+    ScratchBegin(scratch);
     
     if (!InitD3D11())
     {
         MessageBox(0, GetD3D11Error().str, "error", MB_OK);
         ExitProcess(1);
     }
-    
-    printf("success\n");
-    
     
     GFXWindow d3d11Wnd = CreateD3D11Window();
     if (!d3d11Wnd)
@@ -733,6 +722,6 @@ int WinMain(HINSTANCE hInstance,
 #endif
     }
     
-    EndScratch(scratch);
+    ScratchEnd(scratch);
     return 0;
 }

@@ -4,6 +4,7 @@
 #include "LongOS.h"
 #include "Base.c"
 #include "LongOS_Win32.c"
+#include <stdio.h>
 
 #include "MetaParser.h"
 #include "MetaParser.c"
@@ -69,11 +70,11 @@ function void PrintType(Arena* arena, MetaInfo* type, u32 padding, StringList* i
 
 int main(void)
 {
-    InitOSMain(0, 0);
-    BeginScratch(scratch);
+    OSInit(0, 0);
+    ScratchBegin(scratch);
     
     String fileName = StrLit("code/MetaTest.txt");
-    String file = ReadOSFile(scratch, fileName, true);
+    String file = OSReadFile(scratch, fileName, true);
     file.size += 1; // include the end of file
     
     file = StrReplace(scratch, file, StrLit("\\\n"), StrLit(""), 0);
@@ -138,7 +139,7 @@ int main(void)
     
     String typeData = StrJoin(scratch, &list);
     printf("%.*s", StrExpand(typeData));
-    WriteOSFile(StrLit("code/generated/Types.txt"), typeData);
+    OSWriteFile(StrLit("code/generated/Types.txt"), typeData);
     
     for (MetaInfo* type = parser.table->first; type; type = type->next)
         printf("[%.*s: %s],\n", StrExpand(type->name), GetEnumName(MetaInfoKind, type->kind));
@@ -146,6 +147,6 @@ int main(void)
     for (StringNode* node = parser.lexer->errorList->first; node; node = node->next)
         printf("%.*s", StrExpand(node->string));
     
-    EndScratch(scratch);
+    ScratchEnd(scratch);
     return 0;
 }

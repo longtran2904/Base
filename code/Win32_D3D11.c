@@ -1,6 +1,5 @@
 
-// --------------------------------------------------
-// NOTE: D3DCOMPILE Flags (D3DComipler.h)
+//~ NOTE(long): D3DCOMPILE Flags (D3DComipler.h)
 
 #define D3DCOMPILE_DEBUG                                (1 << 0)
 #define D3DCOMPILE_SKIP_VALIDATION                      (1 << 1)
@@ -29,8 +28,7 @@
 #define D3DCOMPILE_DEBUG_NAME_FOR_SOURCE                (1 << 22)
 #define D3DCOMPILE_DEBUG_NAME_FOR_BINARY                (1 << 23)
 
-// --------------------------------------------------
-// NOTE: DXGI Definitions
+//~ NOTE(long): DXGI Definitions
 
 #define DXGI_FUNCS(X) \
     X(HRESULT, CreateDXGIFactory, (REFIID, void**))
@@ -40,8 +38,7 @@
 #define KEEP_PREFIX
 #include "XFunction.h"
 
-// --------------------------------------------------
-// NOTE: D3D11 Definitions
+//~ NOTE(long): D3D11 Definitions
 
 #define D3D11_FUNCS(X) \
     X(HRESULT, D3D11CreateDevice, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
@@ -52,8 +49,7 @@
 #define FUNCTION_VALUE(X) D3D11_FUNCS(X)
 #include "XFunction.h"
 
-// --------------------------------------------------
-// NOTE: D3DCompiler Definitions
+//~ NOTE(long): D3DCompiler Definitions
 
 #define D3DCOMPILER_FUNCS(X) \
     X(HRESULT, D3DReadFileToBlob, (LPCWSTR, ID3DBlob**)) \
@@ -66,8 +62,7 @@
 #undef POINTER_PREFIX
 #undef FUNCTION_PREFIX
 
-// --------------------------------------------------
-// NOTE: Win32 D3D11 Globals
+//~ NOTE(long): Win32 D3D11 Globals
 
 #define iid_IDXGIFactory (&IID_IDXGIFactory)
 #define iid_ID3D11Texture2D (&IID_ID3D11Texture2D)
@@ -227,7 +222,7 @@ function b32 EquipD3D11Window(GFXWindow window)
 {
     b32 error = 0;
     
-    if (!IsGFXWindowValid(window))
+    if (!GFXIsWindowValid(window))
         ErrorSet("Handle isn't valid", error);
     
     if (!error)
@@ -291,7 +286,7 @@ function ID3D11RenderTargetView* BeginD3D11Render(GFXWindow window)
 {
 	ID3D11RenderTargetView* result = 0;
 	
-	if (IsGFXWindowValid(window) && w32D3D11SwapChain == 0)
+	if (GFXIsWindowValid(window) && w32D3D11SwapChain == 0)
 	{
 		W32D3D11Window* slot = w32D3D11Slots + window - 1;
 		ID3D11Texture2D* buffer = 0;
