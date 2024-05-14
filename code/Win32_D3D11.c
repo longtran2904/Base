@@ -76,13 +76,16 @@ struct W32D3D11Window
 
 global W32D3D11Window w32D3D11Slots[GFX_MAX_WINDOW_SLOTS] = {0};
 
-ID3D11Device* device = 0;
-ID3D11DeviceContext* ctx = 0;
-ID3D11Debug* dbg = 0;
+global ID3D11Device* device = 0;
+global ID3D11DeviceContext* ctx = 0;
+global ID3D11Debug* dbg = 0;
+global IDXGISwapChain* w32D3D11SwapChain = 0;
 
 HMODULE dxgiModule = 0;
 HMODULE d3d11Module = 0;
 HMODULE d3dcompilerModule = 0;
+
+#define D3D_COMPILER_DLL "d3dcompiler_47.dll"
 
 function b32 InitD3D11(void)
 {
@@ -119,7 +122,7 @@ function b32 InitD3D11(void)
         if (!error)
         {
             if (d3d11Module != 0)
-                ErrorSet("d3d11Module.dll has already initialized", error);
+                ErrorSet("d3d11.dll has already initialized", error);
             
             if (!error)
             {
@@ -139,14 +142,14 @@ function b32 InitD3D11(void)
         if (!error)
         {
             if (d3dcompilerModule != 0)
-                ErrorSet("d3dcompiler_47.dll has already initialized", error);
+                ErrorSet(D3D_COMPILER_DLL " has already initialized", error);
             
             if (!error)
             {
                 // TODO: deal with the fact that there're multiple versions of this dll
-                d3dcompilerModule = LoadLibraryA("d3dcompiler_47.dll");
+                d3dcompilerModule = LoadLibraryA(D3D_COMPILER_DLL);
                 if (!d3dcompilerModule)
-                    ErrorSet("Failed to load d3dcompiler_47.dll", error);
+                    ErrorSet("Failed to load " D3D_COMPILER_DLL, error);
             }
             
             if (!error)
@@ -222,7 +225,7 @@ function b32 EquipD3D11Window(GFXWindow window)
 {
     b32 error = 0;
     
-    if (!GFXIsWindowValid(window))
+    if (!GFXWindowIsValid(window))
         ErrorSet("Handle isn't valid", error);
     
     if (!error)
@@ -268,8 +271,71 @@ function b32 EquipD3D11Window(GFXWindow window)
 		{
 			W32D3D11Window* equipped = w32D3D11Slots + window - 1;
 			equipped->swapchain = swapchain;
-			SetGFXWindowEquippedData(window, equipped, W32CloseD3D11Window);
+			GFXWindowEquipData(window, equipped, W32CloseD3D11Window);
 		}
+    }
+    
+    return !error;
+}
+
+function b32 FreeD3D11()
+{
+    b32 error = 0;
+    
+    // Cleanup windows
+    for (i32 i = 0; i < ArrayCount(w32D3D11Slots); ++i)
+        if (w32D3D11Slots[i].swapchain)
+            IDXGISwapChain_Release(w32D3D11Slots[i].swapchain);
+    
+    // Cleanup D3D11
+    {
+        if (device) ID3D11Device_Release(device);
+        else ErrorSet("The graphics device has already been released", error);
+        
+        if (ctx) ID3D11DeviceContext_Release(ctx);
+        else ErrorSet("The graphics context has already been released", error);
+        
+        if (dbg) ID3D11Debug_Release(dbg);
+        else ErrorSet("The grahpics debugger has already been released", error);
+    }
+    
+    // Cleanup modules
+    {
+        if (!dxgiModule)
+            ErrorSet("dxgi.dll has already been freed", error);
+        else if (FreeLibrary(dxgiModule))
+            ErrorSet("Failed to free dxgi.dll", error);
+        
+        if (!d3d11Module)
+            ErrorSet("d3d11.dll has already been freed", error);
+        else if (FreeLibrary(d3d11Module))
+            ErrorSet("Failed to free d3d11.dll", error);
+        
+        if (!d3dcompilerModule)
+            ErrorSet(D3D_COMPILER_DLL " has already been freed", error);
+        else if (FreeLibrary(d3dcompilerModule))
+            ErrorSet("Failed to free " D3D_COMPILER_DLL, error);
+    }
+    
+    // Cleanup function pointers
+    {
+#define X(r, n, p) w32##n = 0;
+        DXGI_FUNCS(X);
+        D3D11_FUNCS(X);
+        D3DCOMPILER_FUNCS(X);
+#undef X
+    }
+    
+    // Cleanup globals
+    {
+        w32D3D11SwapChain = 0;
+        device = 0;
+        ctx = 0;
+        dbg = 0;
+        
+        dxgiModule = 0;
+        d3d11Module = 0;
+        d3dcompilerModule = 0;
     }
     
     return !error;
@@ -280,13 +346,11 @@ function ID3D11DeviceContext* GetD3D11DeviceCtx(void)
     return ctx;
 }
 
-global IDXGISwapChain* w32D3D11SwapChain = 0;
-
 function ID3D11RenderTargetView* BeginD3D11Render(GFXWindow window)
 {
 	ID3D11RenderTargetView* result = 0;
 	
-	if (GFXIsWindowValid(window) && w32D3D11SwapChain == 0)
+	if (GFXWindowIsValid(window) && w32D3D11SwapChain == 0)
 	{
 		W32D3D11Window* slot = w32D3D11Slots + window - 1;
 		ID3D11Texture2D* buffer = 0;

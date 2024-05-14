@@ -1562,7 +1562,7 @@ struct LOG_Thread
 
 threadvar LOG_Thread logThread = {0};
 
-function void LogBegin_(Arena* arena, LogInfo info)
+function void LogBeginEx(Arena* arena, LogInfo info)
 {
     if (!logThread.arena)
         logThread.arena = ArenaReserve(KB(4));
@@ -1611,17 +1611,28 @@ function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args)
         String level = GetEnumStr(LogType, record->level);
         StrToUpper(level);
         
-#if BASE_LOG_COLOR // https://ss64.com/nt/syntax-ansi.html
+        record->log = StrPushf(arena, "%02u:%02u:%02u %-5s %.*s:%d: %s", time.hour, time.min, time.sec,
+                               level.str, StrExpand(file), record->line, log.str);
+    }
+}
+
+function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list args)
+{
+    ScratchBlock(scratch, arena)
+    {
+        DateTime time = TimeToDate(record->time);
+        String log = StrPushfv(scratch, fmt, args);
+        String file = StrGetSubstr(StrFromCStr((u8*)record->file), OSProcessDir(), 0);
+        String level = GetEnumStr(LogType, record->level);
+        StrToUpper(level);
+        
+        // https://ss64.com/nt/syntax-ansi.html
         local const char* colors[] = { "\x1b[36m", "\x1b[94m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[95m" };
         record->log = StrPushf(arena, "[%02u:%02u:%02u] %s%5s \x1b[90m%.*s:%d: \x1b[97m%s\x1b[0m",
                                time.hour, time.min, time.sec,
                                colors[record->level], level.str,
                                StrExpand(file), record->line,
                                log.str);
-#else
-        record->log = StrPushf(arena, "%02u:%02u:%02u %-5s %.*s:%d: %s", time.hour, time.min, time.sec,
-                               level.str, StrExpand(file), record->line, log.str);
-#endif
     }
 }
 

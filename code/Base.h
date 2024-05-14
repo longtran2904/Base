@@ -972,10 +972,6 @@ function i64 I64FromStr(String str, u32 radix, b32* error);
 
 //~ NOTE(long): Logs/Errors
 
-#ifndef BASE_LOG_COLOR
-#define BASE_LOG_COLOR 0
-#endif
-
 typedef struct Record Record;
 struct Record
 {
@@ -1016,13 +1012,14 @@ struct Logger
     LogInfo info;
 };
 
-#define LogBegin(arena, ...) LogBegin_((arena), (LogInfo){ .level = 0, .callback = LogFmtStd, __VA_ARGS__ })
-function void   LogBegin_(Arena* arena, LogInfo info);
+#define LogBegin(arena, ...) LogBeginEx((arena), (LogInfo){ .callback = LogFmtStd, __VA_ARGS__ })
+function void   LogBeginEx(Arena* arena, LogInfo info);
 function Logger LogEnd(void);
 function StringList StrListFromLogger(Arena* arena, Logger* logger);
 
 function LogInfo* LogGetInfo(void);
 function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args);
+function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list args);
 function void LogPushf(i32 level, char* file, i32 line, char* fmt, ...);
 #define LogPush(level, log, ...) LogPushf((level), __FILE__, __LINE__, (log), __VA_ARGS__)
 

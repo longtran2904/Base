@@ -157,6 +157,7 @@
 #define YellowGreen           (f32[4]){ 0.603921592f, 0.803921640f, 0.196078449f, 1.000000000f }
 
 function b32 InitD3D11(void);
+function b32 FreeD3D11(void);
 function b32 EquipD3D11Window(GFXWindow window);
 
 function ID3D11DeviceContext*    GetD3D11DeviceCtx(void);

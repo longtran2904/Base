@@ -1,6 +1,7 @@
 #undef function
 #include <Windows.h>
 #include <Userenv.h>
+#include <dwmapi.h>
 #define function static
 
 /* NOTE(long): This all the win32 APIs that I need

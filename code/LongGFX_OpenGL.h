@@ -6,6 +6,7 @@
 //~ NOTE(long): System OpenGL Functions
 
 function b32 InitGL(void);
+function b32 FreeGL(void);
 function b32 EquipGLWindow(GFXWindow window);
 
 function void BeginGLRender(GFXWindow window);

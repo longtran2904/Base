@@ -96,16 +96,32 @@ struct W32OpenGLWindow
 
 //~ NOTE(long): GL Definitions
 
-typedef f32 GLFloat;
+typedef i32 GLInt;
 typedef u32 GLBitfield;
+typedef u32 GLEnum;
+typedef u32 GLSizei;
+typedef f32 GLFloat;
 
-#define FUNCTION_VALUE(X) \
+#define GL_FUNCS(X) \
     X(void, glClearColor, (GLFloat red, GLFloat green, GLFloat blue, GLFloat alpha)) \
-    X(void, glClear     , (GLBitfield mask))
+    X(void, glClear     , (GLBitfield mask)) \
+    X(void, glBegin, (GLEnum mode)) \
+    X(void, glEnd, (void)) \
+    X(void, glColor3f,  (GLFloat red, GLFloat green, GLFloat blue)) \
+    X(void, glVertex3f, (GLFloat x, GLFloat y, GLFloat z)) \
+    X(void, glFlush, (void))\
+    X(GLEnum, glGetError, (void)) \
+    X(void, glGetFloatv, (GLEnum pname, GLFloat* params)) \
+    X(void, glViewport, (GLInt x, GLInt y, GLSizei width, GLSizei height))
+
+#define FUNCTION_VALUE(X) GL_FUNCS(X)
+
 #define FUNCTION_PREFIX GL
 #include "XFunction.h"
 
 #define GL_COLOR_BUFFER_BIT 0x00004000
+#define GL_TRIANGLES        0x0004
+#define GL_VIEWPORT         0x0BA2
 
 //~ NOTE(long): Win32 OpenGL Globals
 
@@ -114,6 +130,8 @@ global HMODULE w32OpenGLModule = 0;
 global HGLRC w32OpenGLContext = 0;
 global int w32OpenGLPixelFormat = 0;
 
+global HDC  w32RenderDC = 0;
+global HWND w32RenderWnd = 0;
 #define BOOTSTRAP_WINDOW_CLASS_NAME "LongOpenGLBootstrap"
 
 //~ NOTE(long): System OpenGL Functions
@@ -281,7 +299,7 @@ function b32 InitGL(void)
 				WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
 				WGL_CONTEXT_MINOR_VERSION_ARB, 3,
 				WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
-				WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+				WGL_CONTEXT_PROFILE_MASK_ARB, /*WGL_CONTEXT_CORE_PROFILE_BIT_ARB*/WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
 				0
 			};
 			
@@ -292,19 +310,13 @@ function b32 InitGL(void)
 		
 		// Load opengl functions
 		{
-			if (!error)
-			{
-				GET_PROC_ADDR(glClearColor, w32OpenGLModule, "glClearColor");
-				if (glClearColor == 0)
-					ErrorSet("Could not load glClearColor", error);
-			}
-			
-			if (!error)
-			{
-				GET_PROC_ADDR(glClear, w32OpenGLModule, "glClear");
-				if (glClear == 0)
-					ErrorSet("Could not load glClear", error);
-			}
+#define X(r, n, p) if (!error) \
+    { \
+        GET_PROC_ADDR(n, w32OpenGLModule, Stringify(n)); \
+        if (!n) ErrorSet("Failed to load "Stringify(n), error); \
+    }
+            GL_FUNCS(X);
+#undef X
 		}
 		
 		ReleaseDC(dummyWindow, dc);
@@ -339,14 +351,59 @@ function b32 InitGL(void)
 #define X(r, n, p)  w32Wgl##n = 0;
         WGL_FUNCS(X);
         WGL_EXT_FUNCS(X);
+#undef X
         
-        glClearColor = 0;
-        glClear = 0;
+#define X(r, n, p) n = 0;
+        GL_FUNCS(X);
 #undef X
 		
 		w32OpenGLModule = 0;
 		w32OpenGLContext = 0;
 		w32OpenGLPixelFormat = 0;
+    }
+    
+    return !error;
+}
+
+function b32 FreeGL()
+{
+    b32 error = 0;
+    
+    // Clear OpenGL
+    {
+        if (!w32OpenGLModule)
+            ErrorSet("opengl.dll has already been freed", error);
+        else if (!FreeLibrary(w32OpenGLModule))
+            ErrorSet("Failed to free opengl.dll", error);
+        
+        if (!w32OpenGLContext)
+            ErrorSet("The graphics context has already been deleted", error);
+        else if (!w32WglDeleteContext(w32OpenGLContext))
+            ErrorSet("Failed to delete the graphics context", error);
+        
+        ReleaseDC(w32RenderWnd, w32RenderDC);
+    }
+    
+    // Clear function pointers
+    {
+#define X(r, n, p)  w32Wgl##n = 0;
+        WGL_FUNCS(X);
+        WGL_EXT_FUNCS(X);
+#undef X
+        
+#define X(r, n, p) n = 0;
+        GL_FUNCS(X);
+#undef X
+    }
+    
+    // Clear globals
+    {
+        w32OpenGLModule = 0;
+        w32OpenGLContext = 0;
+        w32OpenGLPixelFormat = 0;
+        
+        w32RenderDC = 0;
+        w32RenderWnd = 0;
     }
     
     return !error;
@@ -361,9 +418,9 @@ function void W32CloseOpenGLWindow(GFXWindow window)
 function b32 EquipGLWindow(GFXWindow window)
 {
     b32 error = 1;
-	if (!GFXIsWindowValid(window))
+	if (!GFXWindowIsValid(window))
 		ErrorFmt("Invalid window handle: %d", window);
-	else if (GFXIsWindowEquipped(window))
+	else if (GFXWindowIsEquipped(window))
 		ErrorFmt("Window is already equipped: %d", window);
     else
         error = 0;
@@ -384,7 +441,7 @@ function b32 EquipGLWindow(GFXWindow window)
 		{
 			W32OpenGLWindow* equipped = w32OpenGLSlots + window - 1;
 			equipped->dummy = 1;
-			SetGFXWindowEquippedData(window, equipped, W32CloseOpenGLWindow);
+			GFXWindowEquipData(window, equipped, W32CloseOpenGLWindow);
 		}
 		
 		if (error)
@@ -397,17 +454,18 @@ function b32 EquipGLWindow(GFXWindow window)
     return !error;
 }
 
-global HDC  w32RenderDC = 0;
-global HWND w32RenderWnd = 0;
-
 function void BeginGLRender(GFXWindow window)
 {
-    if (GFXIsWindowValid(window) && w32RenderDC == 0)
+    if (GFXWindowIsValid(window) && w32RenderDC == 0)
     {
         W32Window* slot = W32WindowFromGFXHandle(window);
         w32RenderWnd = slot->wnd;
         w32RenderDC = GetDC(w32RenderWnd);
 		w32WglMakeCurrent(w32RenderDC, w32OpenGLContext);
+        u32 w, h;
+        GFXWindowGetInnerRect(window, 0, 0, &w, &h);
+        glViewport(0, 0, w, h);
+        GLEnum error = glGetError();
     }
 }
 

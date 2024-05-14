@@ -16,6 +16,8 @@ REM 4245 sign conversions
 
 REM 4310 constant to smaller type
 REM 4305 a value is converted to a smaller type in an initialization or as a constructor argument,
+REM 4389 !=/== signed/unsigned mismatch
+
 REM 4457 local names conflict with parameter names
 
 REM 4505 unreferenced local function has been removed
@@ -24,7 +26,7 @@ REM I haven't been able to reproduce this warning. Maybe this is only for C++ fu
 REM 4701 using unitinialized variables
 REM 4706 assignment within conditional expression (`if (a = b)`)
 
-set warns=-D_CRT_SECURE_NO_WARNINGS /W4 /WX /wd4057 /wd4201
+set warns=-D_CRT_SECURE_NO_WARNINGS /W4 /WX /wd4057 /wd4201 /wd4389
 set warns=%warns% /wd4100
 set warns=%warns% /wd4189
 REM set warns=%warns% /wd4101
@@ -39,7 +41,7 @@ set opts=-FC -GR- -EHa- -WL -nologo -Zi %warns%
 if [%1]==[release] set opts=%opts% -O2
 
 set code=%cd%
-set links=-incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib
+set links=-incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
 
 IF NOT EXIST build mkdir build
 pushd build

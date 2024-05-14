@@ -17,6 +17,7 @@ typedef void GFXResizeWindow(GFXWindow window, u32 width, u32 height);
 
 function b32 GFXInit(void);
 function b32 GFXWaitForInput(void);
+function b32 GFXPeekInput(void);
 
 //~ NOTE(long): Setup Window
 
@@ -26,37 +27,61 @@ function void GFXCloseWindow(GFXWindow window);
 
 #define GFXCreateWindow(title) GFXCreateWindowEx(StrLit(title), CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT)
 
-function void* GetGFXWindowEquippedData(GFXWindow window);
-function void  SetGFXWindowEquippedData(GFXWindow window, void* ptr, GFXDestroyWindow* destroy);
+function void* GFXWindowGetEquipment(GFXWindow window);
+function void  GFXWindowEquipData(GFXWindow window, void* ptr, GFXDestroyWindow* destroy);
 
 //~ NOTE(long): Setup User Data
 
-function GFXResizeWindow* GetGFXResizeFunc(void);
-function void             SetGFXResizeFunc(GFXResizeWindow* func);
+function GFXResizeWindow* GFXGetResizeFunc(void);
+function void             GFXSetResizeFunc(GFXResizeWindow* func);
 
-function void* GetGFXWindowUserData(GFXWindow window);
-function void  SetGFXWindowUserData(GFXWindow window, void* data);
+function void* GFXWindowGetUserData(GFXWindow window);
+function void  GFXWindowSetUserData(GFXWindow window, void* data);
 
 //~ NOTE(long): Get/Set Window's Values
 
-function b32 SetGFXWindowVisible(GFXWindow window, b32 visible);
-function b32 SetGFXWindowTitle(GFXWindow window, String title);
+function b32 GFXWindowIsValid(GFXWindow window);
+function b32 GFXWindowIsEquipped(GFXWindow window);
 
-function b32 SetGFXWindowInnerRect(GFXWindow window, i32 x, i32 y, i32 w, i32 h);
-function b32 SetGFXWindowOuterRect(GFXWindow window, i32 x, i32 y, i32 w, i32 h);
-function b32 GetGFXWindowInnerRect(GFXWindow window, i32* x, i32* y, i32* w, i32* h);
-function b32 GetGFXWindowOuterRect(GFXWindow window, i32* x, i32* y, i32* w, i32* h);
+typedef u32 GFXFlags;
+enum
+{
+    // TODO(long)
+    FLAG_HINT_VSYNC      = 1 << 2, // Set to try enabling V-Sync on GPU
+    FLAG_HINT_MSAA_4X    = 1 << 3, // Set to try enabling MSAA 4X
+    FLAG_HINT_INTERLACED = 1 << 4, // Set to try enabling interlaced video format (for V3D)
+    
+    FLAG_MODE_FULLSCREEN = 1 << 5, // Set to run program in fullscreen
+    
+    FLAG_WINDOW_MINIMIZED   = 1 <<  8, // Set to minimize window (iconify)
+    FLAG_WINDOW_MAXIMIZED   = 1 <<  9, // Set to maximize window (expanded to monitor)
+    FLAG_WINDOW_RESIZABLE   = 1 << 10, // Set to allow resizable window
+    FLAG_WINDOW_UNFOCUSED   = 1 << 11, // Set to window non focused
+    FLAG_WINDOW_HIDDEN      = 1 << 12, // Set to hide window
+    FLAG_WINDOW_TOPMOST     = 1 << 13, // Set to window always on top
+    
+    // TODO(long)
+    FLAG_WINDOW_TRANSPARENT,
+    FLAG_WINDOW_HIGHDPI,
+    
+    // @RECONSIDER(long)
+    FLAG_MODE_BORDERLESS,    // Set to run program in borderless windowed mode
+    FLAG_WINDOW_ALWAYS_RUN,  // Set to allow windows running while minimized
+    FLAG_WINDOW_UNDECORATED, // Set to disable window decoration (frame and buttons)
+    FLAG_WINDOW_PASSTHROUGH, // Set to support mouse passthrough, only supported when FLAG_WINDOW_UNDECORATED
+};
 
-function b32 SetGFXWindowResizable(GFXWindow window, b32 resizable);
-function b32 SetGFXWindowFullScreen(GFXWindow window, b32 fullscreen);
+function GFXFlags GFXWindowGetFlags(GFXWindow window);
+function b32      GFXWindowSetFlags(GFXWindow window, GFXFlags flags, b32 value);
+#define GFXWindowHasFlags(window, flags) HasAnyFlags(GFXWindowGetFlags((window)), (flags))
 
-function b32 IsGFXWindowResizable(GFXWindow window);
-function b32 IsGFXWindowFullScreen(GFXWindow window);
-function b32 IsGFXWindowMinimized(GFXWindow window);
-function b32 IsGFXWindowMaximized(GFXWindow window);
+function String GFXWindowGetTitle(Arena* arena, GFXWindow window);
+function b32    GFXWindowSetTitle(GFXWindow window, String title);
 
-function b32 GFXIsWindowValid(GFXWindow window);
-function b32 GFXIsWindowEquipped(GFXWindow window);
+function b32 GFXWindowSetInnerRect(GFXWindow window, i32 x, i32 y, i32 w, i32 h);
+function b32 GFXWindowSetOuterRect(GFXWindow window, i32 x, i32 y, i32 w, i32 h);
+function b32 GFXWindowGetInnerRect(GFXWindow window, i32* x, i32* y, i32* w, i32* h);
+function b32 GFXWindowGetOuterRect(GFXWindow window, i32* x, i32* y, i32* w, i32* h);
 
 //~ NOTE(long): Error/Message Box
 
