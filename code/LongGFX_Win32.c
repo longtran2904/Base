@@ -313,9 +313,9 @@ function b32 GFXWindowSetInnerRect(GFXWindow window, i32 x, i32 y, i32 w, i32 h)
     HWND wnd = W32WindowFromGFXHandle(window)->wnd;
     if (wnd)
     {
-        RECT r = { .left = x, .top = y, .right = x + w, .bottom = y + h };
-        if (AdjustWindowRect(&r, GetWindowLong(wnd, GWL_STYLE), 0))
-            if (SetWindowPos(wnd, HWND_TOP, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER))
+        RECT rect = { .left = x, .top = y, .right = x + w, .bottom = y + h };
+        if (AdjustWindowRect(&rect, GetWindowLong(wnd, GWL_STYLE), 0))
+            if (SetWindowPos(wnd, HWND_TOP, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, SWP_NOZORDER))
                 result = true;
     }
     
@@ -329,9 +329,20 @@ function b32 GFXWindowSetOuterRect(GFXWindow window, i32 x, i32 y, i32 w, i32 h)
     HWND wnd = W32WindowFromGFXHandle(window)->wnd;
     if (wnd)
     {
-        RECT r = { .left = x, .top = y, .right = x + w, .bottom = y + h };
-        if (SetWindowPos(wnd, HWND_TOP, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER))
-            result = true;
+        RECT rect = { .left = x, .top = y, .right = x + w, .bottom = y + h };
+        if (SetWindowPos(wnd, HWND_TOP, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, SWP_NOZORDER))
+        {
+            RECT smallRect;
+            if (DwmGetWindowAttribute(wnd, DWMWA_EXTENDED_FRAME_BOUNDS, &smallRect, sizeof(RECT)) == S_OK) // No drop shadow
+            {
+                rect.left -= smallRect.left - rect.left;
+                rect.top  -= smallRect.top - rect.top;
+                rect.right += rect.right - smallRect.right;
+                rect.bottom += rect.bottom - smallRect.bottom;
+                if (SetWindowPos(wnd, HWND_TOP, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, SWP_NOZORDER))
+                    result = true;
+            }
+        }
     }
     
     return result;
@@ -343,13 +354,16 @@ function b32 GFXWindowGetInnerRect(GFXWindow window, i32* x, i32* y, i32* w, i32
 	HWND wnd = W32WindowFromGFXHandle(window)->wnd;
 	RECT rect = {0};
 	
-	if (wnd && GetClientRect(wnd, &rect) && ClientToScreen(wnd, (POINT*)(&rect.left)) && ClientToScreen(wnd, (POINT*)(&rect.right)))
+    if (wnd && GetClientRect(wnd, &rect))
 	{
-		if (x) *x = rect.left;
-		if (y) *y = rect.top;
-		if (w) *w = rect.right - rect.left;
-		if (h) *h = rect.bottom - rect.top;
-		result = true;
+        if (ClientToScreen(wnd, (POINT*)(&rect.left)) && ClientToScreen(wnd, (POINT*)(&rect.right)))
+        {
+            if (x) *x = rect.left;
+            if (y) *y = rect.top;
+            if (w) *w = rect.right - rect.left;
+            if (h) *h = rect.bottom - rect.top;
+            result = true;
+        }
 	}
 	
 	return result;
