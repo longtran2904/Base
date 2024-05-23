@@ -79,7 +79,7 @@ function void* OSReserve(u64 size)
     if (!result)
     {
         DWORD error = GetLastError();
-        ErrorFmt("Failed to reserve memory: %d", error);
+        Assert("Failed to reserve memory");
     }
     return result;
 }
@@ -90,7 +90,7 @@ function b32 OSCommit(void* ptr, u64 size)
     if (!result)
     {
         DWORD error = GetLastError();
-        ErrorFmt("Failed to commit memory: %d", error);
+        Assert("Failed to commit memory");
     }
     return result;
 }
@@ -100,7 +100,7 @@ function void OSDecommit(void* ptr, u64 size)
     if (!VirtualFree(ptr, size, MEM_DECOMMIT))
     {
         DWORD error = GetLastError();
-        ErrorFmt("Failed to decommit memory: %d", error);
+        Assert("Failed to decommit memory");
     }
 }
 
@@ -109,7 +109,7 @@ function void OSRelease(void* ptr)
     if (!VirtualFree(ptr, 0, MEM_RELEASE))
     {
         DWORD error = GetLastError();
-        ErrorFmt("Failed to release memory: %d", error);
+        Assert("Failed to release memory");
     }
 }
 

@@ -329,11 +329,11 @@
 #endif
 
 #if __SANITIZE_ADDRESS__
-#define AsanPoison(p,z)   __asan_poison_memory_region((p),(z))
-#define AsanUnpoison(p,z) __asan_unpoison_memory_region((p),(z))
+#define   AsanPoison(ptr, size)   __asan_poison_memory_region((ptr), (size))
+#define AsanUnpoison(ptr, size) __asan_unpoison_memory_region((ptr), (size))
 #else
-#define AsanPoison(p,z)
-#define AsanUnpoison(p,z)
+#define   AsanPoison(ptr, size)
+#define AsanUnpoison(ptr, size)
 #endif
 
 #define C4(str) (*(u32*)(str))
@@ -675,6 +675,9 @@ struct TempArena
 #ifndef DEFAULT_ALIGNMENT
 #define DEFAULT_ALIGNMENT sizeof(uptr)
 #endif
+#ifndef DEFAULT_POISON_SIZE
+#define DEFAULT_POISON_SIZE 128
+#endif
 
 #define SCRATCH_POOL_COUNT 4
 
@@ -818,22 +821,21 @@ function f64 Atan2_f64(f64 x, f64 y);
 function Arena* ArenaReserve(u64 reserve, u64 alignment, b8 growing);
 function void   ArenaRelease(Arena* arena);
 
-// NOTE(long): NZ stands for no zero.
-// There used to be Push functions which won't zero out the memory and PushZero functions which will.
-// Later, it was changed so that Push would zero the memory while PushNoZero(NZ) wouldn't.
+// NOTE(long): NZ stands for no zero. ArenaPush will zero the memory while ArenaPushNZ won't.
 // If zero-on-pop is defined then Push/PushNZ will be the same.
 #ifndef BASE_ZERO_ON_POP
 #define BASE_ZERO_ON_POP 1
 #endif
 
-function void* ArenaPush   (Arena* arena, u64 size);
-function void* ArenaPushNZ (Arena* arena, u64 size);
-function void* ArenaPushEOP(Arena* arena, u64 size);
+function void* ArenaPush  (Arena* arena, u64 size);
+function void* ArenaPushNZ(Arena* arena, u64 size);
+// PS stands for poison, this function will push extra poison bytes at the end to catch buffer overflow
+function void* ArenaPushPS(Arena* arena, u64 size);
 
 function void ArenaPopTo  (Arena* arena, u64 pos);
+function void ArenaPoison (Arena* arena, u64 size);
 function void ArenaAlign  (Arena* arena, u64 alignment);
 function void ArenaAlignNZ(Arena* arena, u64 alignment);
-//function void ArenaDecomTo(Arena* arena, u64 pos); // @RECONSIDER(long)
 
 #define ArenaMake(...) ArenaReserve(DEFAULT_RESERVE_SIZE, DEFAULT_ALIGNMENT, (__VA_ARGS__ + 0))
 #define ArenaPop(arena, amount) ArenaPopTo((arena), (arena)->pos - (amount))
@@ -858,8 +860,9 @@ function void      TempEnd(TempArena temp);
 #define ScratchEnd(scratch) Stmnt(ScratchClear(scratch); ScratchName(scratch) = (TempArena){0}; scratch = 0; \
                                   Concat(_debugVarOf_, scratch);)
 
-#define TempBlock(name, arena) for (TempArena name = TempBegin(arena); name.arena != 0; TempEnd(temp), temp = (TempArena){0})
-#define TempPageBlock(name, arena) for (TempArena name = TempBeginPage(arena); name.arena != 0; TempEndPage(temp), temp = (TempArena){0})
+#define TempBlock(name, arena) for (TempArena name = TempBegin(arena); name.arena != 0; TempEnd(name), name = (TempArena){0})
+#define TempPoisonBlock(name, arena) for (TempArena name = (ArenaPushPS(arena, 0), TempBegin(arena)); name.arena != 0; \
+                                          ArenaPoison(name.arena, name.arena->pos - name.pos), name = (TempArena){0})
 
 #define ScratchBlock(name, ...) struct { i32 i; TempArena temp; } Concat(_i_, __LINE__) = \
     { .temp = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)) }; \

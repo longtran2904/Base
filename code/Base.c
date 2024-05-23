@@ -478,17 +478,16 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         
         u8* ptr = ArenaPtr(arena, arena->pos);
 #if BASE_ZERO_ON_POP
-        MEMORY_BASIC_INFORMATION info;
-        if (VirtualQuery(ptr, &info, sizeof(info)) == sizeof(info))
-        {
-            zeroPos = Min(info.RegionSize, zeroPos);
-        }
-        else Assert("VirtualQuery failed");
         AsanUnpoison(ptr, zeroPos - arena->pos); // unpoison padding causes by alignment
         ZeroMem(ptr, zeroPos - arena->pos);
 #endif
         AsanPoison(ptr, zeroPos - arena->pos);
     }
+}
+
+function void ArenaPoison(Arena* arena, u64 size)
+{
+    AsanPoison(ArenaPtr(arena, arena->pos - size), size);
 }
 
 function void* ArenaPush(Arena* arena, u64 size)
@@ -500,48 +499,14 @@ function void* ArenaPush(Arena* arena, u64 size)
     return result;
 }
 
-function void ArenaDecomTo(Arena* arena, u64 pos)
+function void* ArenaPushPS(Arena* arena, u64 size)
 {
-    if (pos < arena->pos)
-    {
-#if 0
-        u64 nextCommitPos = ClampTop(AlignUpPow2(pos, COMMIT_BLOCK_SIZE), arena->cap);
-        if (nextCommitPos < arena->commitPos)
-            MemDecommit(ArenaPtr(arena, nextCommitPos), arena->commitPos - nextCommitPos);
-#else
-        u64 nextPagePos = ClampTop(AlignUpPow2(pos, BASE_PAGE_SIZE), arena->cap);
-        if (nextPagePos < arena->pos)
-            MemDecommit(ArenaPtr(arena, nextPagePos), arena->pos - nextPagePos);
-#endif
-    }
-}
-
-function void* ArenaPushEOP(Arena* arena, u64 size)
-{
-    /*u64 pos = arena->pos;
-    ArenaAlignNZ(arena, BASE_PAGE_SIZE);
+    void* result = ArenaPush(arena, size ? size + DEFAULT_POISON_SIZE * 2 : DEFAULT_POISON_SIZE);
+    result = (u8*)result + DEFAULT_POISON_SIZE;
+    ArenaPoison(arena, DEFAULT_POISON_SIZE);
     
-    u64 alignedSize = AlignUpPow2(size, BASE_PAGE_SIZE);
-    void* result = ArenaPushNZ(arena, alignedSize + BASE_PAGE_SIZE);
-    if (result)
-    {
-    result = ArenaPtr(result, alignedSize - size);
-    ArenaDecomTo(arena, alignedSize);
-    }
-    else ArenaPopTo(arena, pos);*/
-    
-    u64 oldAlignment = arena->alignment;
-    arena->alignment = BASE_PAGE_SIZE;
-    void* result = 0;
-    if (ArenaPushNZ(arena, size))
-        result = ArenaPushNZ(arena, BASE_PAGE_SIZE);
-    if (result)
-    {
-        result = (u8*)result - size;
-        ArenaDecomTo(arena, arena->pos - BASE_PAGE_SIZE);
-    }
-    arena->alignment = oldAlignment;
-    
+    // TODO(long): Make sure this works with all alignments
+    Assert(AlignUpPow2((uptr)result, arena->alignment) == (uptr)result);
     return result;
 }
 
@@ -568,20 +533,7 @@ function TempArena TempBegin(Arena* arena)
 
 function void TempEnd(TempArena temp)
 {
-    ArenaDecomTo(temp.arena, temp.pos);
     ArenaPopTo(temp.arena, temp.pos);
-}
-
-function TempArena TempBeginPage(Arena* arena)
-{
-    ArenaAlignNZ(arena, BASE_PAGE_SIZE);
-    return (TempArena){ arena, arena->pos };
-}
-
-function void TempEndPage(TempArena temp)
-{
-    ArenaAlignNZ(temp.arena, BASE_PAGE_SIZE);
-    ArenaDecomTo(temp.arena, temp.pos);
 }
 
 threadvar Arena* scratchPool[SCRATCH_POOL_COUNT] = {0};

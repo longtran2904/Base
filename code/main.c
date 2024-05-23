@@ -1,8 +1,8 @@
 #include "DefaultMemory.h"
 #include "Base.h"
 #include "LongOS.h"
-#include "LongOS_Win32.c"
 #include "Base.c"
+#include "LongOS_Win32.c"
 #include <stdio.h>
 
 #define EvalPrint(x)    printf("%s = %d\n", #x, (int)(x))
@@ -784,35 +784,37 @@ int main(void)
     u8* buffer2 = 0;
     TempBlock(temp, arena)
     {
-        buffer1 = ArenaPushEOP(arena, 1000);
-        buffer2 =    ArenaPush(arena, 1000);
-        Assert(buffer2 == (buffer1 + 1000 + BASE_PAGE_SIZE));
+        buffer1 = ArenaPushPS(arena, 1000);
+        buffer2 =   ArenaPush(arena, 1000);
+        Assert(buffer2 == (buffer1 + 1000 + DEFAULT_POISON_SIZE));
+        Assert(buffer2 == (ArenaPtr(arena, temp.pos) + 1000 + DEFAULT_POISON_SIZE * 2));
         
-#if 0
+#if 0 // should crash
         buffer2[1000] = 0;
         buffer1[1000] = 0;
 #endif
     }
-#if 0
+#if 0 // should crash
     buffer1[0] = 0;
 #endif
     
     buffer1 = ArenaPush(arena, 1000);
     u64 offset = 0;
-    TempPageBlock(temp, arena)
+    TempPoisonBlock(temp, arena)
     {
         u8* aPtr = ArenaPush(arena, 50);
         u8* bPtr = ArenaPush(arena, 50);
         u8* cPtr = ArenaPush(arena, 50);
         u8* dPtr = ArenaPush(arena, 50);
         
-        offset = aPtr - buffer1;
+        offset = dPtr - buffer1;
+        Assert(aPtr == buffer1 + AlignUpPow2(1000, arena->alignment) + DEFAULT_POISON_SIZE);
         Assert((uptr)bPtr == AlignUpPow2((uptr)aPtr + 50, arena->alignment));
         Assert((uptr)cPtr == AlignUpPow2((uptr)bPtr + 50, arena->alignment));
         Assert((uptr)dPtr == AlignUpPow2((uptr)cPtr + 50, arena->alignment));
     }
     buffer2 = ArenaPush(arena, 1000);
-    Assert(buffer2 == buffer1 + offset + BASE_PAGE_SIZE);
+    Assert(buffer2 == buffer1 + offset + AlignUpPow2(50, DEFAULT_ALIGNMENT));
     
     EvalPrintU(arena->highWaterMark);
     ArenaRelease(arena);
