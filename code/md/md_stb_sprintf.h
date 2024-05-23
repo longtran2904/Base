@@ -65,24 +65,24 @@ API:
 ====
 int stbsp_sprintf( char * buf, char const * fmt, ... )
 int stbsp_snprintf( char * buf, int count, char const * fmt, ... )
-  Convert an arg list into a buffer.  stbsp_snprintf always returns
-  a zero-terminated string (unlike regular snprintf).
+Convert an arg list into a buffer.  stbsp_snprintf always returns
+a zero-terminated string (unlike regular snprintf).
 
 int stbsp_vsprintf( char * buf, char const * fmt, va_list va )
 int stbsp_vsnprintf( char * buf, int count, char const * fmt, va_list va )
-  Convert a va_list arg list into a buffer.  stbsp_vsnprintf always returns
-  a zero-terminated string (unlike regular snprintf).
+Convert a va_list arg list into a buffer.  stbsp_vsnprintf always returns
+a zero-terminated string (unlike regular snprintf).
 
 int stbsp_vsprintfcb( STBSP_SPRINTFCB * callback, void * user, char * buf, char const * fmt, va_list va )
-    typedef char * STBSP_SPRINTFCB( char const * buf, void * user, int len );
-  Convert into a buffer, calling back every STB_SPRINTF_MIN chars.
-  Your callback can then copy the chars out, print them or whatever.
-  This function is actually the workhorse for everything else.
-  The buffer you pass in must hold at least STB_SPRINTF_MIN characters.
-    // you return the next buffer to use or 0 to stop converting
+typedef char * STBSP_SPRINTFCB( char const * buf, void * user, int len );
+Convert into a buffer, calling back every STB_SPRINTF_MIN chars.
+Your callback can then copy the chars out, print them or whatever.
+This function is actually the workhorse for everything else.
+The buffer you pass in must hold at least STB_SPRINTF_MIN characters.
+// you return the next buffer to use or 0 to stop converting
 
 void stbsp_set_separators( char comma, char period )
-  Set the comma and period characters to use.
+Set the comma and period characters to use.
 
 FLOATS/DOUBLES:
 ===============
@@ -309,31 +309,31 @@ STBSP__PUBLICDEF int STB_SPRINTF_DECORATE(vsprintfcb)(STBSP_SPRINTFCB *callback,
         
         // macros for the callback buffer stuff
 #define stbsp__chk_cb_bufL(bytes)                        \
-{                                                     \
-int len = (int)(bf - buf);                         \
-if ((len + (bytes)) >= STB_SPRINTF_MIN) {          \
-tlen += len;                                    \
-if (0 == (bf = buf = callback(buf, user, len))) \
-goto done;                                   \
-}                                                  \
-}
+    {                                                     \
+        int len = (int)(bf - buf);                         \
+        if ((len + (bytes)) >= STB_SPRINTF_MIN) {          \
+            tlen += len;                                    \
+            if (0 == (bf = buf = callback(buf, user, len))) \
+                goto done;                                   \
+        }                                                  \
+    }
 #define stbsp__chk_cb_buf(bytes)    \
-{                                \
-if (callback) {               \
-stbsp__chk_cb_bufL(bytes); \
-}                             \
-}
+    {                                \
+        if (callback) {               \
+            stbsp__chk_cb_bufL(bytes); \
+        }                             \
+    }
 #define stbsp__flush_cb()                      \
-{                                           \
-stbsp__chk_cb_bufL(STB_SPRINTF_MIN - 1); \
-} // flush if there is even one byte in the buffer
+    {                                           \
+        stbsp__chk_cb_bufL(STB_SPRINTF_MIN - 1); \
+    } // flush if there is even one byte in the buffer
 #define stbsp__cb_buf_clamp(cl, v)                \
-cl = v;                                        \
-if (callback) {                                \
-int lg = STB_SPRINTF_MIN - (int)(bf - buf); \
-if (cl > lg)                                \
-cl = lg;                                 \
-}
+    cl = v;                                        \
+    if (callback) {                                \
+        int lg = STB_SPRINTF_MIN - (int)(bf - buf); \
+        if (cl > lg)                                \
+            cl = lg;                                 \
+    }
         
         // fast copy everything up to the next % (or end of string)
         for (;;) {
@@ -361,7 +361,7 @@ cl = lg;                                 \
                     goto schk2;
                 if (callback)
                     if ((STB_SPRINTF_MIN - (int)(bf - buf)) < 4)
-                    goto schk1;
+                        goto schk1;
 #ifdef STB_SPRINTF_NOUNALIGNED
                 if(((stbsp__uintptr)bf) & 3) {
                     bf[0] = f[0];
@@ -1121,10 +1121,10 @@ cl = lg;                                 \
                 }
                 while (s != o)
                     if ((fl & STBSP__TRIPLET_COMMA) && (l++ == 3)) {
-                    l = 0;
-                    *--s = stbsp__comma;
-                    --o;
-                } else {
+                        l = 0;
+                        *--s = stbsp__comma;
+                        --o;
+                    } else {
                     *--s = '0';
                 }
             }
@@ -1171,25 +1171,25 @@ cl = lg;                                 \
                 // copy leading spaces (or when doing %8.4d stuff)
                 if ((fl & STBSP__LEFTJUST) == 0)
                     while (fw > 0) {
-                    stbsp__cb_buf_clamp(i, fw);
-                    fw -= i;
-                    while (i) {
-                        if ((((stbsp__uintptr)bf) & 3) == 0)
-                            break;
-                        *bf++ = ' ';
-                        --i;
+                        stbsp__cb_buf_clamp(i, fw);
+                        fw -= i;
+                        while (i) {
+                            if ((((stbsp__uintptr)bf) & 3) == 0)
+                                break;
+                            *bf++ = ' ';
+                            --i;
+                        }
+                        while (i >= 4) {
+                            *(stbsp__uint32 *)bf = 0x20202020;
+                            bf += 4;
+                            i -= 4;
+                        }
+                        while (i) {
+                            *bf++ = ' ';
+                            --i;
+                        }
+                        stbsp__chk_cb_buf(1);
                     }
-                    while (i >= 4) {
-                        *(stbsp__uint32 *)bf = 0x20202020;
-                        bf += 4;
-                        i -= 4;
-                    }
-                    while (i) {
-                        *bf++ = ' ';
-                        --i;
-                    }
-                    stbsp__chk_cb_buf(1);
-                }
                 
                 // copy leader
                 sn = lead + 1;
@@ -1306,26 +1306,26 @@ cl = lg;                                 \
             // handle the left justify
             if (fl & STBSP__LEFTJUST)
                 if (fw > 0) {
-                while (fw) {
-                    stbsp__int32 i;
-                    stbsp__cb_buf_clamp(i, fw);
-                    fw -= i;
-                    while (i) {
-                        if ((((stbsp__uintptr)bf) & 3) == 0)
-                            break;
-                        *bf++ = ' ';
-                        --i;
+                    while (fw) {
+                        stbsp__int32 i;
+                        stbsp__cb_buf_clamp(i, fw);
+                        fw -= i;
+                        while (i) {
+                            if ((((stbsp__uintptr)bf) & 3) == 0)
+                                break;
+                            *bf++ = ' ';
+                            --i;
+                        }
+                        while (i >= 4) {
+                            *(stbsp__uint32 *)bf = 0x20202020;
+                            bf += 4;
+                            i -= 4;
+                        }
+                        while (i--)
+                            *bf++ = ' ';
+                        stbsp__chk_cb_buf(1);
                     }
-                    while (i >= 4) {
-                        *(stbsp__uint32 *)bf = 0x20202020;
-                        bf += 4;
-                        i -= 4;
-                    }
-                    while (i--)
-                        *bf++ = ' ';
-                    stbsp__chk_cb_buf(1);
                 }
-            }
             break;
             
             default: // unknown, just copy code
@@ -1480,11 +1480,11 @@ STBSP__PUBLICDEF int STB_SPRINTF_DECORATE(vsprintf)(char *buf, char const *fmt, 
 
 // copies d to bits w/ strict aliasing (this compiles to nothing on /Ox)
 #define STBSP__COPYFP(dest, src)                   \
-{                                               \
-int cn;                                      \
-for (cn = 0; cn < 8; cn++)                   \
-((char *)&dest)[cn] = ((char *)&src)[cn]; \
-}
+    {                                               \
+        int cn;                                      \
+        for (cn = 0; cn < 8; cn++)                   \
+        ((char *)&dest)[cn] = ((char *)&src)[cn]; \
+    }
 
 // get float info
 static stbsp__int32 stbsp__real_to_parts(stbsp__int64 *bits, stbsp__int32 *expo, double value)
@@ -1596,39 +1596,39 @@ static stbsp__uint64 const stbsp__powten[20] = {
 #endif
 
 #define stbsp__ddmulthi(oh, ol, xh, yh)                            \
-{                                                               \
-double ahi = 0, alo, bhi = 0, blo;                           \
-stbsp__int64 bt;                                             \
-oh = xh * yh;                                                \
-STBSP__COPYFP(bt, xh);                                       \
-bt &= ((~(stbsp__uint64)0) << 27);                           \
-STBSP__COPYFP(ahi, bt);                                      \
-alo = xh - ahi;                                              \
-STBSP__COPYFP(bt, yh);                                       \
-bt &= ((~(stbsp__uint64)0) << 27);                           \
-STBSP__COPYFP(bhi, bt);                                      \
-blo = yh - bhi;                                              \
-ol = ((ahi * bhi - oh) + ahi * blo + alo * bhi) + alo * blo; \
-}
+    {                                                               \
+        double ahi = 0, alo, bhi = 0, blo;                           \
+        stbsp__int64 bt;                                             \
+        oh = xh * yh;                                                \
+        STBSP__COPYFP(bt, xh);                                       \
+        bt &= ((~(stbsp__uint64)0) << 27);                           \
+        STBSP__COPYFP(ahi, bt);                                      \
+        alo = xh - ahi;                                              \
+        STBSP__COPYFP(bt, yh);                                       \
+        bt &= ((~(stbsp__uint64)0) << 27);                           \
+        STBSP__COPYFP(bhi, bt);                                      \
+        blo = yh - bhi;                                              \
+        ol = ((ahi * bhi - oh) + ahi * blo + alo * bhi) + alo * blo; \
+    }
 
 #define stbsp__ddtoS64(ob, xh, xl)          \
-{                                        \
-double ahi = 0, alo, vh, t;           \
-ob = (stbsp__int64)ph;                \
-vh = (double)ob;                      \
-ahi = (xh - vh);                      \
-t = (ahi - xh);                       \
-alo = (xh - (ahi - t)) - (vh + t);    \
-ob += (stbsp__int64)(ahi + alo + xl); \
-}
+    {                                        \
+        double ahi = 0, alo, vh, t;           \
+        ob = (stbsp__int64)ph;                \
+        vh = (double)ob;                      \
+        ahi = (xh - vh);                      \
+        t = (ahi - xh);                       \
+        alo = (xh - (ahi - t)) - (vh + t);    \
+        ob += (stbsp__int64)(ahi + alo + xl); \
+    }
 
 #define stbsp__ddrenorm(oh, ol) \
-{                            \
-double s;                 \
-s = oh + ol;              \
-ol = ol - (s - oh);       \
-oh = s;                   \
-}
+    {                            \
+        double s;                 \
+        s = oh + ol;              \
+        ol = ol - (s - oh);       \
+        oh = s;                   \
+    }
 
 #define stbsp__ddmultlo(oh, ol, xh, xl, yh, yl) ol = ol + (xh * yl + xl * yh);
 

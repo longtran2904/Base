@@ -1,8 +1,8 @@
 #include "DefaultMemory.h"
 #include "Base.h"
 #include "LongOS.h"
-#include "Base.c"
 #include "LongOS_Win32.c"
+#include "Base.c"
 #include <stdio.h>
 
 #define EvalPrint(x)    printf("%s = %d\n", #x, (int)(x))
@@ -16,7 +16,7 @@
 #define EvalPrintPtr(x) printf("%s = %p\n", #x, (x))
 #define EvalPrintLine   printf("\n")
 
-#define CODE_PATH 1
+#define CODE_PATH 0
 
 #if CODE_PATH == 0
 typedef struct Test
@@ -732,15 +732,18 @@ int main(void)
     init();
     
     OSRenameFile(StrLit("build/TestDLL.dll"), StrLit("build/NewTestDLL.dll"));
-    
-    FileProperties file = GetFileProperties(StrLit("build/NewTestDLL.dll"));
-    EvalPrintULL(file.createTime);
-    EvalPrintULL(file.modifyTime);
-    EvalPrint(TimeToDate(file.modifyTime).year);
+    {
+        FileProperties file = GetFileProperties(StrLit("build/NewTestDLL.dll"));
+        EvalPrintULL(file.createTime);
+        EvalPrintULL(file.modifyTime);
+        EvalPrint(TimeToDate(file.modifyTime).year);
+    }
+    OSRenameFile(StrLit("build/NewTestDLL.dll"), StrLit("build/TestDLL.dll"));
     
     EvalPrintLine;
     
-    LogBegin(arena, .callback = LogFmtANSIColor);
+    StringList errors = {0};
+    LogBlock(arena, errors,.callback = LogFmtANSIColor)
     {
         LogPush(LOG_TRACE, "Log #%d", LOG_TRACE);
         LogPush(LOG_DEBUG, "Log #%d", LOG_DEBUG);
@@ -766,12 +769,9 @@ int main(void)
         LogPush(LOG_WARN , "Log warn");
         LogPush(LOG_ERROR, "Log error");
         LogPush(LOG_FATAL, "Log fatal");
-        
-        Logger logger = LogEnd();
-        StringList errors = StrListFromLogger(arena, &logger);
-        for (StringNode* node = errors.first; node; node = node->next)
-            printf("%.*s\n", StrExpand(node->string));
     }
+    for (StringNode* node = errors.first; node; node = node->next)
+        printf("%.*s\n", StrExpand(node->string));
     
     EvalPrintLine;
     
@@ -779,6 +779,40 @@ int main(void)
     DateTime now = OSNowUniTime();
     EvalPrint(now.msec);
     EvalPrint(OSToLocTime(&now).msec);
+    
+    u8* buffer1 = 0;
+    u8* buffer2 = 0;
+    TempBlock(temp, arena)
+    {
+        buffer1 = ArenaPushEOP(arena, 1000);
+        buffer2 =    ArenaPush(arena, 1000);
+        Assert(buffer2 == (buffer1 + 1000 + BASE_PAGE_SIZE));
+        
+#if 0
+        buffer2[1000] = 0;
+        buffer1[1000] = 0;
+#endif
+    }
+#if 0
+    buffer1[0] = 0;
+#endif
+    
+    buffer1 = ArenaPush(arena, 1000);
+    u64 offset = 0;
+    TempPageBlock(temp, arena)
+    {
+        u8* aPtr = ArenaPush(arena, 50);
+        u8* bPtr = ArenaPush(arena, 50);
+        u8* cPtr = ArenaPush(arena, 50);
+        u8* dPtr = ArenaPush(arena, 50);
+        
+        offset = aPtr - buffer1;
+        Assert((uptr)bPtr == AlignUpPow2((uptr)aPtr + 50, arena->alignment));
+        Assert((uptr)cPtr == AlignUpPow2((uptr)bPtr + 50, arena->alignment));
+        Assert((uptr)dPtr == AlignUpPow2((uptr)cPtr + 50, arena->alignment));
+    }
+    buffer2 = ArenaPush(arena, 1000);
+    Assert(buffer2 == buffer1 + offset + BASE_PAGE_SIZE);
     
     EvalPrintU(arena->highWaterMark);
     ArenaRelease(arena);
@@ -819,7 +853,7 @@ function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
 				glClearColor(1.f, 0.f, 1.f, 1.f);
 			else if (flags & FLAG_MODE_FULLSCREEN)
 				glClearColor(1.f, 1.f, 0.f, 1.f);
-			else if (window % 2)
+			else if (window % 2 == 0)
                 glClearColor(0, 0, 0, 1);
             else
 				glClearColor(1.0f, 1.0f, 1.0f, 1.f);

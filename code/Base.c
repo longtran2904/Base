@@ -396,18 +396,27 @@ function void* ChangeMemoryNoOp(void* ptr, u64 size) { UNUSED(size); return ptr;
 #define INITIAL_COMMIT KB(4)
 StaticAssert(sizeof(Arena) <= INITIAL_COMMIT, CheckArenaSize);
 
-function Arena* ArenaReserve(u64 reserve)
+function Arena* ArenaReserve(u64 reserve, u64 alignment, b8 growing)
 {
     Arena* result = 0;
     if (reserve >= INITIAL_COMMIT)
     {
         void* memory = MemReserve(reserve);
-        if (MemCommit(memory, INITIAL_COMMIT))
+        if (memory && MemCommit(memory, INITIAL_COMMIT))
         {
+            AsanPoison(memory, reserve);
+            AsanUnpoison(memory, INITIAL_COMMIT);
+            
             result = (Arena*)memory;
-            result->cap = reserve;
-            result->pos = AlignUpPow2(sizeof(Arena), 64);
-            result->commitPos = INITIAL_COMMIT;
+            *result = (Arena)
+            {
+                .alignment = alignment ? alignment : sizeof(iptr),
+                .growing = growing,
+                
+                .pos = AlignUpPow2(sizeof(Arena), 64),
+                .commitPos = INITIAL_COMMIT,
+                .cap = reserve,
+            };
         }
     }
     
@@ -417,6 +426,7 @@ function Arena* ArenaReserve(u64 reserve)
 
 function void ArenaRelease(Arena* arena)
 {
+    AsanPoison(arena, arena->cap);
     MemRelease(arena);
 }
 
@@ -425,22 +435,25 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
     void* result = 0;
     if (arena->pos + size <= arena->cap)
     {
-        result = ((u8*)arena) + arena->pos;
-        arena->pos += size;
+        u64 alignedPos = AlignUpPow2(arena->pos, arena->alignment);
+        result = ArenaPtr(arena, alignedPos);
+        arena->pos = alignedPos + size;
         if (arena->pos > arena->highWaterMark)
             arena->highWaterMark = arena->pos;
         
         if (arena->pos > arena->commitPos)
         {
-            u64 alignedPos = AlignUpPow2(arena->pos, COMMIT_BLOCK_SIZE - 1);
-            u64 nextCommitPos = ClampTop(alignedPos, arena->cap);
+            u64 nextCommitPos = ClampTop(AlignUpPow2(arena->pos, COMMIT_BLOCK_SIZE), arena->cap);
             u64 commitSize = nextCommitPos - arena->commitPos;
             
-            if (MemCommit(((u8*)arena) + arena->commitPos, commitSize))
+            if (MemCommit(ArenaPtr(arena, arena->commitPos), commitSize))
                 arena->commitPos = nextCommitPos;
             else
                 result = 0;
         }
+        
+        if (result)
+            AsanUnpoison(result, size);
     }
     
     Assert(result != 0);
@@ -451,21 +464,30 @@ function void ArenaPopTo(Arena* arena, u64 pos)
 {
     if (pos < arena->pos)
     {
+        u64 zeroPos = arena->pos;
         arena->pos = pos;
         
-        u64 alignedPos = AlignUpPow2(arena->pos, COMMIT_BLOCK_SIZE - 1);
-        u64 nextCommitPos = ClampTop(alignedPos, arena->cap);
+        u64 nextCommitPos = ClampTop(AlignUpPow2(arena->pos, COMMIT_BLOCK_SIZE), arena->cap);
+        zeroPos = Min(nextCommitPos, zeroPos);
         
         if (nextCommitPos < arena->commitPos)
         {
-            u64 decommitSize = arena->commitPos - nextCommitPos;
-            MemDecommit(arena + nextCommitPos, decommitSize);
+            MemDecommit(ArenaPtr(arena, nextCommitPos), arena->commitPos - nextCommitPos);
             arena->commitPos = nextCommitPos;
         }
         
+        u8* ptr = ArenaPtr(arena, arena->pos);
 #if BASE_ZERO_ON_POP
-        ZeroMem(((u8*)arena) + arena->pos, arena->commitPos - arena->pos);
+        MEMORY_BASIC_INFORMATION info;
+        if (VirtualQuery(ptr, &info, sizeof(info)) == sizeof(info))
+        {
+            zeroPos = Min(info.RegionSize, zeroPos);
+        }
+        else Assert("VirtualQuery failed");
+        AsanUnpoison(ptr, zeroPos - arena->pos); // unpoison padding causes by alignment
+        ZeroMem(ptr, zeroPos - arena->pos);
 #endif
+        AsanPoison(ptr, zeroPos - arena->pos);
     }
 }
 
@@ -478,20 +500,65 @@ function void* ArenaPush(Arena* arena, u64 size)
     return result;
 }
 
-function void ArenaAlignNZ(Arena* arena, u64 alignment)
+function void ArenaDecomTo(Arena* arena, u64 pos)
 {
-    u64 alignedPos = AlignUpPow2(arena->pos, alignment);
-    u64 size = alignedPos - arena->pos;
-    if (size > 0)
-        ArenaPushNZ(arena, size);
+    if (pos < arena->pos)
+    {
+#if 0
+        u64 nextCommitPos = ClampTop(AlignUpPow2(pos, COMMIT_BLOCK_SIZE), arena->cap);
+        if (nextCommitPos < arena->commitPos)
+            MemDecommit(ArenaPtr(arena, nextCommitPos), arena->commitPos - nextCommitPos);
+#else
+        u64 nextPagePos = ClampTop(AlignUpPow2(pos, BASE_PAGE_SIZE), arena->cap);
+        if (nextPagePos < arena->pos)
+            MemDecommit(ArenaPtr(arena, nextPagePos), arena->pos - nextPagePos);
+#endif
+    }
 }
 
-function void  ArenaAlign(Arena* arena, u64 aligment)
+function void* ArenaPushEOP(Arena* arena, u64 size)
 {
-    u64 alignedPos = AlignUpPow2(arena->pos, aligment);
-    u64 size = alignedPos - arena->pos;
-    if (size > 0)
-        ArenaPush(arena, size);
+    /*u64 pos = arena->pos;
+    ArenaAlignNZ(arena, BASE_PAGE_SIZE);
+    
+    u64 alignedSize = AlignUpPow2(size, BASE_PAGE_SIZE);
+    void* result = ArenaPushNZ(arena, alignedSize + BASE_PAGE_SIZE);
+    if (result)
+    {
+    result = ArenaPtr(result, alignedSize - size);
+    ArenaDecomTo(arena, alignedSize);
+    }
+    else ArenaPopTo(arena, pos);*/
+    
+    u64 oldAlignment = arena->alignment;
+    arena->alignment = BASE_PAGE_SIZE;
+    void* result = 0;
+    if (ArenaPushNZ(arena, size))
+        result = ArenaPushNZ(arena, BASE_PAGE_SIZE);
+    if (result)
+    {
+        result = (u8*)result - size;
+        ArenaDecomTo(arena, arena->pos - BASE_PAGE_SIZE);
+    }
+    arena->alignment = oldAlignment;
+    
+    return result;
+}
+
+function void ArenaAlignNZ(Arena* arena, u64 alignment)
+{
+    u64 oldAlignment = arena->alignment;
+    arena->alignment = alignment;
+    ArenaPushNZ(arena, 0);
+    arena->alignment = oldAlignment;
+}
+
+function void ArenaAlign(Arena* arena, u64 alignment)
+{
+    u8* start = ArenaPtr(arena, arena->pos);
+    ArenaAlignNZ(arena, alignment);
+    u8* end = ArenaPtr(arena, arena->pos);
+    ZeroMem(start, end - start);
 }
 
 function TempArena TempBegin(Arena* arena)
@@ -501,7 +568,20 @@ function TempArena TempBegin(Arena* arena)
 
 function void TempEnd(TempArena temp)
 {
+    ArenaDecomTo(temp.arena, temp.pos);
     ArenaPopTo(temp.arena, temp.pos);
+}
+
+function TempArena TempBeginPage(Arena* arena)
+{
+    ArenaAlignNZ(arena, BASE_PAGE_SIZE);
+    return (TempArena){ arena, arena->pos };
+}
+
+function void TempEndPage(TempArena temp)
+{
+    ArenaAlignNZ(temp.arena, BASE_PAGE_SIZE);
+    ArenaDecomTo(temp.arena, temp.pos);
 }
 
 threadvar Arena* scratchPool[SCRATCH_POOL_COUNT] = {0};
@@ -512,7 +592,7 @@ function TempArena GetScratch(Arena** conflictArray, u32 count)
     {
         Arena** scratchSlot = pool;
         for (u64 i = 0; i < SCRATCH_POOL_COUNT; ++i, ++scratchSlot)
-            *scratchSlot = ArenaMake();
+            *scratchSlot = ArenaMake(1);
     }
     
     TempArena result = {0};
@@ -716,13 +796,13 @@ function String StrPushfv(Arena* arena, char* fmt, va_list args)
     if (allocSize <= bufferSize)
     {
         // if first try worked, put back the remaining
-        ArenaPopAmount(arena, bufferSize - allocSize);
+        ArenaPop(arena, bufferSize - allocSize);
         result = Str(buffer, size);
     }
     else
     {
         // if first try failed, reset and try again with the correct size
-        ArenaPopAmount(arena, bufferSize);
+        ArenaPop(arena, bufferSize);
         u8* newBuffer = PushArray(arena, u8, allocSize);
         stbsp_vsnprintf((char*)newBuffer, allocSize, fmt, args2);
         result = Str(newBuffer, size);
@@ -834,7 +914,7 @@ function String StrJoinList(Arena* arena, StringList* list, StringJoin* join)
     return (String){ str, size };
 }
 
-function String StrJoin3_(Arena* arena, StringJoin* join)
+function String StrJoinMax3(Arena* arena, StringJoin* join)
 {
     StringList list = {0};
     StringNode pre, mid, post;
@@ -1264,7 +1344,7 @@ function String32 StrToStr32(Arena* arena, String str)
     *dptr = 0;
     
     u64 size = (u64)(dptr - memory);
-    ArenaPopAmount(arena, (expectedSize - size) * sizeof(*memory));
+    ArenaPop(arena, (expectedSize - size) * sizeof(*memory));
     return (String32){ memory, size };
 }
 
@@ -1287,7 +1367,7 @@ function String16 StrToStr16(Arena* arena, String str)
     *dptr = 0;
     
     u64 size = (u64)(dptr - memory);
-    ArenaPopAmount(arena, (expectedSize - size) * sizeof(*memory));
+    ArenaPop(arena, (expectedSize - size) * sizeof(*memory));
     return (String16){ memory, size };
 }
 
@@ -1306,7 +1386,7 @@ function String StrFromStr32(Arena* arena, String32 str)
     *dptr = 0;
     
     u64 size = (u64)(dptr - memory);
-    ArenaPopAmount(arena, (expectedSize - size) * sizeof(*memory));
+    ArenaPop(arena, (expectedSize - size) * sizeof(*memory));
     return(String){ memory, size };
 }
 
@@ -1326,7 +1406,7 @@ function String StrFromStr16(Arena* arena, String16 str)
     *dptr = 0;
     
     u64 size = (u64)(dptr - memory);
-    ArenaPopAmount(arena, (expectedSize - size) * sizeof(*memory));
+    ArenaPop(arena, (expectedSize - size) * sizeof(*memory));
     return(String){ memory, size };
 }
 
@@ -1546,7 +1626,6 @@ typedef struct LOG_List LOG_List;
 struct LOG_List
 {
     LOG_List* next;
-    Arena* arena;
     LOG_Node* first;
     LOG_Node* last;
     u64 count;
@@ -1562,25 +1641,29 @@ struct LOG_Thread
 
 threadvar LOG_Thread logThread = {0};
 
-function void LogBeginEx(Arena* arena, LogInfo info)
+function void LogBeginEx(LogInfo info)
 {
     if (!logThread.arena)
-        logThread.arena = ArenaReserve(KB(4));
+        logThread.arena = ArenaReserve(KB(4), 1, 1);
     LOG_List* list = PushStruct(logThread.arena, LOG_List);
-    *list = (LOG_List){ .arena = arena, .info = info };
+    *list = (LOG_List){ .info = info };
     SLLStackPush(logThread.stack, list);
 }
 
-function Logger LogEnd(void)
+function Logger LogEnd(Arena* arena)
 {
     Logger result = {0};
     LOG_List* list = logThread.stack;
     if (list)
     {
-        result.records = PushArrayNZ(list->arena, Record, list->count);
+        result.records = PushArrayNZ(arena, Record, list->count);
         result.info = list->info;
+        
         for (LOG_Node* node = list->first; node; node = node->next)
+        {
+            node->record.log = StrCopy(arena, node->record.log);
             result.records[result.count++] = node->record;
+        }
         
         SLLStackPop(logThread.stack);
         ArenaPopTo(logThread.arena, (u8*)list - (u8*)logThread.arena);
@@ -1652,7 +1735,7 @@ function void LogPushf(i32 level, char* file, i32 line, char* fmt, ...)
         
         va_list args;
         va_start(args, fmt);
-        list->info.callback(list->arena, &node->record, fmt, args);
+        list->info.callback(logThread.arena, &node->record, fmt, args);
         va_end(args);
     }
 }

@@ -283,17 +283,30 @@
 
 #if COMPILER_CL
 #define threadvar __declspec(thread)
-#elif COMPILER_CLANG
+#elif COMPILER_GCC || COMPILER_CLANG
 #define threadvar __thread
 #else
-#error threadvar defined for this compiler
+#error threadvar is not defined for this compiler
 #endif
 
 #if COMPILER_CL
 #define libexport __declspec(dllexport)
 #define libimport __declspec(dllimport)
+#elif COMPILER_GCC || COMPILER_CLANG
+#define libexport __attribute__ ((visibility ("default")))
+#define libimport
 #else
 #error libexport and libimport are not defined for this compiler
+#endif
+
+#if COMPILER_CL
+#define AlignOf __alignof
+#define AlignAs(alignment) __declspec(align(alignment))
+#elif COMPILER_GCC || COMPILER_CLANG
+#define AlignOf __alignof__
+#define AlignAs(alignment) __attribute__(aligned(alignment))
+#else
+#error AlignOf and AlignAs are not defined for this compiler
 #endif
 
 #include <string.h> // TODO(long): Replace memset, memcpy, and memcmp
@@ -310,6 +323,18 @@
 
 #define CompareMem(a, b, size) (memcmp((a), (b), (size)) == 0)
 #define CompareArr(a, b) CompareMem((a), (b), Min(ArrayCount(a) * sizeof(*(a)), ArrayCount(b) * sizeof(*(b))))
+
+#if __SANITIZE_ADDRESS__
+#include <sanitizer/asan_interface.h>
+#endif
+
+#if __SANITIZE_ADDRESS__
+#define AsanPoison(p,z)   __asan_poison_memory_region((p),(z))
+#define AsanUnpoison(p,z) __asan_unpoison_memory_region((p),(z))
+#else
+#define AsanPoison(p,z)
+#define AsanUnpoison(p,z)
+#endif
 
 #define C4(str) (*(u32*)(str))
 #define ExpandC4(x) (i32)(sizeof(x)), (i8*)(&(x))
@@ -617,9 +642,17 @@ struct FileProperties
 typedef struct Arena Arena;
 struct Arena
 {
-    u64 cap;
+    Arena* prev;
+    Arena* curr;
+    
+    u64 alignment;
+    b8 growing; // b8 eop
+    b8 padding[7];
+    
+    u64 base_pos;
     u64 pos;
     u64 commitPos;
+    u64 cap;
     u64 highWaterMark;
 };
 
@@ -631,10 +664,16 @@ struct TempArena
 };
 
 #ifndef DEFAULT_RESERVE_SIZE
-#define DEFAULT_RESERVE_SIZE KB(64)
+#define DEFAULT_RESERVE_SIZE MB(64)
 #endif
 #ifndef COMMIT_BLOCK_SIZE
 #define COMMIT_BLOCK_SIZE KB(64)
+#endif
+#ifndef BASE_PAGE_SIZE
+#define BASE_PAGE_SIZE KB(4)
+#endif
+#ifndef DEFAULT_ALIGNMENT
+#define DEFAULT_ALIGNMENT sizeof(uptr)
 #endif
 
 #define SCRATCH_POOL_COUNT 4
@@ -776,7 +815,7 @@ function f64 Atan2_f64(f64 x, f64 y);
 
 //~ NOTE(long): Arena Functions
 
-function Arena* ArenaReserve(u64 reserve);
+function Arena* ArenaReserve(u64 reserve, u64 alignment, b8 growing);
 function void   ArenaRelease(Arena* arena);
 
 // NOTE(long): NZ stands for no zero.
@@ -787,15 +826,19 @@ function void   ArenaRelease(Arena* arena);
 #define BASE_ZERO_ON_POP 1
 #endif
 
-function void* ArenaPushNZ(Arena* arena, u64 size);
-function void  ArenaPopTo (Arena* arena, u64 pos );
-
-#define ArenaMake() ArenaReserve(DEFAULT_RESERVE_SIZE)
-#define ArenaPopAmount(arena, amount) ArenaPopTo((arena), (arena)->pos - (amount))
-
 function void* ArenaPush   (Arena* arena, u64 size);
-function void  ArenaAlign  (Arena* arena, u64 aligment);
-function void  ArenaAlignNZ(Arena* arena, u64 alignment);
+function void* ArenaPushNZ (Arena* arena, u64 size);
+function void* ArenaPushEOP(Arena* arena, u64 size);
+
+function void ArenaPopTo  (Arena* arena, u64 pos);
+function void ArenaAlign  (Arena* arena, u64 alignment);
+function void ArenaAlignNZ(Arena* arena, u64 alignment);
+//function void ArenaDecomTo(Arena* arena, u64 pos); // @RECONSIDER(long)
+
+#define ArenaMake(...) ArenaReserve(DEFAULT_RESERVE_SIZE, DEFAULT_ALIGNMENT, (__VA_ARGS__ + 0))
+#define ArenaPop(arena, amount) ArenaPopTo((arena), (arena)->pos - (amount))
+
+#define ArenaPtr(arena, pos) ((u8*)(arena) + (pos))
 
 #define   PushStruct(arena, type)        (type*)  ArenaPush((arena), sizeof(type))
 #define PushStructNZ(arena, type)        (type*)ArenaPushNZ((arena), sizeof(type))
@@ -816,6 +859,7 @@ function void      TempEnd(TempArena temp);
                                   Concat(_debugVarOf_, scratch);)
 
 #define TempBlock(name, arena) for (TempArena name = TempBegin(arena); name.arena != 0; TempEnd(temp), temp = (TempArena){0})
+#define TempPageBlock(name, arena) for (TempArena name = TempBeginPage(arena); name.arena != 0; TempEndPage(temp), temp = (TempArena){0})
 
 #define ScratchBlock(name, ...) struct { i32 i; TempArena temp; } Concat(_i_, __LINE__) = \
     { .temp = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)) }; \
@@ -883,8 +927,9 @@ function String StrRepeat(Arena* arena, String str, u64 count);
 function String ChrRepeat(Arena* arena, char   chr, u64 count);
 
 function String StrJoinList(Arena* arena, StringList* list, StringJoin* join);
+function String StrJoinMax3(Arena* arena, StringJoin* join);
 #define StrJoin(arena, list, ...) StrJoinList((arena), (list), &(StringJoin){ .pre = {0}, .mid = {0}, .post = {0}, __VA_ARGS__ })
-#define StrJoin3(arena, ...) StrJoin3_((arena), &(StringJoin){ __VA_ARGS__ })
+#define StrJoin3(arena, ...) StrJoinMax3((arena), &(StringJoin){ __VA_ARGS__ })
 
 function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringSplitFlags flags);
 function StringList StrSplitArr (Arena* arena, String str, String      splits, StringSplitFlags flags);
@@ -1012,9 +1057,12 @@ struct Logger
     LogInfo info;
 };
 
-#define LogBegin(arena, ...) LogBeginEx((arena), (LogInfo){ .callback = LogFmtStd, __VA_ARGS__ })
-function void   LogBeginEx(Arena* arena, LogInfo info);
-function Logger LogEnd(void);
+#define LogBegin(...) LogBeginEx((LogInfo){ .callback = LogFmtStd, __VA_ARGS__ })
+#define LogBlock(arena, list, ...) for (struct { i32 i; Logger logger; } dummy = { (LogBegin(__VA_ARGS__), 0) }; \
+                                        dummy.i == 0; \
+                                        (dummy.i = 1, dummy.logger = LogEnd(arena), list = StrListFromLogger(arena, &dummy.logger)))
+function void   LogBeginEx(LogInfo info);
+function Logger LogEnd(Arena* arena);
 function StringList StrListFromLogger(Arena* arena, Logger* logger);
 
 function LogInfo* LogGetInfo(void);
@@ -1023,8 +1071,8 @@ function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list a
 function void LogPushf(i32 level, char* file, i32 line, char* fmt, ...);
 #define LogPush(level, log, ...) LogPushf((level), __FILE__, __LINE__, (log), __VA_ARGS__)
 
-#define ErrorBegin(arena, ...) LogBegin(arena, .level = LOG_ERROR, __VA_ARGS__)
-#define ErrorEnd() LogEnd()
+#define ErrorBegin(...) LogBegin(.level = LOG_ERROR, __VA_ARGS__)
+#define ErrorEnd(arena) LogEnd(arena)
 #define ErrorSet(error, errno) ((errno) = 1, ErrorFmt(error))
 #define ErrorFmt(error, ...) LogPush(LOG_ERROR, error, __VA_ARGS__)
 

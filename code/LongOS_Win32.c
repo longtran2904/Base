@@ -72,24 +72,45 @@ CryptReleaseContext
 
 function void* OSReserve(u64 size)
 {
-    void * result = VirtualAlloc(0, size, MEM_RESERVE, PAGE_READWRITE);
+    // NOTE(long): Afaik, PAGE_XXX only matters when you MEM_COMMIT the memory
+    // so when you MEM_RESERVE the memory, you can pass in any PAGE_XXX as you want
+    // as long as it's valid (non-zero and a valid PAGE_XXX).
+    void* result = VirtualAlloc(0, size, MEM_RESERVE, PAGE_NOACCESS);
+    if (!result)
+    {
+        DWORD error = GetLastError();
+        ErrorFmt("Failed to reserve memory: %d", error);
+    }
     return result;
 }
 
 function b32 OSCommit(void* ptr, u64 size)
 {
     b32 result = VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE) != 0;
+    if (!result)
+    {
+        DWORD error = GetLastError();
+        ErrorFmt("Failed to commit memory: %d", error);
+    }
     return result;
 }
 
 function void OSDecommit(void* ptr, u64 size)
 {
-    VirtualFree(ptr, size, MEM_DECOMMIT);
+    if (!VirtualFree(ptr, size, MEM_DECOMMIT))
+    {
+        DWORD error = GetLastError();
+        ErrorFmt("Failed to decommit memory: %d", error);
+    }
 }
 
 function void OSRelease(void* ptr)
 {
-    VirtualFree(ptr, 0, MEM_RELEASE);
+    if (!VirtualFree(ptr, 0, MEM_RELEASE))
+    {
+        DWORD error = GetLastError();
+        ErrorFmt("Failed to release memory: %d", error);
+    }
 }
 
 //~ NOTE(long): Global Variables

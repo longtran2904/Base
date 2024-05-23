@@ -37,17 +37,21 @@ REM GR Enable RTTI
 REM EH Enables standard C++ stack unwinding
 REM WL Enable One-Line Diagnostics (appends additional information to an error or warning message)
 
-set opts=-FC -GR- -EHa- -WL -nologo -Zi %warns%
+set opts=-FC -GR- -EHa- -WL -nologo -Zi /fsanitize=address %warns%
 if [%1]==[release] set opts=%opts% -O2
 
 set code=%cd%
+set MyVS=D:\Programs\BuildTools\VC\Tools\MSVC\14.39.33519
 set links=-incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
+REM set links=%links% /wholearchive:%MyVS%\lib\x64\clang_rt.asan_dynamic-x86_64.lib
 
 IF NOT EXIST build mkdir build
 pushd build
 
 del *.pdb > NUL 2> NUL
 del *.lib > NUL 2> NUL
+del *.exe > NUL 2> NUL
+del *.dll > NUL 2> NUL
 
 cl %opts% %code%\code\TestDLL.c -FeTestDLL.dll /LD
 cl %opts% %code%\code\main.c    -Femain.exe -link %links% TestDLL.lib
