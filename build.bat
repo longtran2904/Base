@@ -31,19 +31,19 @@ set warns=%warns% /wd4100
 set warns=%warns% /wd4189
 REM set warns=%warns% /wd4101
 set warns=%warns% /wd4706
+set warns=%warns% /wd6298 /wd28301 /wd6250 /wd6334 /wd6326 /wd28182 /wd4116 /wd28251
+REM set warns=%warns% /analyze
 
 REM FC Full path of source code file in diagnostics
 REM GR Enable RTTI
 REM EH Enables standard C++ stack unwinding
 REM WL Enable One-Line Diagnostics (appends additional information to an error or warning message)
 
-set opts=-FC -GR- -EHa- -WL -nologo -Zi /fsanitize=address %warns%
-if [%1]==[release] set opts=%opts% -O2
+set opts=/FC /GR- /EHa- /WL /nologo /Zi /fsanitize=address %warns%
+if [%1]==[release] set opts=%opts% /O2
 
 set code=%cd%
-set MyVS=D:\Programs\BuildTools\VC\Tools\MSVC\14.39.33519
-set links=-incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
-REM set links=%links% /wholearchive:%MyVS%\lib\x64\clang_rt.asan_dynamic-x86_64.lib
+set links=/incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
 
 IF NOT EXIST build mkdir build
 pushd build
@@ -53,14 +53,17 @@ del *.lib > NUL 2> NUL
 del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
 
-cl %opts% %code%\code\TestDLL.c -FeTestDLL.dll /LD
-cl %opts% %code%\code\main.c    -Femain.exe -link %links% TestDLL.lib
-cl %opts% %code%\code\TestDLL.c -FeTestDLL.dll /LD -link main.lib
+set opts=%opts% /I%code%\code
 
-REM cl %opts% %code%\code\D3D11_Example.c -Fed3d11_exp.exe -link %links%
-REM cl %opts% %code%\code\LongCompressor.c -Fecompressor.exe -link %links%
-REM cl %opts% %code%\code\Meta.c -FeMeta.exe -link %links%
-REM cl %opts% -E -C %code%\code\MetaTest.c >> %code%\code\generated\MetaTest.c
+cl %opts% %code%\code\examples\test_base.c /Fetest_base.exe /link %links%
+cl %opts% %code%\code\examples\demo_gfx.c  /Fedemo_gfx.exe /link %links%
+cl %opts% %code%\code\examples\demo.c      /Fedemo.exe /link %links%
+cl %opts% %code%\code\examples\parser.c    /Feparser.exe /link %links%
+cl %opts% %code%\code\examples\TestDLL.c   /FeTestDLL.dll /LD
+
+REM cl %opts% %code%\code\retired\D3D11_Example.c /Fed3d11_exp.exe /link %links%
+REM cl %opts% %code%\code\retired\LongCompressor.c /Fecompressor.exe /link %links%
+REM cl %opts% %code%\code\retired\Meta.c /FeMeta.exe /link %links%
 
 del *.obj > NUL 2> NUL
 del *.ilk > NUL 2> NUL

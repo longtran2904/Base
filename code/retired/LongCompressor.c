@@ -1,4 +1,4 @@
-#define DEFAULT_RESERVE_SIZE MB(64)
+#define MEM_DEFAULT_RESERVE_SIZE MB(64)
 #include "DefaultMemory.h"
 #include "Base.h"
 #include "LongOS.h"
@@ -142,7 +142,7 @@ function u8* HashBlockPattern(PatternTable* table, u8* pattern)
 int main(int argc, char** argv)
 {
     OSInit(argc, argv);
-    Arena* arena = ArenaReserve(GB(1));
+    Arena* arena = ArenaReserve(GB(1), MEM_DEFAULT_ALIGNMENT, 0);
     
     StringList args = OSCmdArgs();;
     if (args.nodeCount != 2)

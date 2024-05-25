@@ -21,9 +21,9 @@ global String Arch_names[] =
 global String OS_names[] =
 {
     StrConst("None"),
-    StrConst("Win"),
-    StrConst("Linux"),
-    StrConst("Mac"),
+    StrConst("WIN"),
+    StrConst("LINUX"),
+    StrConst("MAC"),
 };
 
 global String Month_names[] =
@@ -137,7 +137,7 @@ function f32 NegInf_f32(void)
     return *(f32*)&u;
 }
 
-function b32 InfOfNan_f32(f32 x)
+function b32 InfOrNan_f32(f32 x)
 {
     u32 u = *(u32*)&x;
     return (u & 0x7f800000) == 0x7f800000;
@@ -159,10 +159,10 @@ function f64 NegInf_f64(void)
     return *(f64*)&u;
 }
 
-function b64 InfOfNan_f64(f64 x)
+function b32 InfOrNan_f64(f64 x)
 {
     u64 u = *(u64*)&x;
-    return (u & 0xff800000) == 0xff800000;
+    return (u & 0x7ff0000000000000) == 0x7ff0000000000000;
 }
 
 //- NOTE(long): Numeric Functions
@@ -181,13 +181,13 @@ function f32 Abs_f32(f32 x)
 {
     u32 u = *(u32*)&x;
     u &= 0x7fffffff;
-    return x;
+    return *(f32*)&u;
 }
 function f64 Abs_f64(f64 x)
 {
     u64 u = *(u64*)&x;
     u &= 0x7fffffffffffffff; // 1 + epsilon != 1
-    return x;
+    return *(f64*)&u;
 }
 
 #ifdef __SSE4__
@@ -319,6 +319,13 @@ function f64 FrExp_f64(f64 x, i32* exp) { return frexp (x, exp); }
 
 //~ NOTE(long): PRNG Functions
 
+function RNG GetRNG(void)
+{
+    RNG result = {0};
+    OSGetEntropy(&result, sizeof(result));
+    return result;
+}
+
 function u32 Noise1D(u32 pos, u32 seed)
 {
     u32 result = pos;
@@ -392,29 +399,29 @@ function DenseTime TimeToDense(DateTime* time)
 //~ NOTE(long): Arena Functions
 
 function void* ChangeMemoryNoOp(void* ptr, u64 size) { UNUSED(size); return ptr; }
-
-#define INITIAL_COMMIT KB(4)
-StaticAssert(sizeof(Arena) <= INITIAL_COMMIT, CheckArenaSize);
+StaticAssert(sizeof(Arena) <= MEM_INITIAL_COMMIT, CheckArenaSize);
 
 function Arena* ArenaReserve(u64 reserve, u64 alignment, b8 growing)
 {
     Arena* result = 0;
-    if (reserve >= INITIAL_COMMIT)
+    if (reserve >= MEM_INITIAL_COMMIT)
     {
         void* memory = MemReserve(reserve);
-        if (memory && MemCommit(memory, INITIAL_COMMIT))
+        if (memory && MemCommit(memory, MEM_INITIAL_COMMIT))
         {
             AsanPoison(memory, reserve);
-            AsanUnpoison(memory, INITIAL_COMMIT);
+            AsanUnpoison(memory, MEM_INITIAL_COMMIT);
             
             result = (Arena*)memory;
             *result = (Arena)
             {
+                .curr = result,
+                
                 .alignment = alignment ? alignment : sizeof(iptr),
                 .growing = growing,
                 
-                .pos = AlignUpPow2(sizeof(Arena), 64),
-                .commitPos = INITIAL_COMMIT,
+                .pos = AlignUpPow2(sizeof(Arena), alignment),
+                .commitPos = MEM_INITIAL_COMMIT,
                 .cap = reserve,
             };
         }
@@ -426,34 +433,78 @@ function Arena* ArenaReserve(u64 reserve, u64 alignment, b8 growing)
 
 function void ArenaRelease(Arena* arena)
 {
-    AsanPoison(arena, arena->cap);
-    MemRelease(arena);
+    for (Arena* ptr = arena->curr; ptr;)
+    {
+        Arena* prev = ptr->prev;
+        AsanPoison(ptr, ptr->cap);
+        MemRelease(ptr);
+        ptr = prev;
+    }
 }
 
 function void* ArenaPushNZ(Arena* arena, u64 size)
 {
     void* result = 0;
-    if (arena->pos + size <= arena->cap)
+    Arena* current = arena->curr;
+    Assert(current->alignment <= ARCH_ALLOC_GRANULARITY);
+    u64 alignedPos = AlignUpPow2(current->pos, current->alignment);
+    
+    // allocate new chunk if necessary
+    if (current->growing)
     {
-        u64 alignedPos = AlignUpPow2(arena->pos, arena->alignment);
-        result = ArenaPtr(arena, alignedPos);
-        arena->pos = alignedPos + size;
-        if (arena->pos > arena->highWaterMark)
-            arena->highWaterMark = arena->pos;
-        
-        if (arena->pos > arena->commitPos)
+        if (alignedPos + size > current->cap)
         {
-            u64 nextCommitPos = ClampTop(AlignUpPow2(arena->pos, COMMIT_BLOCK_SIZE), arena->cap);
-            u64 commitSize = nextCommitPos - arena->commitPos;
+            u64 minSize = AlignUpPow2(sizeof(Arena), current->alignment);
+            u64 newSize = AlignUpPow2(size + minSize, current->alignment);
+            u64 newReserveSize = Max(current->cap, newSize);
             
-            if (MemCommit(ArenaPtr(arena, arena->commitPos), commitSize))
-                arena->commitPos = nextCommitPos;
-            else
-                result = 0;
+            void* memory = MemReserve(newReserveSize);
+            if (MemCommit(memory, MEM_INITIAL_COMMIT))
+            {
+                AsanPoison(memory, newReserveSize);
+                AsanUnpoison(memory, minSize);
+                Arena* new_chunk = (Arena*)memory;
+                *new_chunk = (Arena)
+                {
+                    .prev = current,
+                    .curr = new_chunk,
+                    
+                    .alignment = current->alignment,
+                    .growing = 1,
+                    
+                    .basePos = ArenaPos(current, current->cap),
+                    .pos = minSize,
+                    .commitPos = MEM_INITIAL_COMMIT,
+                    .cap = newReserveSize,
+                };
+                
+                current = arena->curr = new_chunk;
+                alignedPos = AlignUpPow2(current->pos, current->alignment);
+            }
+        }
+    }
+    
+    u64 nextPos = alignedPos + size;
+    if (nextPos <= current->cap)
+    {
+        if (nextPos > current->highWaterMark)
+            current->highWaterMark = nextPos;
+        
+        if (nextPos > current->commitPos)
+        {
+            u64 nextCommitPos = ClampTop(AlignUpPow2(nextPos, MEM_COMMIT_BLOCK_SIZE), current->cap);
+            u64 commitSize = nextCommitPos - current->commitPos;
+            
+            if (MemCommit(PtrAdd(current, current->commitPos), commitSize))
+                current->commitPos = nextCommitPos;
         }
         
-        if (result)
+        if (nextPos <= current->commitPos)
+        {
+            result = PtrAdd(current, alignedPos);
+            current->pos = nextPos;
             AsanUnpoison(result, size);
+        }
     }
     
     Assert(result != 0);
@@ -462,32 +513,45 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
 
 function void ArenaPopTo(Arena* arena, u64 pos)
 {
-    if (pos < arena->pos)
+    Arena* current = arena->curr;
+    
+    Assert(pos <= ArenaCurrPos(current));
+    // if (pos < ArenaCurrPos(current))
     {
-        u64 zeroPos = arena->pos;
-        arena->pos = pos;
+        u64 clampedPos = ClampBot(pos, sizeof(Arena));
+        u64 nextCommitPos = ClampTop(AlignUpPow2(clampedPos, MEM_COMMIT_BLOCK_SIZE), ArenaPos(current, current->cap));
         
-        u64 nextCommitPos = ClampTop(AlignUpPow2(arena->pos, COMMIT_BLOCK_SIZE), arena->cap);
-        zeroPos = Min(nextCommitPos, zeroPos);
-        
-        if (nextCommitPos < arena->commitPos)
+        while (nextCommitPos <= current->basePos)
         {
-            MemDecommit(ArenaPtr(arena, nextCommitPos), arena->commitPos - nextCommitPos);
-            arena->commitPos = nextCommitPos;
+            Arena* prev = current->prev;
+            u64 cap = current->cap;
+            MemDecommit(current, cap); // NOTE(long): Maybe MemRelease
+            AsanPoison (current, cap); // NOTE(long): Do I need to poison the decommitted memory?
+            current = prev;
         }
         
-        u8* ptr = ArenaPtr(arena, arena->pos);
+        if (nextCommitPos < current->commitPos)
+        {
+            MemDecommit(PtrAdd(current, nextCommitPos), current->commitPos - nextCommitPos);
+            AsanPoison (PtrAdd(current, nextCommitPos), current->commitPos - nextCommitPos);
+            current->commitPos = nextCommitPos;
+        }
+        
+        arena->curr = current;
+        
+        u64 newPos = clampedPos - current->basePos;
+        // current->pos is still the old pos at the start and hasn't been modified
+        u64 zeroSize = Min(nextCommitPos, current->pos) - newPos;
+        u8* ptr = PtrAdd(current, newPos);
+        
 #if BASE_ZERO_ON_POP
-        AsanUnpoison(ptr, zeroPos - arena->pos); // unpoison padding causes by alignment
-        ZeroMem(ptr, zeroPos - arena->pos);
+        AsanUnpoison(ptr, zeroSize); // unpoison padding causes by alignment
+        ZeroMem(ptr, zeroSize);
 #endif
-        AsanPoison(ptr, zeroPos - arena->pos);
+        
+        AsanPoison(ptr, current->commitPos - newPos);
+        current->pos = newPos;
     }
-}
-
-function void ArenaPoison(Arena* arena, u64 size)
-{
-    AsanPoison(ArenaPtr(arena, arena->pos - size), size);
 }
 
 function void* ArenaPush(Arena* arena, u64 size)
@@ -499,36 +563,64 @@ function void* ArenaPush(Arena* arena, u64 size)
     return result;
 }
 
-function void* ArenaPushPS(Arena* arena, u64 size)
+function void ArenaPoison(Arena* arena, u64 size)
 {
-    void* result = ArenaPush(arena, size ? size + DEFAULT_POISON_SIZE * 2 : DEFAULT_POISON_SIZE);
-    result = (u8*)result + DEFAULT_POISON_SIZE;
-    ArenaPoison(arena, DEFAULT_POISON_SIZE);
+    Arena* current = arena->curr;
+    Assert(current->pos - AlignUpPow2(sizeof(Arena), current->alignment) >= size);
+    AsanPoison(PtrAdd(current, current->pos - size), size);
+}
+
+function void* ArenaPushPoisonEx(Arena* arena, u64 size, u64 preSize, u64 postSize)
+{
+    void* result = 0;
+    Arena* current = arena->curr;
     
-    // TODO(long): Make sure this works with all alignments
-    Assert(AlignUpPow2((uptr)result, arena->alignment) == (uptr)result);
+    u64  allocAlignment = current->alignment;
+    u64 poisonAlignment = 8; // TODO(long): abstract this to a macro
+    
+    if (preSize)
+    {
+        current->alignment = poisonAlignment;
+        ArenaPush(arena, preSize);
+        ArenaPoison(arena, preSize);
+    }
+    
+    current->alignment = allocAlignment;
+    result = ArenaPush(arena, size);
+    
+    if (postSize)
+    {
+        current->alignment = poisonAlignment;
+        ArenaPush(arena, postSize);
+        ArenaPoison(arena, postSize);
+    }
+    
+    current->alignment = allocAlignment;
     return result;
 }
 
 function void ArenaAlignNZ(Arena* arena, u64 alignment)
 {
-    u64 oldAlignment = arena->alignment;
-    arena->alignment = alignment;
-    ArenaPushNZ(arena, 0);
-    arena->alignment = oldAlignment;
+    Arena* current = arena->curr;
+    u64 oldAlignment = current->alignment;
+    current->alignment = alignment;
+    ArenaPushNZ(current, 0);
+    Assert(current == current->curr);
+    current->alignment = oldAlignment;
 }
 
 function void ArenaAlign(Arena* arena, u64 alignment)
 {
-    u8* start = ArenaPtr(arena, arena->pos);
-    ArenaAlignNZ(arena, alignment);
-    u8* end = ArenaPtr(arena, arena->pos);
+    Arena* current = arena->curr;
+    u8* start = PtrAdd(current, current->pos);
+    ArenaAlignNZ(current, alignment);
+    u8* end = PtrAdd(current, current->pos);
     ZeroMem(start, end - start);
 }
 
 function TempArena TempBegin(Arena* arena)
 {
-    return (TempArena){ arena, arena->pos };
+    return (TempArena){ arena, ArenaCurrPos(arena) };
 }
 
 function void TempEnd(TempArena temp)
@@ -1447,9 +1539,9 @@ function i64 I64FromStr(String str, u32 radix, b32* error)
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
         0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-        0xFF,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,0x10,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+        0xFF,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-        0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+        0xFF,0x0A,0xFB,0x0C,0x0D,0x0E,0x0F,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
         
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
@@ -1475,7 +1567,7 @@ function i64 I64FromStr(String str, u32 radix, b32* error)
         {
             for (u64 i = 0; i < str.size; i += 1)
             {
-                u8 symbol = integer_symbol_reverse[ChrToUpper(str.str[i])];
+                u8 symbol = integer_symbol_reverse[str.str[i]];
                 if (symbol >= radix)
                     goto END;
                 x = x * radix + symbol;
@@ -1500,7 +1592,7 @@ String StrFromF32(Arena* arena, f32 x, u32 prec)
 
 String StrFromF64(Arena* arena, f64 x, u32 prec)
 {
-    String result = StrPushf(arena, "%.*e", prec, x);
+    String result = StrPushf(arena, "%.*e", (i32)prec, x);
     return result;
 }
 
@@ -1578,9 +1670,12 @@ typedef struct LOG_List LOG_List;
 struct LOG_List
 {
     LOG_List* next;
+    Arena* arena;
+    
     LOG_Node* first;
     LOG_Node* last;
     u64 count;
+    
     LogInfo info;
 };
 
@@ -1596,9 +1691,9 @@ threadvar LOG_Thread logThread = {0};
 function void LogBeginEx(LogInfo info)
 {
     if (!logThread.arena)
-        logThread.arena = ArenaReserve(KB(4), 1, 1);
+        logThread.arena = ArenaReserve(KB(64), 1, 1);
     LOG_List* list = PushStruct(logThread.arena, LOG_List);
-    *list = (LOG_List){ .info = info };
+    *list = (LOG_List){ .arena = logThread.arena->curr, .info = info };
     SLLStackPush(logThread.stack, list);
 }
 
@@ -1618,7 +1713,7 @@ function Logger LogEnd(Arena* arena)
         }
         
         SLLStackPop(logThread.stack);
-        ArenaPopTo(logThread.arena, (u8*)list - (u8*)logThread.arena);
+        ArenaPopTo(list->arena, ArenaPos(list->arena, ((u8*)list - (u8*)list->arena)));
     }
     return result;
 }
@@ -1663,6 +1758,7 @@ function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list a
         
         // https://ss64.com/nt/syntax-ansi.html
         local const char* colors[] = { "\x1b[36m", "\x1b[94m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[95m" };
+        Assert(InRange(record->level, 0, LogType_Count - 1));
         record->log = StrPushf(arena, "[%02u:%02u:%02u] %s%5s \x1b[90m%.*s:%d: \x1b[97m%s\x1b[0m",
                                time.hour, time.min, time.sec,
                                colors[record->level], level.str,

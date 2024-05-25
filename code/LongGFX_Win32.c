@@ -441,7 +441,7 @@ function void GFXErrorBox(Logger* logger, i32 code)
                 StrListPush(scratch, &errors, logger->records[i].log);
             
             String error = StrJoin(scratch, &errors,
-                                   .pre = StrPushf(scratch, "The process has encountered %d error(s):\n", errors.nodeCount),
+                                   .pre = StrPushf(scratch, "The process has encountered %llu error(s):\n", errors.nodeCount),
                                    .mid = StrLit(".\n"), .post = StrLit(".\n"));
             MessageBoxA(0, error.str, "Error", MB_OK|MB_ICONERROR);
         }

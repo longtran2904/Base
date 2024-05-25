@@ -1,7 +1,9 @@
 #undef function
+#pragma warning(push, 0)
 #include <Windows.h>
 #include <Userenv.h>
 #include <dwmapi.h>
+#pragma warning(pop)
 #define function static
 
 /* NOTE(long): This all the win32 APIs that I need
@@ -251,13 +253,13 @@ function HINSTANCE W32GetInstance(void)
 function DateTime W32DateTimeFromSystemTime(SYSTEMTIME* time)
 {
     DateTime result = {0};
-    result.year = (u8)time->wYear;
-    result.mon = (u8)time->wMonth;
-    result.day = (u8)time->wDay - 1;
-    result.hour = (u8)time->wHour;
-    result.min = (u8)time->wMinute;
-    result.sec = (u8)time->wSecond;
-    result.msec = (u8)time->wMilliseconds;
+    result.year = (i16)time->wYear;
+    result.mon  =  (u8)time->wMonth;
+    result.day  =  (u8)time->wDay - 1;
+    result.hour =  (u8)time->wHour;
+    result.min  =  (u8)time->wMinute;
+    result.sec  =  (u8)time->wSecond;
+    result.msec = (u16)time->wMilliseconds;
     return result;
 }
 
@@ -295,7 +297,7 @@ function u64 OSNowMS(void)
     if (QueryPerformanceCounter(&perfCounter))
     {
         u64 ticks = ((u64)perfCounter.HighPart << 32) | perfCounter.LowPart;
-        result = ticks * Million(1) / win32TicksPerSecond;
+        result = ticks * /*Million*/Thousand(1) / win32TicksPerSecond;
     }
     return result;
 }
@@ -544,11 +546,11 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter, String* outName, FileP
                 String name = StrCloneCStr(arena, data.cFileName);
                 FileProperties prop = (FileProperties)
                 {
-                    ((u64)data.nFileSizeHigh << 32) | (u64)data.nFileSizeLow,
-                    W32FilePropertyFlagsFromAttributes(data.dwFileAttributes),
-                    W32DenseTimeFromFileTime(&data.ftCreationTime),
-                    W32DenseTimeFromFileTime(&data.ftLastWriteTime),
-                    W32AccessFromAttributes(data.dwFileAttributes)
+                    .size = ((u64)data.nFileSizeHigh << 32) | (u64)data.nFileSizeLow,
+                    .flags = W32FilePropertyFlagsFromAttributes(data.dwFileAttributes),
+                    .access = W32AccessFromAttributes(data.dwFileAttributes),
+                    .createTime = W32DenseTimeFromFileTime(&data.ftCreationTime),
+                    .modifyTime = W32DenseTimeFromFileTime(&data.ftLastWriteTime),
                 };
                 
                 if (outName)

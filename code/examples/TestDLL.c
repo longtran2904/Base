@@ -2,7 +2,7 @@
 #include "Base.h"
 #include <stdio.h>
 
-libexport int globalInt = 10;
+libexport i32 globalInt = 10;
 
 libexport u32 Sum(u32* vals, u64 count)
 {
@@ -12,10 +12,8 @@ libexport u32 Sum(u32* vals, u64 count)
     return sum;
 }
 
-libimport void PrintSnapshot();
-
-libexport void DLLInit()
+libexport i32 DLLCallback(VoidFunc* func)
 {
-    printf("Initialize DLL\n");
-    PrintSnapshot();
+    func();
+    return globalInt;
 }

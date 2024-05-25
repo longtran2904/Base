@@ -89,8 +89,9 @@ function void GFXMessageBox(String title, String message);
 function void GFXErrorBox(Logger* logger, i32 code);
 function void GFXErrorFmt(Arena* arena, Record* record, char* fmt, va_list args);
 #define GFXCheckError(...) do { Logger _errors_ = ErrorEnd(); GFXErrorBox(&_errors_, (i32){ __VA_ARGS__+0 }); } while (0)
-#define GFXErrorBlock(arena, code, ...) for (struct { i32 i; Logger log; } __dummy__ = { .i = (ErrorBegin(__VA_ARGS__), 0) }; \
-                                             __dummy__.i == 0; \
-                                             __dummy__.i++, GFXErrorBox((__dummy__.log = ErrorEnd(arena), &__dummy__.log), (code)))
+#define GFXErrorBlock(arena, code, ...) for (struct { i32 i; Logger log; } UNIQUE(dummy) = { .i = (ErrorBegin(__VA_ARGS__), 0) }; \
+                                             UNIQUE(dummy).i == 0; \
+                                             UNIQUE(dummy).i++, GFXErrorBox((UNIQUE(dummy).log = ErrorEnd(arena), \
+                                                                             &UNIQUE(dummy).log), (code)))
 
 #endif //_LONG_G_F_X_H

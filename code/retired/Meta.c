@@ -1,4 +1,4 @@
-//#define DEFAULT_RESERVE_SIZE MB(64)
+//#define MEM_DEFAULT_RESERVE_SIZE MB(64)
 #include "DefaultMemory.h"
 #include "Base.h"
 #include "LongOS.h"
@@ -73,7 +73,7 @@ int main(void)
     OSInit(0, 0);
     ScratchBegin(scratch);
     
-    String fileName = StrLit("code/MetaTest.txt");
+    String fileName = StrLit("code/retired/MetaTest.txt");
     String file = OSReadFile(scratch, fileName, true);
     file.size += 1; // include the end of file
     
@@ -139,7 +139,7 @@ int main(void)
     
     String typeData = StrJoin(scratch, &list);
     printf("%.*s", StrExpand(typeData));
-    OSWriteFile(StrLit("code/generated/Types.txt"), typeData);
+    OSWriteFile(StrLit("code/retired/generated/Types.txt"), typeData);
     
     for (MetaInfo* type = parser.table->first; type; type = type->next)
         printf("[%.*s: %s],\n", StrExpand(type->name), GetEnumName(MetaInfoKind, type->kind));

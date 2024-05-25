@@ -3,6 +3,14 @@
 #ifndef _BASE_H
 #define _BASE_H
 
+//~ TODO(long):
+// [ ] MSVC's _Printf_format_string_ and /analyze
+// [ ] GCC/CLANG testing
+// [ ] Buffer and PRNG functions testing/fuzzing
+// [ ] Replace PushPoison with PushEOP when sanitizer isn't enabled
+// [ ] F64FromStr
+// [ ] Address Sanitizer with Debugger
+
 //~ NOTE(long): Context Cracking
 
 #define ENABLE_ASSERT 1
@@ -166,6 +174,7 @@
 
 //~ NOTE(long): Helper Macros
 
+#define UNIQUE(name) Concat(name, __LINE__)
 #define Stmnt(S) do { S } while (0)
 #define UNUSED(x) ((void)(x))
 
@@ -316,7 +325,7 @@
 #define ZeroFixedArr(ptr) ZeroMem((ptr), sizeof(ptr))
 #define ZeroTypedArr(ptr, size) ZeroMem((ptr), sizeof(*(ptr))*(size))
 
-#define CopyMem(dest, src, size) /*memmove*/memcpy((dest), (src), (size))
+#define CopyMem(dest, src, size) memcpy((dest), (src), (size))
 #define CopyStruct(dest, src) CopyMem((dest), (src), Min(sizeof(*(dest)), sizeof(*(src))))
 #define CopyFixedArr(dest, src) CopyMem((dest), (src), Min(sizeof(*(dest)), sizeof(*(src)))*Min(ArrayCount(dest), ArrayCount(src)))
 #define CopyTypedArr(dest, src, count) CopyMem((dest), (src), Min(sizeof(*(dest)), sizeof(*(src)))*(count))
@@ -325,21 +334,26 @@
 #define CompareArr(a, b) CompareMem((a), (b), Min(ArrayCount(a) * sizeof(*(a)), ArrayCount(b) * sizeof(*(b))))
 
 #if __SANITIZE_ADDRESS__
+#define ENABLE_SANITIZER 1
 #include <sanitizer/asan_interface.h>
+#else
+#define ENABLE_SANITIZER 0
 #endif
 
-#if __SANITIZE_ADDRESS__
+#if ENABLE_SANITIZER
 #define   AsanPoison(ptr, size)   __asan_poison_memory_region((ptr), (size))
 #define AsanUnpoison(ptr, size) __asan_unpoison_memory_region((ptr), (size))
+#define AsanIsPoison(ptr, size) (__asan_region_is_poisoned((ptr), (size)) != 0)
 #else
-#define   AsanPoison(ptr, size)
-#define AsanUnpoison(ptr, size)
+#define   AsanPoison(...)
+#define AsanUnpoison(...)
+#define AsanIsPoison(...)
 #endif
 
 #define C4(str) (*(u32*)(str))
 #define ExpandC4(x) (i32)(sizeof(x)), (i8*)(&(x))
 
-#define DeferBlock(begin, end) for (int _i_ = ((begin), 0); _i_ == 0; (_i_ += 1), (end))
+#define DeferBlock(begin, end) for (int UNIQUE(_i_) = ((begin), 0); UNIQUE(_i_) == 0; (UNIQUE(_i_) += 1), (end))
 
 //~ NOTE(long): Linked List Macros
 
@@ -617,9 +631,9 @@ struct FileProperties
 {
     u64 size;
     FilePropertyFlags flags;
+    DataAccessFlags access;
     DenseTime createTime;
     DenseTime modifyTime;
-    DataAccessFlags access;
 };
 
 //~ NOTE(long): Base Memory Pre-Requisites
@@ -646,12 +660,14 @@ struct Arena
     Arena* curr;
     
     u64 alignment;
-    b8 growing; // b8 eop
+    b8 growing;
     b8 padding[7];
     
-    u64 base_pos;
-    u64 pos;
-    u64 commitPos;
+    // @RECONSIDER(long): Maybe postfix all relative fields with offset rather than pos
+    // pos -> (used/allocated)Offset, commitPos -> commit(ted)Offset
+    u64 basePos; // absolute
+    u64 pos; // relative
+    u64 commitPos; // relative
     u64 cap;
     u64 highWaterMark;
 };
@@ -663,23 +679,30 @@ struct TempArena
     u64 pos;
 };
 
-#ifndef DEFAULT_RESERVE_SIZE
-#define DEFAULT_RESERVE_SIZE MB(64)
-#endif
-#ifndef COMMIT_BLOCK_SIZE
-#define COMMIT_BLOCK_SIZE KB(64)
-#endif
-#ifndef BASE_PAGE_SIZE
-#define BASE_PAGE_SIZE KB(4)
-#endif
-#ifndef DEFAULT_ALIGNMENT
-#define DEFAULT_ALIGNMENT sizeof(uptr)
-#endif
-#ifndef DEFAULT_POISON_SIZE
-#define DEFAULT_POISON_SIZE 128
+// TODO(long): Make sure Mac (specifically M1/2/3) is the same
+#define ARCH_PAGE_SIZE KB(4)
+#if OS_WIN
+#define ARCH_ALLOC_GRANULARITY KB(64)
+#else
+#define ARCH_ALLOC_GRANULARITY KB(4)
 #endif
 
 #define SCRATCH_POOL_COUNT 4
+
+// @RECONSIDER(long): Rather than constants, arenas can take runtime values and these just become default values
+#ifndef MEM_DEFAULT_RESERVE_SIZE
+#define MEM_DEFAULT_RESERVE_SIZE MB(64)
+#endif
+#ifndef MEM_COMMIT_BLOCK_SIZE
+#define MEM_COMMIT_BLOCK_SIZE KB(8)
+#endif
+#ifndef MEM_DEFAULT_ALIGNMENT
+#define MEM_DEFAULT_ALIGNMENT sizeof(uptr)
+#endif
+#ifndef MEM_POISON_SIZE
+#define MEM_POISON_SIZE 128
+#endif
+#define MEM_INITIAL_COMMIT ARCH_PAGE_SIZE
 
 //~ NOTE(long): String Types
 
@@ -829,18 +852,20 @@ function void   ArenaRelease(Arena* arena);
 
 function void* ArenaPush  (Arena* arena, u64 size);
 function void* ArenaPushNZ(Arena* arena, u64 size);
-// PS stands for poison, this function will push extra poison bytes at the end to catch buffer overflow
-function void* ArenaPushPS(Arena* arena, u64 size);
 
-function void ArenaPopTo  (Arena* arena, u64 pos);
-function void ArenaPoison (Arena* arena, u64 size);
+function void* ArenaPushPoisonEx(Arena* arena, u64 size, u64 preSize, u64 postSize);
+#define ArenaPushPoison(arena, size) ArenaPushPoisonEx((arena), (size), MEM_POISON_SIZE, MEM_POISON_SIZE)
+
+function void ArenaPopTo  (Arena* arena, u64 pos); // This is the abosolute pos, which means it must account for basePos
 function void ArenaAlign  (Arena* arena, u64 alignment);
 function void ArenaAlignNZ(Arena* arena, u64 alignment);
 
-#define ArenaMake(...) ArenaReserve(DEFAULT_RESERVE_SIZE, DEFAULT_ALIGNMENT, (__VA_ARGS__ + 0))
-#define ArenaPop(arena, amount) ArenaPopTo((arena), (arena)->pos - (amount))
+#define ArenaMake(...) ArenaReserve(MEM_DEFAULT_RESERVE_SIZE, MEM_DEFAULT_ALIGNMENT, (__VA_ARGS__ + 0))
+#define ArenaPos(arena, pos) ((arena)->curr->basePos + (pos))
+#define ArenaCurrPos(arena) ArenaPos(arena, (arena)->curr->pos)
+#define ArenaPop(arena, amount) ArenaPopTo((arena), ArenaCurrPos(arena) - (amount))
 
-#define ArenaPtr(arena, pos) ((u8*)(arena) + (pos))
+#define PtrAdd(ptr, offset) ((u8*)(ptr) + (offset))
 
 #define   PushStruct(arena, type)        (type*)  ArenaPush((arena), sizeof(type))
 #define PushStructNZ(arena, type)        (type*)ArenaPushNZ((arena), sizeof(type))
@@ -861,14 +886,17 @@ function void      TempEnd(TempArena temp);
                                   Concat(_debugVarOf_, scratch);)
 
 #define TempBlock(name, arena) for (TempArena name = TempBegin(arena); name.arena != 0; TempEnd(name), name = (TempArena){0})
-#define TempPoisonBlock(name, arena) for (TempArena name = (ArenaPushPS(arena, 0), TempBegin(arena)); name.arena != 0; \
-                                          ArenaPoison(name.arena, name.arena->pos - name.pos), name = (TempArena){0})
+#define TempPoisonBlock(name, arena) \
+    for (TempArena name = (ArenaPushPoisonEx((arena), 0, MEM_POISON_SIZE, 0), TempBegin(arena)), UNIQUE(name) = {0}; \
+         UNIQUE(name).pos == 0; \
+         UNIQUE(name).pos = ArenaCurrPos(arena), TempEnd(name), \
+         ArenaPushPoisonEx((arena), UNIQUE(name).pos - name.pos, 0, MEM_POISON_SIZE))
 
-#define ScratchBlock(name, ...) struct { i32 i; TempArena temp; } Concat(_i_, __LINE__) = \
+#define ScratchBlock(name, ...) struct { i32 i; TempArena temp; } UNIQUE(_i_) = \
     { .temp = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)) }; \
-    for (Arena* name = Concat(_i_, __LINE__).temp.arena; \
-         Concat(_i_, __LINE__).i == 0; \
-         Concat(_i_, __LINE__).i++, Concat(_i_, __LINE__).temp = (TempEnd(Concat(_i_, __LINE__).temp), (TempArena){0}))
+    for (Arena* name = UNIQUE(_i_).temp.arena; \
+         UNIQUE(_i_).i == 0; \
+         UNIQUE(_i_).i++, UNIQUE(_i_).temp = (TempEnd(UNIQUE(_i_).temp), (TempArena){0}))
 
 //~ NOTE(long): String Functions
 
@@ -1061,9 +1089,9 @@ struct Logger
 };
 
 #define LogBegin(...) LogBeginEx((LogInfo){ .callback = LogFmtStd, __VA_ARGS__ })
-#define LogBlock(arena, list, ...) for (struct { i32 i; Logger logger; } dummy = { (LogBegin(__VA_ARGS__), 0) }; \
-                                        dummy.i == 0; \
-                                        (dummy.i = 1, dummy.logger = LogEnd(arena), list = StrListFromLogger(arena, &dummy.logger)))
+#define LogBlock(arena, list, ...) for (Logger UNIQUE(dummy) = (LogBegin(__VA_ARGS__), (Logger){ .count = MAX_U64 }); \
+                                        UNIQUE(dummy).count == MAX_U64; \
+                                        UNIQUE(dummy) = LogEnd(arena), list = StrListFromLogger(arena, &UNIQUE(dummy)))
 function void   LogBeginEx(LogInfo info);
 function Logger LogEnd(Arena* arena);
 function StringList StrListFromLogger(Arena* arena, Logger* logger);
@@ -1100,13 +1128,14 @@ struct RNG
 #define BIT_NOISE4 0x0BD4BCB5
 #define BIT_NOISE5 0x0063D68D
 
+function RNG GetRNG(void);
 function u32 Noise1D(u32 pos, u32 seed);
 function u64 Hash64 (u8* values, u64 count);
 
 #define Noise2D(x, y, seed) Noise1D(x + (BIT_NOISE4 * y), seed)
 #define Noise3D(x, y, seed) Noise1D(x + (BIT_NOISE4 * y) + (BIT_NOISE5 * z), seed)
 
-#define RandomU32(rng) Noise1D(rng->pos++, rng->speed)
+#define RandomU32(rng) Noise1D(rng.pos++, rng.seed)
 #define RandomF32(rng) (RandomU32(rng) / (f32)MAX_U32)
 #define RandomRangeI32(rng, minIn, maxIn) ((i32)(minIn) + RandomU32(rng) % ((i32)(maxIn) - (i32)(minIn)))
 #define RandomRangeF32(rng, minIn, maxIn) ((minIn) + RandomF32((maxIn) - (minIn)))
