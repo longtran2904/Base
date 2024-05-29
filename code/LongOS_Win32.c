@@ -260,7 +260,7 @@ function DateTime W32DateTimeFromSystemTime(SYSTEMTIME* time)
     DateTime result = {0};
     result.year = (i16)time->wYear;
     result.mon  =  (u8)time->wMonth;
-    result.day  =  (u8)time->wDay - 1;
+    result.day  =  (u8)time->wDay;
     result.hour =  (u8)time->wHour;
     result.min  =  (u8)time->wMinute;
     result.sec  =  (u8)time->wSecond;
@@ -268,16 +268,16 @@ function DateTime W32DateTimeFromSystemTime(SYSTEMTIME* time)
     return result;
 }
 
-function SYSTEMTIME W32SystemTimeFromDateTime(DateTime* time)
+function SYSTEMTIME W32SystemTimeFromDateTime(DateTime time)
 {
     SYSTEMTIME result = {0};
-    result.wYear = time->year;
-    result.wMonth = time->mon + 1;
-    result.wDay = time->day + 1;
-    result.wHour = time->hour;
-    result.wMinute = time->min;
-    result.wSecond = time->sec;
-    result.wMilliseconds = time->msec;
+    result.wYear = time.year;
+    result.wMonth = time.mon;
+    result.wDay = time.day;
+    result.wHour = time.hour;
+    result.wMinute = time.min;
+    result.wSecond = time.sec;
+    result.wMilliseconds = time.msec;
     return result;
 }
 
@@ -315,7 +315,7 @@ function DateTime OSNowUniTime(void)
     return result;
 }
 
-function DateTime OSToLocTime(DateTime* universalTime)
+function DateTime OSToLocTime(DateTime universalTime)
 {
     SYSTEMTIME universalSystemTime = W32SystemTimeFromDateTime(universalTime);
     FILETIME universalFileTime = {0};
@@ -328,7 +328,7 @@ function DateTime OSToLocTime(DateTime* universalTime)
     return result;
 }
 
-function DateTime OSToUniTime(DateTime* localTime)
+function DateTime OSToUniTime(DateTime localTime)
 {
     SYSTEMTIME localSystemTime = W32SystemTimeFromDateTime(localTime);
     FILETIME localFileTime = {0};

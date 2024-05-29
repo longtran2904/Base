@@ -66,8 +66,8 @@ function void OSSleepMS(u32 ms);
 function u64  OSNowMS(void);
 
 function DateTime OSNowUniTime(void);
-function DateTime OSToLocTime(DateTime* universalTime);
-function DateTime OSToUniTime(DateTime* localTime);
+function DateTime OSToLocTime(DateTime universalTime);
+function DateTime OSToUniTime(DateTime localTime);
 
 //~ NOTE(long): Libraries
 

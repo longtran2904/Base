@@ -1843,7 +1843,7 @@ function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, 
         
         node->record = (Record){ .file = file, .line = line, .level = level };
         DateTime date = OSNowUniTime();
-        date = OSToLocTime(&date);
+        date = OSToLocTime(date);
         node->record.time = TimeToDense(date);
         
         va_list args;
