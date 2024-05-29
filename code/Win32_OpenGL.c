@@ -419,9 +419,9 @@ function b32 EquipGLWindow(GFXWindow window)
 {
     b32 error = 1;
 	if (!GFXWindowIsValid(window))
-		ErrorFmt("Invalid window handle: %d", window);
+		ErrorFmt("Invalid window handle: %llu", window);
 	else if (GFXWindowIsEquipped(window))
-		ErrorFmt("Window is already equipped: %d", window);
+		ErrorFmt("Window is already equipped: %llu", window);
     else
         error = 0;
 	

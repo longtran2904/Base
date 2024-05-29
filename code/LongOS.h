@@ -42,12 +42,16 @@ function FileProperties GetFileProperties(String fileName);
 
 typedef struct OSFileIter
 {
+    String name;
+    FileProperties prop;
     u8 v[640];
 } OSFileIter;
 
 function OSFileIter FileIterInit(String path);
-function b32 FileIterNext(Arena* arena, OSFileIter* iter, String* outName, FileProperties* outProp);
+function b32 FileIterNext(Arena* arena, OSFileIter* iter);
 function void FileIterEnd(OSFileIter* iter);
+#define FileIterBlock(arena, name, path) for (OSFileIter name = FileIterInit(path); \
+                                              FileIterNext(arena, &name) ? 1 : (FileIterEnd(&name), 0);)
 
 //~ NOTE(long): Paths
 

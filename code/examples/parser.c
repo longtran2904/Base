@@ -5,10 +5,14 @@
 #include "LongOS_Win32.c"
 #include <stdio.h>
 
+#pragma WarnPush()
+#pragma WarnDisable(28182)
+#pragma WarnDisable(6250)
 #define MD_DEFAULT_SPRINTF 0
 #define MD_IMPL_Vsnprintf stbsp_vsnprintf
 #include "md\md.h"
 #include "md\md.c"
+#pragma WarnPop()
 
 #define C_LIKE_OPS_NO_SIDE_EFFECTS(X) \
     X(ArraySubscript,      "[]",        Postfix,                18) \
@@ -226,6 +230,7 @@ function MD_Node* GetNodeBase(MD_Node* node)
 
 function MD_String8 GetNodeType(MD_Node* node, MD_Node* base)
 {
+    UNUSED(node);
     MD_String8 string = base->string;
     return string;
 }
@@ -354,6 +359,7 @@ function MD_Node* ParseIdentifier(Parser* parser, b32 ignoreFlags)
     return result;
 }
 
+#pragma WarnDisable(4706)
 int main(int argc, char** argv)
 {
     OSInit(0, 0);
@@ -479,3 +485,4 @@ int main(int argc, char** argv)
     }
 #endif
 }
+#pragma WarnEnable(4706)

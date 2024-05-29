@@ -74,10 +74,12 @@ function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
 
 #define TEST_WINDOW_COUNT 6
 
+#pragma WarnDisable(28251) // Inconsistent annotation for WinMain
 int WinMain(HINSTANCE hInstance,
             HINSTANCE hPrevInstance,
             LPSTR lpCmdLine,
             int nShowCmd)
+#pragma WarnEnable(28251)
 {
     W32WinMainInit(hInstance, hPrevInstance, lpCmdLine, nShowCmd);
     

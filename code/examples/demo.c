@@ -246,7 +246,7 @@ int main(void)
         {
             printf("\n-Stress Test-\n");
             for (u64 i = 0; i < 256; ++i)
-                LogPush(i % LogType_Count, "Log: %lld", i);
+                LogPush(i % LogType_Count, "Log: %llu", i);
         }
         for (StringNode* node = logs.first; node; node = node->next)
             printf("%.*s\n", StrExpand(node->string));
@@ -254,14 +254,14 @@ int main(void)
     
     DEMO("OS")
     {
-        String currentName;
-        FileProperties currentProp;
-        OSFileIter iter = FileIterInit(StrLit("code"));
-        while(FileIterNext(arena, &iter, &currentName, &currentProp))
+        FileIterBlock(arena, iter, StrLit("code"))
         {
-            currentName = StrJoin3(arena, currentName, StrLit(","));
-            printf("Name: %-17.*s Created: %llu, Date modified: %llu, Size: %llu\n",
-                   StrExpand(currentName), currentProp.createTime, currentProp.modifyTime, currentProp.size);
+            iter.name = StrJoin3(arena, iter.name, StrLit(","));
+            FileProperties prop = iter.prop;
+            String createTime = StrFromTime(arena, TimeToDate(prop.createTime));
+            String modifyTime = StrFromTime(arena, TimeToDate(prop.modifyTime));
+            printf("Name: %-17.*s Created: %.*s, Date modified: %.*s, Size: %llu\n",
+                   StrExpand(iter.name), StrExpand(createTime), StrExpand(modifyTime), prop.size);
         }
     }
     

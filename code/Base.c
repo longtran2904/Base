@@ -319,13 +319,6 @@ function f64 FrExp_f64(f64 x, i32* exp) { return frexp (x, exp); }
 
 //~ NOTE(long): PRNG Functions
 
-function RNG GetRNG(void)
-{
-    RNG result = {0};
-    OSGetEntropy(&result, sizeof(result));
-    return result;
-}
-
 function u32 Noise1D(u32 pos, u32 seed)
 {
     u32 result = pos;
@@ -376,32 +369,33 @@ function DateTime TimeToDate(DenseTime time)
     return result;
 }
 
-function DenseTime TimeToDense(DateTime* time)
+function DenseTime TimeToDense(DateTime time)
 {
     DenseTime result = 0;
-    u32 encodedYear = (u32)((i32)time->year + 0x8000);
+    u32 encodedYear = (u32)((i32)time.year + 0x8000);
     result+= encodedYear;
     result *= 12;
-    result += time->mon;
+    result += time.mon;
     result *= 31;
-    result += time->day;
+    result += time.day;
     result *= 24;
-    result += time->hour;
+    result += time.hour;
     result *= 60;
-    result += time->min;
+    result += time.min;
     result *= 61;
-    result += time->sec;
+    result += time.sec;
     result *= 1000;
-    result += time->msec;
+    result += time.msec;
     return result;
 }
 
 //~ NOTE(long): Arena Functions
 
 function void* ChangeMemoryNoOp(void* ptr, u64 size) { UNUSED(size); return ptr; }
-StaticAssert(sizeof(Arena) <= MEM_INITIAL_COMMIT, CheckArenaSize);
 
-function Arena* ArenaReserve(u64 reserve, u64 alignment, b8 growing)
+#define ArenaMinSize(arena) AlignUpPow2(sizeof(Arena), (arena)->alignment)
+
+function Arena* ArenaReserve(u64 reserve, u64 alignment, b32 growing)
 {
     Arena* result = 0;
     if (reserve >= MEM_INITIAL_COMMIT)
@@ -409,21 +403,22 @@ function Arena* ArenaReserve(u64 reserve, u64 alignment, b8 growing)
         void* memory = MemReserve(reserve);
         if (memory && MemCommit(memory, MEM_INITIAL_COMMIT))
         {
-            AsanPoison(memory, reserve);
-            AsanUnpoison(memory, MEM_INITIAL_COMMIT);
-            
             result = (Arena*)memory;
             *result = (Arena)
             {
                 .curr = result,
                 
                 .alignment = alignment ? alignment : sizeof(iptr),
-                .growing = growing,
+                .growing = (b8)growing,
                 
-                .pos = AlignUpPow2(sizeof(Arena), alignment),
                 .commitPos = MEM_INITIAL_COMMIT,
                 .cap = reserve,
             };
+            
+            u64 minPos = ArenaMinSize(result);
+            result->pos = minPos;
+            AsanPoison(result, reserve);
+            AsanUnpoison(result, minPos);
         }
     }
     
@@ -454,7 +449,7 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
     {
         if (alignedPos + size > current->cap)
         {
-            u64 minSize = AlignUpPow2(sizeof(Arena), current->alignment);
+            u64 minSize = ArenaMinSize(current);
             u64 newSize = AlignUpPow2(size + minSize, current->alignment);
             u64 newReserveSize = Max(current->cap, newSize);
             
@@ -530,23 +525,50 @@ function void ArenaPopTo(Arena* arena, u64 pos)
             current = prev;
         }
         
+        arena->curr = current;
+        nextCommitPos -= current->basePos;
+        
         if (nextCommitPos < current->commitPos)
         {
             MemDecommit(PtrAdd(current, nextCommitPos), current->commitPos - nextCommitPos);
             AsanPoison (PtrAdd(current, nextCommitPos), current->commitPos - nextCommitPos);
             current->commitPos = nextCommitPos;
+            current->pos = ClampTop(current->pos, current->commitPos);
+        }
+        else if (nextCommitPos > current->commitPos)
+        {
+            // NOTE(long):
+            // Technically speaking, this can happen when the user pushes a new chunk that surpasses the current cap
+            // When that happens, a new arena will be allocated to contain the allocation, leaving the old arena untouched
+            // This means the old arena could contain an uncommitted region from the commitPos to cap
+            // Later, the user can pop into that padded region, and because the region is never allocated, it is poisonous
+            // I can handle that case by actually allocating that region, but if this happens there's a bug somewhere
+            // Unless I have an actual use case here, I'm asserting this for now
+            Assert(0);
         }
         
-        arena->curr = current;
-        
         u64 newPos = clampedPos - current->basePos;
-        // current->pos is still the old pos at the start and hasn't been modified
-        u64 zeroSize = Min(nextCommitPos, current->pos) - newPos;
         u8* ptr = PtrAdd(current, newPos);
         
+        Assert(nextCommitPos <= current->commitPos);
+        Assert(newPos <= current->commitPos);
+        Assert(current->pos <= current->commitPos);
+        Assert(current->commitPos <= current->cap);
+        
 #if BASE_ZERO_ON_POP
-        AsanUnpoison(ptr, zeroSize); // unpoison padding causes by alignment
-        ZeroMem(ptr, zeroSize);
+#if ENABLE_SANITIZER
+        AsanUnpoison(ptr, current->pos - newPos); // unpoison padding causes by alignment
+#else
+        u64 alignedPos = AlignUpPow2(newPos, MEM_POISON_ALIGNMENT);
+        if (current->commitPos != alignedPos)
+        {
+            u8* commitPtr = PtrAdd(current, alignedPos);
+            MemDecommit(commitPtr, current->commitPos - alignedPos);
+            MemCommit  (commitPtr, current->commitPos - alignedPos);
+        }
+#endif
+        
+        ZeroMem(ptr, current->pos - newPos);
 #endif
         
         AsanPoison(ptr, current->commitPos - newPos);
@@ -566,32 +588,40 @@ function void* ArenaPush(Arena* arena, u64 size)
 function void ArenaPoison(Arena* arena, u64 size)
 {
     Arena* current = arena->curr;
-    Assert(current->pos - AlignUpPow2(sizeof(Arena), current->alignment) >= size);
+    Assert(current->pos - ArenaMinSize(current) >= size);
+#if ENABLE_SANITIZER
     AsanPoison(PtrAdd(current, current->pos - size), size);
+#else
+    MemDecommit(PtrAdd(current, current->pos - size), size);
+#endif
 }
 
 function void* ArenaPushPoisonEx(Arena* arena, u64 size, u64 preSize, u64 postSize)
 {
     void* result = 0;
     Arena* current = arena->curr;
-    
-    u64  allocAlignment = current->alignment;
-    u64 poisonAlignment = 8; // TODO(long): abstract this to a macro
+    u64 allocAlignment = current->alignment;
     
     if (preSize)
     {
-        current->alignment = poisonAlignment;
-        ArenaPush(arena, preSize);
+        current->alignment = MEM_POISON_ALIGNMENT;
+        preSize  = AlignUpPow2( preSize, MEM_POISON_ALIGNMENT);
+        ArenaPushNZ(arena, preSize);
         ArenaPoison(arena, preSize);
     }
     
-    current->alignment = allocAlignment;
-    result = ArenaPush(arena, size);
+    if (size)
+    {
+        current->alignment = Max(allocAlignment, MEM_POISON_ALIGNMENT);
+        u64 alignedSize = AlignUpPow2(size, MEM_POISON_ALIGNMENT);
+        result = (u8*)ArenaPush(arena, alignedSize) + (alignedSize - size);
+    }
     
     if (postSize)
     {
-        current->alignment = poisonAlignment;
-        ArenaPush(arena, postSize);
+        current->alignment = MEM_POISON_ALIGNMENT;
+        postSize = AlignUpPow2(postSize, MEM_POISON_ALIGNMENT);
+        ArenaPushNZ(arena, postSize);
         ArenaPoison(arena, postSize);
     }
     
@@ -816,6 +846,37 @@ function void StrListPush(Arena* arena, StringList* list, String str)
     StrListPushNode(list, str, node);
 }
 
+function String StrListPopFront(StringList* list)
+{
+    String result = {0};
+    StringNode* node = list->first;
+    SLLQueuePop(list->first, list->last);
+    if (node)
+    {
+        result = node->string;
+        list->nodeCount--;
+        list->totalSize -= result.size;
+    }
+    return result;
+}
+
+function String StrListPop(StringList* list)
+{
+    String result = {0};
+    StringNode* node = 0;
+    StringNode* tail = 0;
+    for (node = tail = list->first; tail && tail->next; node = tail, tail = tail->next);
+    if (tail)
+    {
+        Assert(list->last == tail);
+        result = tail->string;
+        list->last = node == tail ? (list->first = 0) : (node->next = 0, node);
+        list->nodeCount--;
+        list->totalSize -= result.size;
+    }
+    return result;
+}
+
 // NOTE(long): I could remove stdarg but stb_sprintf has already included it so what's the point
 #include <stdarg.h>
 
@@ -856,11 +917,11 @@ function String StrPushfv(Arena* arena, char* fmt, va_list args)
     return result;
 }
 
-function String StrPushf(Arena* arena, _Printf_format_string_ char* fmt, ...)
+function String StrPushf(Arena* arena, CHECK_PRINTF char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    String result = StrPushfv(arena, fmt, args);
+    String result = StrPushfv(arena, (char*)fmt, args);
     va_end(args);
     return result;
 }
@@ -1504,14 +1565,19 @@ function u32 UTF8GetErr(String str, u64* index)
 }
 
 //- NOTE(long): Convert Functions
+f32 FromCharsF32(const char* first, const char* last, b32* error);
+f64 FromCharsF64(const char* first, const char* last, b32* error);
+
 function f32 F32FromStr(String str, b32* error)
 {
-    b32 _err_ = 0;
-    f64 result = F64FromStr(str, &_err_);
-    if (result != (f64)((f32)result)) // TODO(long): Does this even work?
-        _err_ = 1;
-    if (error) *error = _err_;
-    return (f32)result;
+    f32 result = FromCharsF32(str.str, str.str + str.size, error);
+    return result;
+}
+
+function f64 F64FromStr(String str, b32* error)
+{
+    f64 result = FromCharsF64(str.str, str.str + str.size, error);
+    return result;
 }
 
 function i32 I32FromStr(String str, u32 radix, b32* error)
@@ -1522,14 +1588,6 @@ function i32 I32FromStr(String str, u32 radix, b32* error)
         _err_ = 1;
     if (error) *error = _err_;
     return (i32)result; // NOTE(long): UB or Iplementation define?
-}
-
-function f64 F64FromStr(String str, b32* error)
-{
-    // TODO(long)
-    UNUSED(str);
-    UNUSED(error);
-    return 0;
 }
 
 function i64 I64FromStr(String str, u32 radix, b32* error)
@@ -1583,6 +1641,13 @@ function i64 I64FromStr(String str, u32 radix, b32* error)
     if (error)
         *error = _err_;
     return _err_ ? 0 : x;
+}
+
+function String StrFromTime(Arena* arena, DateTime time)
+{
+    b32 am = time.hour < 12;
+    u8 hour = am ? (time.hour > 0 ? time.hour : 12) : (time.hour > 12 ? time.hour - 12 : 12);
+    return StrPushf(arena, "%02u/%02u/%04u %02u:%02u %s", time.day, time.mon, (u16)time.year, hour, time.min, am ? "AM" : "PM");
 }
 
 String StrFromF32(Arena* arena, f32 x, u32 prec)
@@ -1767,7 +1832,7 @@ function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list a
     }
 }
 
-function void LogPushf(i32 level, char* file, i32 line, char* fmt, ...)
+function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...)
 {
     LOG_List* list = logThread.stack;
     if (list && level >= list->info.level)
@@ -1779,11 +1844,11 @@ function void LogPushf(i32 level, char* file, i32 line, char* fmt, ...)
         node->record = (Record){ .file = file, .line = line, .level = level };
         DateTime date = OSNowUniTime();
         date = OSToLocTime(&date);
-        node->record.time = TimeToDense(&date);
+        node->record.time = TimeToDense(date);
         
         va_list args;
         va_start(args, fmt);
-        list->info.callback(logThread.arena, &node->record, fmt, args);
+        list->info.callback(logThread.arena, &node->record, (char*)fmt, args);
         va_end(args);
     }
 }

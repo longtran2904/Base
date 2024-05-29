@@ -1,10 +1,13 @@
+// NOTE(long): Stupid /analyze report some dump error.
+// winnt.h(3454) : warning C28301: No annotations for first declaration of '_mm_clflush'. See <no file>(0). 
+#pragma WarnDisable(28301)
 #undef function
-#pragma warning(push, 0)
 #include <Windows.h>
+#define function static
+#pragma WarnEnable(28301)
+
 #include <Userenv.h>
 #include <dwmapi.h>
-#pragma warning(pop)
-#define function static
 
 /* NOTE(long): This all the win32 APIs that I need
 VirtualAlloc
@@ -81,7 +84,7 @@ function void* OSReserve(u64 size)
     if (!result)
     {
         DWORD error = GetLastError();
-        Assert("Failed to reserve memory");
+        Assert(!"Failed to reserve memory");
     }
     return result;
 }
@@ -92,17 +95,19 @@ function b32 OSCommit(void* ptr, u64 size)
     if (!result)
     {
         DWORD error = GetLastError();
-        Assert("Failed to commit memory");
+        Assert(!"Failed to commit memory");
     }
     return result;
 }
 
 function void OSDecommit(void* ptr, u64 size)
 {
+#pragma WarnDisable(6250) // Calling 'VirtualFree' without the MEM_RELEASE flag might cause address space leaks
     if (!VirtualFree(ptr, size, MEM_DECOMMIT))
+#pragma WarnEnable(6250)
     {
         DWORD error = GetLastError();
-        Assert("Failed to decommit memory");
+        Assert(!"Failed to decommit memory");
     }
 }
 
@@ -111,7 +116,7 @@ function void OSRelease(void* ptr)
     if (!VirtualFree(ptr, 0, MEM_RELEASE))
     {
         DWORD error = GetLastError();
-        Assert("Failed to release memory");
+        Assert(!"Failed to release memory");
     }
 }
 
@@ -281,7 +286,7 @@ function DenseTime W32DenseTimeFromFileTime(FILETIME* fileTime)
     SYSTEMTIME systemTime = {0};
     FileTimeToSystemTime(fileTime, &systemTime);
     DateTime dateTime = W32DateTimeFromSystemTime(&systemTime);
-    DenseTime result = TimeToDense(&dateTime);
+    DenseTime result = TimeToDense(dateTime);
     return result;
 }
 
@@ -503,7 +508,7 @@ typedef struct W32FileIter
     b32 done;
 } W32FileIter;
 
-StaticAssert(sizeof(W32FileIter) <= sizeof(OSFileIter), w32fileiter);
+StaticAssert(ArrayCount(((OSFileIter*)0)->v) >= sizeof(W32FileIter), w32fileiter);
 
 function OSFileIter FileIterInit(String path)
 {
@@ -511,17 +516,17 @@ function OSFileIter FileIterInit(String path)
     ScratchBlock(scratch)
     {
         path = StrJoin3(scratch, path, StrLit("\\*"));
-        W32FileIter* w32Iter = (W32FileIter*)&result;
+        W32FileIter* w32Iter = (W32FileIter*)result.v;
         w32Iter->handle = FindFirstFile(path.str, &w32Iter->findData);
     }
     return result;
 }
 
-function b32 FileIterNext(Arena* arena, OSFileIter* iter, String* outName, FileProperties* outProp)
+function b32 FileIterNext(Arena* arena, OSFileIter* iter)
 {
     b32 result = false;
     
-    W32FileIter* w32Iter = (W32FileIter*)iter;
+    W32FileIter* w32Iter = (W32FileIter*)iter->v;
     if (w32Iter->handle != 0 && w32Iter->handle != INVALID_HANDLE_VALUE)
     {
         while (!w32Iter->done)
@@ -543,8 +548,8 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter, String* outName, FileP
             // Do the emit if we saved one earlier
             if (emit)
             {
-                String name = StrCloneCStr(arena, data.cFileName);
-                FileProperties prop = (FileProperties)
+                iter->name = StrCloneCStr(arena, data.cFileName);
+                iter->prop = (FileProperties)
                 {
                     .size = ((u64)data.nFileSizeHigh << 32) | (u64)data.nFileSizeLow,
                     .flags = W32FilePropertyFlagsFromAttributes(data.dwFileAttributes),
@@ -552,11 +557,6 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter, String* outName, FileP
                     .createTime = W32DenseTimeFromFileTime(&data.ftCreationTime),
                     .modifyTime = W32DenseTimeFromFileTime(&data.ftLastWriteTime),
                 };
-                
-                if (outName)
-                    *outName = name;
-                if (outProp)
-                    *outProp = prop;
                 
                 result = true;
                 break;
@@ -569,7 +569,7 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter, String* outName, FileP
 
 function void FileIterEnd(OSFileIter* iter)
 {
-    W32FileIter* w32Iter = (W32FileIter*)iter;
+    W32FileIter* w32Iter = (W32FileIter*)iter->v;
     if (w32Iter->handle != 0 && w32Iter->handle != INVALID_HANDLE_VALUE)
         FindClose(w32Iter->handle);
 }

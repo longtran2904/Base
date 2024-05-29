@@ -26,34 +26,38 @@ REM I haven't been able to reproduce this warning. Maybe this is only for C++ fu
 REM 4701 using unitinialized variables
 REM 4706 assignment within conditional expression (`if (a = b)`)
 
-set warns=-D_CRT_SECURE_NO_WARNINGS /W4 /WX /wd4057 /wd4201 /wd4389
-set warns=%warns% /wd4100
-set warns=%warns% /wd4189
-REM set warns=%warns% /wd4101
-set warns=%warns% /wd4706
-set warns=%warns% /wd6298 /wd28301 /wd6250 /wd6334 /wd6326 /wd28182 /wd4116 /wd28251
-REM set warns=%warns% /analyze
+set warns=-D_CRT_SECURE_NO_WARNINGS /W4 /WX /wd4057 /wd4201 /wd4389 /wd4189
+REM set warns=%warns% /wd4706
+
+REM ---unused  flags---
+REM set warns=%warns% /wd4100 /wd4101
+REM ---analyze flags---
+REM set warns=%warns% /analyze /wd6334
 
 REM FC Full path of source code file in diagnostics
 REM GR Enable RTTI
 REM EH Enables standard C++ stack unwinding
 REM WL Enable One-Line Diagnostics (appends additional information to an error or warning message)
 
-set opts=/FC /GR- /EHa- /WL /nologo /Zi /fsanitize=address %warns%
+set opts=/FC /GR- /EHa- /nologo /Zi %warns%
+set opts=%opts% /fsanitize=address /JMC
 if [%1]==[release] set opts=%opts% /O2
 
 set code=%cd%
-set links=/incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
+set links=/incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib fast_float.lib
 
 IF NOT EXIST build mkdir build
 pushd build
 
 del *.pdb > NUL 2> NUL
-del *.lib > NUL 2> NUL
 del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
 
-set opts=%opts% /I%code%\code
+set opts=%opts% /I%code%\code /I%code%\code\dependencies
+
+REM del fast_float.lib > NUL 2> NUL
+REM cl /nologo /GR- /EHa- /nologo /O2 /TP /c %code%\code\dependencies\fast_float.h
+REM lib /nologo fast_float.obj
 
 cl %opts% %code%\code\examples\test_base.c /Fetest_base.exe /link %links%
 cl %opts% %code%\code\examples\demo_gfx.c  /Fedemo_gfx.exe /link %links%
@@ -64,6 +68,9 @@ cl %opts% %code%\code\examples\TestDLL.c   /FeTestDLL.dll /LD
 REM cl %opts% %code%\code\retired\D3D11_Example.c /Fed3d11_exp.exe /link %links%
 REM cl %opts% %code%\code\retired\LongCompressor.c /Fecompressor.exe /link %links%
 REM cl %opts% %code%\code\retired\Meta.c /FeMeta.exe /link %links%
+
+REM del *.lib > NUL 2> NUL
+del TestDLL.lib
 
 del *.obj > NUL 2> NUL
 del *.ilk > NUL 2> NUL

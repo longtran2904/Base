@@ -4,16 +4,11 @@
 #define _BASE_H
 
 //~ TODO(long):
-// [ ] MSVC's _Printf_format_string_ and /analyze
 // [ ] GCC/CLANG testing
-// [ ] Buffer and PRNG functions testing/fuzzing
-// [ ] Replace PushPoison with PushEOP when sanitizer isn't enabled
-// [ ] F64FromStr
-// [ ] Address Sanitizer with Debugger
+// [ ] Fuzzing
+// [ ] Custom printf format
 
 //~ NOTE(long): Context Cracking
-
-#define ENABLE_ASSERT 1
 
 //- NOTE(long): Compiler
 #if defined(__clang__)
@@ -153,15 +148,15 @@
 
 //- NOTE(long): Language
 #if defined(__cplusplus)
-# define LANG_CXX 1
+# define LANG_CPP 1
 #else
 # define LANG_C 1
 #endif
 
-#if !defined(LANG_CXX)
-# define LANG_CXX 0
+#ifndef LANG_CPP
+# define LANG_CPP 0
 #endif
-#if !defined(LANG_C)
+#ifndef LANG_C
 # define LANG_C 0
 #endif
 
@@ -172,11 +167,66 @@
 # define ARCH_SIZE 32
 #endif
 
-//~ NOTE(long): Helper Macros
+//- NOTE(long): Warning
+#if COMPILER_CL
+#    define WarnPush(...) warning(push, __VA_ARGS__)
+#    define WarnPop() warning(pop)
+#    define  WarnEnable(warn) warning(default: warn)
+#    define WarnDisable(warn) warning(disable: warn)
+#elif COMPILER_GCC
+#    define WarnPush(...) GCC diagnostic push
+#    define WarnPop() GCC diagnostic pop
+#    define  WarnEnable(warn) GCC diagnostic warning warn
+#    define WarnDisable(warn) GCC diagnostic ignored warn
+#elif COMPILER_CLANG
+#    define WarnPush(...) clang diagnostic push
+#    define WarnPop() clang diagnostic pop
+#    define  WarnEnable(warn) clang diagnostic warning warn
+#    define WarnDisable(warn) clang diagnostic ignored warn
+#else
+#    error warnings are not modifiable in code for this compiler
+#endif
 
-#define UNIQUE(name) Concat(name, __LINE__)
-#define Stmnt(S) do { S } while (0)
-#define UNUSED(x) ((void)(x))
+//- NOTE(long): Extension
+#if LANG_CPP
+#define clinkage extern "C"
+#else
+#define clinkage extern
+#endif
+
+#if COMPILER_CL
+#define threadvar __declspec(thread)
+#elif COMPILER_GCC || COMPILER_CLANG
+#define threadvar __thread
+#else
+#error threadvar is not defined for this compiler
+#endif
+
+#if COMPILER_CL
+#define libexport __declspec(dllexport)
+#define libimport __declspec(dllimport)
+#elif COMPILER_GCC || COMPILER_CLANG
+#define libexport __attribute__ ((visibility ("default")))
+#define libimport
+#else
+#error libexport and libimport are not defined for this compiler
+#endif
+
+#if COMPILER_CL
+#define AlignOf __alignof
+#define AlignAs(alignment) __declspec(align(alignment))
+#elif COMPILER_GCC || COMPILER_CLANG
+#define AlignOf __alignof__
+#define AlignAs(alignment) __attribute__(aligned(alignment))
+#else
+#error AlignOf and AlignAs are not defined for this compiler
+#endif
+
+#if COMPILER_CL
+#define CHECK_PRINTF _Printf_format_string_ const 
+#else
+#error CHECK_PRINTF isn't defined for this compiler
+#endif
 
 // https://nullprogram.com/blog/2022/06/26/
 #ifndef AssertBreak
@@ -189,13 +239,22 @@
 #  endif
 #endif
 
+//~ NOTE(long): Helper Macros
+
+#define UNIQUE(name) Concat(name, __LINE__)
+#define Stmnt(S) do { S } while (0)
+#define UNUSED(x) ((void)(x))
+
+#ifndef ENABLE_ASSERT
+#define ENABLE_ASSERT 1
+#endif
+
 #if ENABLE_ASSERT
 #define Assert(c) Stmnt(if (!(c)) { AssertBreak(); })
 #else
 #define Assert(...)
 #endif
-
-#define StaticAssert(c, l) typedef u8 Concat(l, __LINE__) [(c)?1:-1]
+#define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
 
 #define Stringify_(s) #s
 #define Stringify(s) Stringify_(s)
@@ -282,42 +341,6 @@
 #define local    static
 #define function static
 
-#ifndef clinkage
-#if LANG_CXX
-# define clinkage extern "C"
-#else
-# define clinkage extern
-#endif
-#endif
-
-#if COMPILER_CL
-#define threadvar __declspec(thread)
-#elif COMPILER_GCC || COMPILER_CLANG
-#define threadvar __thread
-#else
-#error threadvar is not defined for this compiler
-#endif
-
-#if COMPILER_CL
-#define libexport __declspec(dllexport)
-#define libimport __declspec(dllimport)
-#elif COMPILER_GCC || COMPILER_CLANG
-#define libexport __attribute__ ((visibility ("default")))
-#define libimport
-#else
-#error libexport and libimport are not defined for this compiler
-#endif
-
-#if COMPILER_CL
-#define AlignOf __alignof
-#define AlignAs(alignment) __declspec(align(alignment))
-#elif COMPILER_GCC || COMPILER_CLANG
-#define AlignOf __alignof__
-#define AlignAs(alignment) __attribute__(aligned(alignment))
-#else
-#error AlignOf and AlignAs are not defined for this compiler
-#endif
-
 #include <string.h> // TODO(long): Replace memset, memcpy, and memcmp
 #define SetMem(ptr, val, size) memset((ptr), (val), (size))
 #define ZeroMem(ptr, size) SetMem((ptr), 0, (size))
@@ -380,8 +403,8 @@
                                     ((f)=(l)=(n),(n)->next=0):\
                                     ((n)->next=(f),(f)=(n)))
 #define SLLQueuePop(f, l) ((f)==(l)?\
-                           (f)=(l)=0:\
-                           (f)=(f)->next)
+                           ((f)=(l)=0):\
+                           ((f)=(f)->next))
 
 #define SLLStackPush(f, n) ((n)->next=(f),(f)=(n))
 #define SLLStackPop(f) ((f)==0?0:((f)=(f)->next))
@@ -607,8 +630,8 @@ struct DateTime
     i16 year;
 };
 
-function DateTime  TimeToDate (DenseTime time);
-function DenseTime TimeToDense(DateTime* time);
+function  DateTime TimeToDate (DenseTime time);
+function DenseTime TimeToDense(DateTime  time);
 
 //~ NOTE(long): File Properties
 
@@ -699,10 +722,25 @@ struct TempArena
 #ifndef MEM_DEFAULT_ALIGNMENT
 #define MEM_DEFAULT_ALIGNMENT sizeof(uptr)
 #endif
-#ifndef MEM_POISON_SIZE
-#define MEM_POISON_SIZE 128
+#ifndef MEM_INITIAL_COMMIT
+#define MEM_INITIAL_COMMIT KB(8)
 #endif
-#define MEM_INITIAL_COMMIT ARCH_PAGE_SIZE
+
+#ifndef MEM_POISON_SIZE
+#if ENABLE_SANITIZER
+#define MEM_POISON_SIZE 128
+#define MEM_POISON_ALIGNMENT 8
+#else
+#define MEM_POISON_SIZE ARCH_PAGE_SIZE
+#define MEM_POISON_ALIGNMENT ARCH_PAGE_SIZE
+#endif
+#endif
+
+StaticAssert(MEM_DEFAULT_RESERVE_SIZE >= MEM_COMMIT_BLOCK_SIZE, checkMemDefault);
+StaticAssert(MEM_COMMIT_BLOCK_SIZE <= MEM_INITIAL_COMMIT, checkMemDefault);
+StaticAssert(MEM_DEFAULT_ALIGNMENT <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
+StaticAssert(MEM_POISON_ALIGNMENT <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
+StaticAssert(sizeof(Arena) <= MEM_INITIAL_COMMIT, checkMemDefault);
 
 //~ NOTE(long): String Types
 
@@ -841,7 +879,7 @@ function f64 Atan2_f64(f64 x, f64 y);
 
 //~ NOTE(long): Arena Functions
 
-function Arena* ArenaReserve(u64 reserve, u64 alignment, b8 growing);
+function Arena* ArenaReserve(u64 reserve, u64 alignment, b32 growing);
 function void   ArenaRelease(Arena* arena);
 
 // NOTE(long): NZ stands for no zero. ArenaPush will zero the memory while ArenaPushNZ won't.
@@ -890,7 +928,7 @@ function void      TempEnd(TempArena temp);
     for (TempArena name = (ArenaPushPoisonEx((arena), 0, MEM_POISON_SIZE, 0), TempBegin(arena)), UNIQUE(name) = {0}; \
          UNIQUE(name).pos == 0; \
          UNIQUE(name).pos = ArenaCurrPos(arena), TempEnd(name), \
-         ArenaPushPoisonEx((arena), UNIQUE(name).pos - name.pos, 0, MEM_POISON_SIZE))
+         ArenaPushPoisonEx((arena), 0, UNIQUE(name).pos - name.pos, MEM_POISON_SIZE))
 
 #define ScratchBlock(name, ...) struct { i32 i; TempArena temp; } UNIQUE(_i_) = \
     { .temp = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)) }; \
@@ -938,14 +976,16 @@ function String StrCopy(Arena* arena, String str);
 
 function StringList StrList(Arena* arena, String* strArr, u64 count);
 function StringList StrListExplicit(StringNode* nodes, String* strs, u64 count);
-function void StrListPushExplicit(StringList* list, String str, StringNode* nodeMem);
-function void StrListPush(Arena* arena, StringList* list, String str);
 
 function void StrListPush(Arena* arena, StringList* list, String str);
 function void StrListPushNode(StringList* list, String str, StringNode* nodeMem);
 
+function String StrListPop     (StringList* list);
+function String StrListPopFront(StringList* list);
+
+// NOTE(long): Need to put const here because of C6298
 function String StrPushfv(Arena* arena, char* fmt, va_list args);
-function String StrPushf (Arena* arena, _Printf_format_string_ char* fmt, ...);
+function String StrPushf (Arena* arena, CHECK_PRINTF char* fmt, ...);
 #define StrListPushf(arena, list, fmt, ...) StrListPush((arena), (list), StrPushf((arena), (fmt), __VA_ARGS__))
 
 function String StrPad(Arena* arena, String str, char chr, u32 count, i32 dir);
@@ -1046,6 +1086,8 @@ function f64 F64FromStr(String str, b32* error);
 function i32 I32FromStr(String str, u32 radix, b32* error);
 function i64 I64FromStr(String str, u32 radix, b32* error);
 
+function String StrFromTime(Arena* arena, DateTime time);
+
 //~ NOTE(long): Logs/Errors
 
 typedef struct Record Record;
@@ -1099,7 +1141,7 @@ function StringList StrListFromLogger(Arena* arena, Logger* logger);
 function LogInfo* LogGetInfo(void);
 function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args);
 function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list args);
-function void LogPushf(i32 level, char* file, i32 line, char* fmt, ...);
+function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...);
 #define LogPush(level, log, ...) LogPushf((level), __FILE__, __LINE__, (log), __VA_ARGS__)
 
 #define ErrorBegin(...) LogBegin(.level = LOG_ERROR, __VA_ARGS__)
@@ -1128,7 +1170,6 @@ struct RNG
 #define BIT_NOISE4 0x0BD4BCB5
 #define BIT_NOISE5 0x0063D68D
 
-function RNG GetRNG(void);
 function u32 Noise1D(u32 pos, u32 seed);
 function u64 Hash64 (u8* values, u64 count);
 
