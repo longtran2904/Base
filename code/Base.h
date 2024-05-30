@@ -8,6 +8,7 @@
 // [ ] Fuzzing
 // [ ] Custom printf format
 // [ ] readonly
+// [ ] Consider abstract OSWriteConsole from the base layer out like all the MemXXX functions
 
 //~ NOTE(long): Context Cracking
 
@@ -251,23 +252,17 @@
 #define ENABLE_ASSERT 1
 #endif
 
+#define DebugPrint(str) OSWriteConsole(OS_STD_ERR, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " str))
 #if ENABLE_ASSERT
-#define Assert(c) Stmnt(if (!(c)) \
-                        { \
-                            OSWriteFile(StdErr, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " \
-                                                       "Assertion \"" Stringify(c) "\" failed\n")); \
-                            AssertBreak(); \
-                        })
+#define Assert(c) Stmnt(if (!(c)) { DebugPrint("Assertion \"" Stringify(c) "\" failed\n"); AssertBreak(); })
 #else
 #define Assert(...)
 #endif
 #define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
 
-#define PANIC(str) Stmnt(OSWriteFile(StdErr, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " \
-                                                    "PANIC \"" str "\"\n")); \
-                         AssertBreak())
-#define ALWAYS(x) ((x) ? (x) : (AssertBreak(), (x)))
-#define  NEVER(x) ((x) ? (AssertBreak(), (x)) : (x))
+#define PANIC(str) Stmnt(DebugPrint("PANIC \"" str "\"\n"); AssertBreak())
+#define ALWAYS(x) ((x) ? (x) : (DebugPrint("ALWAYS \"" Stringify(x) "\" is false\n"), AssertBreak(), (x)))
+#define  NEVER(x) ((x) ? (DebugPrint("NEVER \"" Stringify(x) "\" is true\n"), AssertBreak(), (x)) : (x))
 
 #define Stringify_(s) #s
 #define Stringify(s) Stringify_(s)
@@ -953,7 +948,7 @@ function void      TempEnd(TempArena temp);
 //~ NOTE(long): String Functions
 
 //- NOTE(long): Constructor Functions
-#define Str(str, size) (String){ (str), (size) }
+#define Str(...) (String){ __VA_ARGS__ }
 #define StrRange(first, opl) (String){ (first), (opl) - (first) }
 #define StrConst(s) { (u8*)(s), sizeof(s) - 1 }
 #define StrLit(s) (String){ (u8*)(s), sizeof(s) - 1 }

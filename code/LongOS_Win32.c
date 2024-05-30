@@ -146,7 +146,7 @@ function void OSInit(int argc, char **argv)
         timeBeginPeriod(1);
     }
     
-    //- Setup standards
+    //- Setup arena/args
     {
         win32PermArena = ArenaMake();
         
@@ -155,10 +155,6 @@ function void OSInit(int argc, char **argv)
             String arg = StrFromCStr(argv[i]);
             StrListPush(win32PermArena, &win32CmdLine, arg);
         }
-        
-        StdIn = StrLit("CONIN$");
-        StdOut = StrLit("CONOUT$");
-        StdErr = StrLit("CONERR$");
     }
     
     ScratchBegin(scratch);
@@ -354,18 +350,76 @@ function DateTime OSToUniTime(DateTime localTime)
 
 //~ NOTE(long): File Handling
 
-#define CHECK_STD_HANDLE(file, handle) CmpStruct((file), Std##handle)
+function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData)
+{
+    String result = {0};
+    
+    DWORD handles[] =
+    {
+        0,
+        STD_INPUT_HANDLE,
+        STD_OUTPUT_HANDLE,
+        STD_ERROR_HANDLE,
+    };
+    if (NEVER(!InRange(handle, 0, 3)))
+        handle = 0;
+    
+    HANDLE file = GetStdHandle(handles[handle]);
+    if (file != INVALID_HANDLE_VALUE)
+    {
+        TempArena restorePoint = TempBegin(arena);
+        DWORD bufferSize = 1024;
+        u8* buffer = PushArray(arena, u8, bufferSize);
+        
+        DWORD actualRead = 0;
+        if (ReadFile(file, buffer, bufferSize - !!terminateData, &actualRead, 0) && ALWAYS(actualRead >= 2))
+        {
+            if (buffer[actualRead-1] == '\n')
+                actualRead--;
+            if (buffer[actualRead-1] == '\r')
+                actualRead--;
+            result = Str(buffer, actualRead);
+        }
+        else
+            TempEnd(restorePoint);
+    }
+    
+    return result;
+}
+
+function b32 OSWriteConsole(i32 handle, String data)
+{
+    b32 result = 0;
+    
+    DWORD handles[] =
+    {
+        0,
+        STD_INPUT_HANDLE,
+        STD_OUTPUT_HANDLE,
+        STD_ERROR_HANDLE,
+    };
+    if (NEVER(!InRange(handle, 0, 3)))
+        handle = 0;
+    
+    HANDLE file = GetStdHandle(handles[handle]);
+    if (file != INVALID_HANDLE_VALUE)
+    {
+        StaticAssert(sizeof(DWORD) == sizeof(i32));
+        DWORD writeAmount = ALWAYS(data.size <= MAX_I32) ? (DWORD)data.size : MAX_I32;
+        DWORD actualWrite = 0;
+        result = WriteFile(file, data.str, writeAmount, &actualWrite, 0);
+        result = result && ALWAYS(data.size == actualWrite);
+    }
+    
+    return result;
+}
 
 function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
 {
     String result = {0};
-    HANDLE file;
-    if (CHECK_STD_HANDLE(fileName, In))
-        file = GetStdHandle(STD_INPUT_HANDLE);
-    else
-        file = CreateFileA(fileName.str,
-                           GENERIC_READ, FILE_SHARE_READ, 0,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    HANDLE file = CreateFileA(fileName.str,
+                              GENERIC_READ, FILE_SHARE_READ, 0,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     
     if (file != INVALID_HANDLE_VALUE)
     {
@@ -374,25 +428,25 @@ function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
         u64 totalSize = (((u64)highSize << 32) | (u64)lowSize);
         
         TempArena restorePoint = TempBegin(arena);
-        u8* buffer = PushArray(arena, u8, totalSize + (terminateData ? 1 : 0));
+        u8* buffer = PushArray(arena, u8, totalSize + !!terminateData);
         
         u8* ptr = buffer;
         u8* opl = buffer + totalSize;
-        b32 success = true;
+        b32 success = 1;
         for (; ptr < opl;)
         {
             DWORD readAmount = (u32)ClampTop((u64)(opl - ptr), MAX_U32);
             DWORD actualRead = 0;
             if (!ReadFile(file, ptr, readAmount, &actualRead, 0))
             {
-                success = false;
+                success = 0;
                 break;
             }
             ptr += actualRead;
         }
         
         if (success)
-            result = (String){ buffer, totalSize };
+            result = Str(buffer, totalSize);
         else
             TempEnd(restorePoint);
         
@@ -404,20 +458,14 @@ function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
 
 function b32 OSWriteList(String fileName, StringList* data)
 {
-    b32 result = false;
-    HANDLE file;
-    if (CHECK_STD_HANDLE(fileName, Out))
-        file = GetStdHandle(STD_OUTPUT_HANDLE);
-    else if (CHECK_STD_HANDLE(fileName, Err))
-        file = GetStdHandle(STD_ERROR_HANDLE);
-    else
-        file = CreateFileA(fileName.str,
-                           GENERIC_WRITE, FILE_SHARE_WRITE, 0,
-                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    b32 result = 0;
+    HANDLE file = CreateFileA(fileName.str,
+                              GENERIC_WRITE, FILE_SHARE_WRITE, 0,
+                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     
     if (file != INVALID_HANDLE_VALUE)
     {
-        result = true;
+        result = 1;
         
         for (StringNode* node = data->first; node != 0; node = node->next)
         {
@@ -428,11 +476,9 @@ function b32 OSWriteList(String fileName, StringList* data)
             {
                 DWORD writeAmount = (u32)ClampTop((u64)(opl - ptr), MAX_U32);
                 DWORD actualWrite = 0;
-                if (!WriteFile(file, ptr, writeAmount, &actualWrite, 0))
-                {
-                    result = false;
+                result = WriteFile(file, ptr, writeAmount, &actualWrite, 0);
+                if (result)
                     goto END;
-                }
                 
                 ptr += actualWrite;
             }
@@ -485,13 +531,12 @@ function FileProperties GetFileProperties(String fileName)
 function String OSProcessDir(void) { return win32BinaryPath; }
 function String OSAppDataDir(void) { return win32UserPath; }
 function String OSAppTempDir(void) { return win32TempPath; }
-
 function String OSCurrentDir(Arena* arena)
 {
     DWORD size = GetCurrentDirectoryA(0, 0);
     u8* buffer = PushArrayNZ(arena, u8, size);
     size = GetCurrentDirectoryA(size + 1, buffer);
-    return (String){ buffer, size };
+    return Str(buffer, size);
 }
 
 function b32 OSDeleteFile(String fileName)

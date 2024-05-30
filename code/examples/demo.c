@@ -172,6 +172,18 @@ int main(void)
         printf("Today:  %.*s\n", StrExpand(now));
         
         printf("\n");
+        printf("---STDIO---\n");
+        OSWriteConsole(OS_STD_OUT, StrLit("Please enter your name: "));
+        String input = OSReadConsole(arena, OS_STD_IN, 0);
+        if (StrCompare(input, StrLit("Long"), 1))
+            OSWriteConsole(OS_STD_OUT, StrPushf(arena, "\"%.*s\" is the most beautiful name I've ever seen\n", StrExpand(input)));
+        else if (StrCompare(input, StrLit("sad"), 1))
+            OSWriteConsole(OS_STD_ERR, StrLit("Then just kill yourself\n"));
+        else
+            OSWriteConsole(OS_STD_ERR, StrPushf(arena, "ERROR: \"%.*s\" is a stupid name\n", StrExpand(input)));
+        OSSleepMS(500);
+        
+        printf("\n");
         printf("---FILES---\n");
         FileIterBlock(arena, iter, StrLit("code"))
         {

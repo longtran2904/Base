@@ -723,32 +723,32 @@ function String StrFromCStr(u8* cstr)
 function String StrChop(String str, u64 size)
 {
     u64 clampedSize = ClampTop(size, str.size);
-    return (String){ (str.str), (str.size - clampedSize) };
+    return Str(str.str, str.size - clampedSize);
 }
 
 function String StrSkip(String str, u64 size)
 {
     u64 clampedSize = ClampTop(size, str.size);
-    return (String){ (str.str + clampedSize), (str.size - clampedSize) };
+    return Str(str.str + clampedSize, str.size - clampedSize);
 }
 
 function String StrPrefix(String str, u64 size)
 {
     u64 clampedSize = ClampTop(size, str.size);
-    return (String){ (str.str), clampedSize };
+    return Str(str.str, clampedSize);
 }
 
 function String StrPostfix(String str, u64 size)
 {
     u64 clampedSize = ClampTop(size, str.size);
-    return (String){ (str.str + str.size - clampedSize), (clampedSize) };
+    return Str(str.str + str.size - clampedSize, clampedSize);
 }
 
 function String Substr(String str, u64 first, u64 opl)
 {
     u64 clampedOpl = ClampTop(str.size, opl);
     u64 clampedFirst = ClampTop(clampedOpl, first);
-    return (String){ str.str + clampedFirst, clampedOpl - clampedFirst };
+    return Str(str.str + clampedFirst, clampedOpl - clampedFirst);
 }
 
 function String SubstrRange(String str, u64 first, u64 range)
@@ -795,7 +795,7 @@ function String StrTrim(String str, String arr, i32 dir)
         }
     }
     
-    return end >= first ? Substr(str, first, end + 1) : (String){0};
+    return end >= first ? Substr(str, first, end + 1) : Str(0);
 }
 
 //- NOTE(long): Allocation Functions
@@ -1032,7 +1032,7 @@ function String StrJoinList(Arena* arena, StringList* list, StringJoin* join)
     
     Assert(ptr == (str + size));
     
-    return (String){ str, size };
+    return Str(str, size);
 }
 
 function String StrJoinMax3(Arena* arena, StringJoin* join)
@@ -1508,7 +1508,7 @@ function String StrFromStr32(Arena* arena, String32 str)
     
     u64 size = (u64)(dptr - memory);
     ArenaPop(arena, (expectedSize - size) * sizeof(*memory));
-    return(String){ memory, size };
+    return Str(memory, size);
 }
 
 function String StrFromStr16(Arena* arena, String16 str)
@@ -1528,7 +1528,7 @@ function String StrFromStr16(Arena* arena, String16 str)
     
     u64 size = (u64)(dptr - memory);
     ArenaPop(arena, (expectedSize - size) * sizeof(*memory));
-    return(String){ memory, size };
+    return Str(memory, size);
 }
 
 function String StrBackspace(String str)

@@ -22,9 +22,16 @@ function void OSDecommit(void* ptr, u64 size);
 
 //~ NOTE(long): File Handling
 
-global String StdIn;
-global String StdOut;
-global String StdErr;
+enum
+{
+    OS_STD_NONE,
+    OS_STD_IN,
+    OS_STD_OUT,
+    OS_STD_ERR,
+};
+
+function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData);
+function b32   OSWriteConsole(i32 handle, String data);
 
 function String OSReadFile(Arena* arena, String fileName, b32 terminateData);
 function b32   OSWriteList(String fileName, StringList* data);

@@ -698,7 +698,7 @@ int main(void)
         };
         
         for (u64 i = 0; i < ArrayCount(test); ++i)
-            TestFloat(test[i].f, (String){0}/*test[i].str*/);
+            TestFloat(test[i].f, Str(0)/*test[i].str*/);
     }
     
     TEST("Log")
