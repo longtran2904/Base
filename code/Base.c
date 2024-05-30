@@ -441,7 +441,8 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
 {
     void* result = 0;
     Arena* current = arena->curr;
-    Assert(current->alignment <= ARCH_ALLOC_GRANULARITY);
+    if (NEVER(current->alignment > ARCH_PAGE_SIZE))
+        current->alignment = ARCH_PAGE_SIZE;
     u64 alignedPos = AlignUpPow2(current->pos, current->alignment);
     
     // allocate new chunk if necessary
@@ -506,12 +507,20 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
     return result;
 }
 
+function void ArenaPop(Arena* arena, u64 amount)
+{
+    u64 pos = ArenaCurrPos(arena);
+    u64 minSize = ArenaMinSize(arena);
+    Assert(pos >= minSize);
+    if (ALWAYS(pos - minSize > amount))
+        ArenaPopTo(arena, pos - amount);
+}
+
 function void ArenaPopTo(Arena* arena, u64 pos)
 {
     Arena* current = arena->curr;
-    
-    Assert(pos <= ArenaCurrPos(current));
-    // if (pos < ArenaCurrPos(current))
+    NEVER(pos > ArenaCurrPos(current));
+    if (pos < ArenaCurrPos(current))
     {
         u64 clampedPos = ClampBot(pos, sizeof(Arena));
         u64 nextCommitPos = ClampTop(AlignUpPow2(clampedPos, MEM_COMMIT_BLOCK_SIZE), ArenaPos(current, current->cap));
@@ -535,16 +544,21 @@ function void ArenaPopTo(Arena* arena, u64 pos)
             current->commitPos = nextCommitPos;
             current->pos = ClampTop(current->pos, current->commitPos);
         }
-        else if (nextCommitPos > current->commitPos)
+        else if (NEVER(nextCommitPos > current->commitPos))
         {
-            // NOTE(long):
-            // Technically speaking, this can happen when the user pushes a new chunk that surpasses the current cap
+            // NOTE(long): Technically speaking, this can happen when:
+            // 1. the user pushes a new chunk that surpasses the current cap
             // When that happens, a new arena will be allocated to contain the allocation, leaving the old arena untouched
             // This means the old arena could contain an uncommitted region from the commitPos to cap
             // Later, the user can pop into that padded region, and because the region is never allocated, it is poisonous
             // I can handle that case by actually allocating that region, but if this happens there's a bug somewhere
             // Unless I have an actual use case here, I'm asserting this for now
-            Assert(0);
+            
+            // 2. MEM_COMMIT_BLOCK_SIZE <= MEM_INITIAL_COMMIT
+            // I never find a good use case for this, so I statically check for it here
+            StaticAssert(MEM_COMMIT_BLOCK_SIZE <= MEM_INITIAL_COMMIT, checkMemDefault);
+            
+            return;
         }
         
         u64 newPos = clampedPos - current->basePos;
@@ -588,12 +602,14 @@ function void* ArenaPush(Arena* arena, u64 size)
 function void ArenaPoison(Arena* arena, u64 size)
 {
     Arena* current = arena->curr;
-    Assert(current->pos - ArenaMinSize(current) >= size);
+    if (ALWAYS(current->pos - ArenaMinSize(current) >= size))
+    {
 #if ENABLE_SANITIZER
-    AsanPoison(PtrAdd(current, current->pos - size), size);
+        AsanPoison(PtrAdd(current, current->pos - size), size);
 #else
-    MemDecommit(PtrAdd(current, current->pos - size), size);
+        MemDecommit(PtrAdd(current, current->pos - size), size);
 #endif
+    }
 }
 
 function void* ArenaPushPoisonEx(Arena* arena, u64 size, u64 preSize, u64 postSize)
@@ -1823,7 +1839,6 @@ function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list a
         
         // https://ss64.com/nt/syntax-ansi.html
         local const char* colors[] = { "\x1b[36m", "\x1b[94m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[95m" };
-        Assert(InRange(record->level, 0, LogType_Count - 1));
         record->log = StrPushf(arena, "[%02u:%02u:%02u] %s%5s \x1b[90m%.*s:%d: \x1b[97m%s\x1b[0m",
                                time.hour, time.min, time.sec,
                                colors[record->level], level.str,
@@ -1835,7 +1850,7 @@ function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list a
 function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...)
 {
     LOG_List* list = logThread.stack;
-    if (list && level >= list->info.level)
+    if (list && level >= list->info.level && ALWAYS(InRange(level, 0, LogType_Count - 1)))
     {
         LOG_Node* node = PushStruct(logThread.arena, LOG_Node);
         SLLQueuePush(list->first, list->last, node);

@@ -83,8 +83,8 @@ function void* OSReserve(u64 size)
     void* result = VirtualAlloc(0, size, MEM_RESERVE, PAGE_NOACCESS);
     if (!result)
     {
-        DWORD error = GetLastError();
-        Assert(!"Failed to reserve memory");
+        DEBUG(error, DWORD error = GetLastError());
+        PANIC("Failed to reserve memory");
     }
     return result;
 }
@@ -94,8 +94,8 @@ function b32 OSCommit(void* ptr, u64 size)
     b32 result = VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE) != 0;
     if (!result)
     {
-        DWORD error = GetLastError();
-        Assert(!"Failed to commit memory");
+        DEBUG(error, DWORD error = GetLastError());
+        PANIC("Failed to commit memory");
     }
     return result;
 }
@@ -106,8 +106,8 @@ function void OSDecommit(void* ptr, u64 size)
     if (!VirtualFree(ptr, size, MEM_DECOMMIT))
 #pragma WarnEnable(6250)
     {
-        DWORD error = GetLastError();
-        Assert(!"Failed to decommit memory");
+        DEBUG(error, DWORD error = GetLastError());
+        PANIC("Failed to decommit memory");
     }
 }
 
@@ -115,8 +115,8 @@ function void OSRelease(void* ptr)
 {
     if (!VirtualFree(ptr, 0, MEM_RELEASE))
     {
-        DWORD error = GetLastError();
-        Assert(!"Failed to release memory");
+        DEBUG(error, DWORD error = GetLastError());
+        PANIC("Failed to release memory");
     }
 }
 
@@ -138,22 +138,32 @@ global Arena* win32PermArena = {0};
 
 function void OSInit(int argc, char **argv)
 {
-    // Setup precision time
-    LARGE_INTEGER perfFreq = {0};
-    if (QueryPerformanceFrequency(&perfFreq))
-        win32TicksPerSecond = ((u64)perfFreq.HighPart << 32) | perfFreq.LowPart;
-    timeBeginPeriod(1);
-    
-    // Setup arena
-    win32PermArena = ArenaMake();
-    
-    for (int i = 0; i <argc; ++i)
+    //- Setup precision time
     {
-        String arg = StrFromCStr(argv[i]);
-        StrListPush(win32PermArena, &win32CmdLine, arg);
+        LARGE_INTEGER perfFreq = {0};
+        if (QueryPerformanceFrequency(&perfFreq))
+            win32TicksPerSecond = ((u64)perfFreq.HighPart << 32) | perfFreq.LowPart;
+        timeBeginPeriod(1);
+    }
+    
+    //- Setup standards
+    {
+        win32PermArena = ArenaMake();
+        
+        for (int i = 0; i <argc; ++i)
+        {
+            String arg = StrFromCStr(argv[i]);
+            StrListPush(win32PermArena, &win32CmdLine, arg);
+        }
+        
+        StdIn = StrLit("CONIN$");
+        StdOut = StrLit("CONOUT$");
+        StdErr = StrLit("CONERR$");
     }
     
     ScratchBegin(scratch);
+    
+    //- Setup binary path
     {
         DWORD cap = 2048;
         u8* buffer = 0;
@@ -172,11 +182,11 @@ function void OSInit(int argc, char **argv)
             }
         }
         
-        String fullPath = Str(buffer, size);
-        String binaryPath = StrPrefix(fullPath, StrFindChr(fullPath, "/\\", FindStr_LastMatch));
-        win32BinaryPath = StrCopy(win32PermArena, binaryPath);
+        if (ALWAYS(size))
+            win32BinaryPath = StrCopy(win32PermArena, StrChopAfter(Str(buffer, size), StrLit("/\\"), FindStr_LastMatch));
     }
     
+    //- Setup user path
     {
         HANDLE token = GetCurrentProcessToken();
         DWORD cap = 2048;
@@ -189,12 +199,13 @@ function void OSInit(int argc, char **argv)
                 buffer = 0;
         }
         
-        if (buffer != 0)
-            // NOTE(long): the docs make it sound like we can only count on cap getting the
-            // size on failure; so we're just going to cstring this to be safe.
+        if (ALWAYS(buffer))
+            // NOTE(long): the docs make it sound like we can only count on cap getting the size on failure
+            // so we're just going to cstring this to be safe.
             win32UserPath = StrCloneCStr(win32PermArena, buffer);
     }
     
+    //- Setup temp path
     {
         DWORD cap = 2048;
         u8* buffer = PushArrayNZ(scratch, u8, cap);
@@ -207,9 +218,10 @@ function void OSInit(int argc, char **argv)
         }
         
         // NOTE(long): size - 1 because this particular string function in the Win32 API
-        // is different from the others and it includes  the trailing backslash.
+        // is different from the others and it includes the trailing backslash.
         // We want consistency, so the "- 1" removes it.
-        win32TempPath = StrCopy(win32PermArena, Str(buffer, size - 1));
+        if (ALWAYS(size > 1))
+            win32TempPath = StrCopy(win32PermArena, Str(buffer, size - 1));
     }
     
     ScratchEnd(scratch);
@@ -237,9 +249,8 @@ function void W32WinMainInit(HINSTANCE hInstance,
     int argc = __argc;
     char** argv = __argv;
     win32Instance = hInstance;
-    UNUSED(hPrevInstance);
     
-    // TODO(long): Handle CLI and std(in/out/err)
+    UNUSED(hPrevInstance);
     UNUSED(lpCmdLine);
     UNUSED(nShowCmd);
     
@@ -343,14 +354,19 @@ function DateTime OSToUniTime(DateTime localTime)
 
 //~ NOTE(long): File Handling
 
+#define CHECK_STD_HANDLE(file, handle) CmpStruct((file), Std##handle)
+
 function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
 {
-    HANDLE file = CreateFileA(fileName.str,
-                              GENERIC_READ, 0, 0,
-                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
-                              0);
-    
     String result = {0};
+    HANDLE file;
+    if (CHECK_STD_HANDLE(fileName, In))
+        file = GetStdHandle(STD_INPUT_HANDLE);
+    else
+        file = CreateFileA(fileName.str,
+                           GENERIC_READ, FILE_SHARE_READ, 0,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    
     if (file != INVALID_HANDLE_VALUE)
     {
         DWORD highSize = 0;
@@ -365,8 +381,7 @@ function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
         b32 success = true;
         for (; ptr < opl;)
         {
-            u64 totalAmount = (u64)(opl - ptr);
-            DWORD readAmount = (u32)ClampTop(totalAmount, MAX_U32);
+            DWORD readAmount = (u32)ClampTop((u64)(opl - ptr), MAX_U32);
             DWORD actualRead = 0;
             if (!ReadFile(file, ptr, readAmount, &actualRead, 0))
             {
@@ -389,12 +404,17 @@ function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
 
 function b32 OSWriteList(String fileName, StringList* data)
 {
-    HANDLE file = CreateFileA(fileName.str,
-                              GENERIC_WRITE, 0, 0,
-                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
-                              0);
-    
     b32 result = false;
+    HANDLE file;
+    if (CHECK_STD_HANDLE(fileName, Out))
+        file = GetStdHandle(STD_OUTPUT_HANDLE);
+    else if (CHECK_STD_HANDLE(fileName, Err))
+        file = GetStdHandle(STD_ERROR_HANDLE);
+    else
+        file = CreateFileA(fileName.str,
+                           GENERIC_WRITE, FILE_SHARE_WRITE, 0,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    
     if (file != INVALID_HANDLE_VALUE)
     {
         result = true;
@@ -406,8 +426,7 @@ function b32 OSWriteList(String fileName, StringList* data)
             
             for (; ptr < opl;)
             {
-                u64 totalAmount = (u64)(opl - ptr);
-                DWORD writeAmount = (u32)ClampTop(totalAmount, MAX_U32);
+                DWORD writeAmount = (u32)ClampTop((u64)(opl - ptr), MAX_U32);
                 DWORD actualWrite = 0;
                 if (!WriteFile(file, ptr, writeAmount, &actualWrite, 0))
                 {

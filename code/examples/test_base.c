@@ -1,9 +1,9 @@
+#include <stdio.h>
 #include "DefaultMemory.h"
 #include "Base.h"
 #include "LongOS.h"
 #include "Base.c"
 #include "LongOS_Win32.c"
-#include <stdio.h>
 
 typedef struct TestCtx TestCtx;
 struct TestCtx
@@ -51,8 +51,6 @@ function void TestResult(b32 result)
     ctx.testCount++;
     ctx.passCount += !!result;
     printf(result ? "." : "X");
-    
-    Assert(result);
 }
 
 function void TestEnd()
@@ -1012,10 +1010,10 @@ int main(void)
         {
             buffer1 = ArenaPushPoison(arena, bigCount);
             buffer2 =   ArenaPush(arena, bigCount);
-            Assert(buffer2 == (buffer1 + bigCount + MEM_POISON_SIZE));
+            TestResult(buffer2 == (buffer1 + bigCount + MEM_POISON_SIZE));
             u8* ptr = PtrAdd(arena, AlignUpPow2(temp.pos, MEM_POISON_ALIGNMENT));
             ptr += AlignUpPow2(bigCount, MEM_POISON_ALIGNMENT) + MEM_POISON_SIZE * 2;
-            Assert(buffer2 == ptr);
+            TestResult(buffer2 == ptr);
             
 #if ENABLE_SANITIZER
             TestResult(AsanIsPoison(buffer2 + bigCount, 1));

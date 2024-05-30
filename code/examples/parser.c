@@ -432,10 +432,12 @@ int main(int argc, char** argv)
                     else
                     {
                         u32 arrayCount = ParseArray(parser);
+                        DEBUG(arrayCount);
                         MD_NodeFlags flags = MD_NodeFlag_IsAfterSemicolon|MD_NodeFlag_IsAfterComma;
                         if (HasAnyFlags(parser->current->flags, flags) || MD_S8Match(parser->current->string, MD_S8Lit("="), 0))
                         {
                             MD_Node* decl = PushNode(parser, name, base, pointerLevel);
+                            DEBUG(decl);
                             handled = 1;
                             
                             if (HasAnyFlags(parser->current->flags, MD_NodeFlag_IsAfterComma))

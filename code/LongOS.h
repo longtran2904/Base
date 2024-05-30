@@ -22,8 +22,12 @@ function void OSDecommit(void* ptr, u64 size);
 
 //~ NOTE(long): File Handling
 
+global String StdIn;
+global String StdOut;
+global String StdErr;
+
 function String OSReadFile(Arena* arena, String fileName, b32 terminateData);
-function b32    OSWriteList(String fileName, StringList* data);
+function b32   OSWriteList(String fileName, StringList* data);
 #define OSWriteFile(file, data) OSWriteList((file), &(StringList) \
                                             { \
                                                 .first = &(StringNode){ .string = (data) }, \

@@ -278,17 +278,14 @@ function b32 GFXWindowSetFlags(GFXWindow window, GFXFlags flags, b32 value)
 function String GFXWindowGetTitle(Arena* arena, GFXWindow window)
 {
     String result = {0};
-    ScratchBlock(scratch)
+    HWND wnd = W32WindowFromGFXHandle(window)->wnd;
+    if (wnd)
     {
-        HWND wnd = W32WindowFromGFXHandle(window)->wnd;
-        if (wnd)
+        result.size = GetWindowTextLength(wnd);
+        if (result.size)
         {
-            result.size = GetWindowTextLength(wnd);
-            if (result.size)
-            {
-                result.str = ArenaPush(arena, result.size + 1);
-                GetWindowText(wnd, result.str, (int)result.size + 1);
-            }
+            result.str = ArenaPush(arena, result.size + 1);
+            GetWindowText(wnd, result.str, (int)result.size + 1);
         }
     }
     return result;

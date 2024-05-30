@@ -324,17 +324,17 @@ function b32 InitGL(void)
 	
     // Clean up "temps"
     {
-        if (bootstrapContext)
-            Assert(w32WglDeleteContext(bootstrapContext));
+        if (bootstrapContext && !w32WglDeleteContext(bootstrapContext))
+            ErrorSet("Failed to destroy the bootstrap context", error);
 		
-        if (bootstrapWindow)
-            Assert(DestroyWindow(bootstrapWindow));
+        if (bootstrapWindow && !DestroyWindow(bootstrapWindow))
+            ErrorSet("Failed to destroy the bootstrap window", error);
 		
-		if (dummyWindow)
-			Assert(DestroyWindow(dummyWindow));
+		if (dummyWindow && !DestroyWindow(dummyWindow))
+			ErrorSet("Failed to destroy the dummy context", error);
         
-        if (atom)
-            Assert(UnregisterClass(BOOTSTRAP_WINDOW_CLASS_NAME, instance));
+        if (atom && !UnregisterClass(BOOTSTRAP_WINDOW_CLASS_NAME, instance))
+            ErrorSet("Failed to unregister the bootstrap class", error);
     }
     
 	// Clean up "non-temps"
@@ -465,7 +465,7 @@ function void BeginGLRender(GFXWindow window)
         u32 w, h;
         GFXWindowGetInnerRect(window, 0, 0, &w, &h);
         glViewport(0, 0, w, h);
-        GLEnum error = glGetError();
+        DEBUG(error, GLEnum error = glGetError());
     }
 }
 

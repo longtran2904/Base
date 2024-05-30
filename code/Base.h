@@ -7,6 +7,7 @@
 // [ ] GCC/CLANG testing
 // [ ] Fuzzing
 // [ ] Custom printf format
+// [ ] readonly
 
 //~ NOTE(long): Context Cracking
 
@@ -234,7 +235,7 @@
 #    define AssertBreak() __builtin_trap()
 #  elif COMPILER_CL
 #    define AssertBreak() __debugbreak()
-#  else // NOTE(long): This probably doesn't work on GCC and Clang because of UB
+#  else
 #    define AssertBreak() (*(volatile int *)0 = 0)
 #  endif
 #endif
@@ -242,19 +243,31 @@
 //~ NOTE(long): Helper Macros
 
 #define UNIQUE(name) Concat(name, __LINE__)
-#define Stmnt(S) do { S } while (0)
+#define Stmnt(S) do { S; } while (0)
 #define UNUSED(x) ((void)(x))
+#define DEBUG(x, ...) Stmnt(__VA_ARGS__; UNUSED(x))
 
 #ifndef ENABLE_ASSERT
 #define ENABLE_ASSERT 1
 #endif
 
 #if ENABLE_ASSERT
-#define Assert(c) Stmnt(if (!(c)) { AssertBreak(); })
+#define Assert(c) Stmnt(if (!(c)) \
+                        { \
+                            OSWriteFile(StdErr, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " \
+                                                       "Assertion \"" Stringify(c) "\" failed\n")); \
+                            AssertBreak(); \
+                        })
 #else
 #define Assert(...)
 #endif
 #define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
+
+#define PANIC(str) Stmnt(OSWriteFile(StdErr, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " \
+                                                    "PANIC \"" str "\"\n")); \
+                         AssertBreak())
+#define ALWAYS(x) ((x) ? (x) : (AssertBreak(), (x)))
+#define  NEVER(x) ((x) ? (AssertBreak(), (x)) : (x))
 
 #define Stringify_(s) #s
 #define Stringify(s) Stringify_(s)
@@ -355,6 +368,7 @@
 
 #define CompareMem(a, b, size) (memcmp((a), (b), (size)) == 0)
 #define CompareArr(a, b) CompareMem((a), (b), Min(ArrayCount(a) * sizeof(*(a)), ArrayCount(b) * sizeof(*(b))))
+#define  CmpStruct(a, b) CompareMem(&(a), &(b), sizeof(a))
 
 #if __SANITIZE_ADDRESS__
 #define ENABLE_SANITIZER 1
@@ -737,9 +751,9 @@ struct TempArena
 #endif
 
 StaticAssert(MEM_DEFAULT_RESERVE_SIZE >= MEM_COMMIT_BLOCK_SIZE, checkMemDefault);
-StaticAssert(MEM_COMMIT_BLOCK_SIZE <= MEM_INITIAL_COMMIT, checkMemDefault);
 StaticAssert(MEM_DEFAULT_ALIGNMENT <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
 StaticAssert(MEM_POISON_ALIGNMENT <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
+StaticAssert(ARCH_PAGE_SIZE <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
 StaticAssert(sizeof(Arena) <= MEM_INITIAL_COMMIT, checkMemDefault);
 
 //~ NOTE(long): String Types
@@ -894,6 +908,7 @@ function void* ArenaPushNZ(Arena* arena, u64 size);
 function void* ArenaPushPoisonEx(Arena* arena, u64 size, u64 preSize, u64 postSize);
 #define ArenaPushPoison(arena, size) ArenaPushPoisonEx((arena), (size), MEM_POISON_SIZE, MEM_POISON_SIZE)
 
+function void ArenaPop    (Arena* arena, u64 amount);
 function void ArenaPopTo  (Arena* arena, u64 pos); // This is the abosolute pos, which means it must account for basePos
 function void ArenaAlign  (Arena* arena, u64 alignment);
 function void ArenaAlignNZ(Arena* arena, u64 alignment);
@@ -901,7 +916,6 @@ function void ArenaAlignNZ(Arena* arena, u64 alignment);
 #define ArenaMake(...) ArenaReserve(MEM_DEFAULT_RESERVE_SIZE, MEM_DEFAULT_ALIGNMENT, (__VA_ARGS__ + 0))
 #define ArenaPos(arena, pos) ((arena)->curr->basePos + (pos))
 #define ArenaCurrPos(arena) ArenaPos(arena, (arena)->curr->pos)
-#define ArenaPop(arena, amount) ArenaPopTo((arena), ArenaCurrPos(arena) - (amount))
 
 #define PtrAdd(ptr, offset) ((u8*)(ptr) + (offset))
 
