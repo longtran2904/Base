@@ -3,11 +3,12 @@
 #ifndef _LONG_O_S__D3_D11_H
 #define _LONG_O_S__D3_D11_H
 
-#pragma WarnPush(0)
+WarnPush(0)
 #define COBJMACROS
 #include <initguid.h>
 #include <d3d11.h>
-#pragma WarnPop
+WarnPop()
+
 // d3d11.h is for all the ID3D11... types and functions. It has already included dxgi.h and d3dcommon.h
 // dxgi.h is for all the IDXGI... types and functions
 // d3dcommon.h is for blob (ReadFileToBlob, ID3D10Blob, etc) and enums like: D3D_DRIVER_TYPE, D3D_FEATURE_LEVEL

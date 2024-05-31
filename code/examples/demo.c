@@ -1,11 +1,10 @@
-#include "DefaultMemory.h"
 #include "Base.h"
 #include "LongOS.h"
 #include "Base.c"
 #include "LongOS_Win32.c"
 #include <stdio.h>
 
-#define DEMO(name) DeferBlock(printf("[%s]\n", name), printf("\n"))
+#define DEMO(name) DeferBlock(Outf("[%s]\n", name), Outf("\n"))
 
 void DemoLogCallback(Arena* arena, Record* record, char* fmt, va_list args)
 {
@@ -27,38 +26,38 @@ int main(void)
         i64 dx = 0x77E435B08;
         while (dx)
             putchar(0x726F6C6564574820 >> (((dx >>= 3) & 7) << 3) & 0xFF);
-        printf("\n");
+        Outf("\n");
     }
     
     DEMO("Float")
     {
         i64 b = (1LL << 24)|1;
         f32 a = (f32)b;
-        printf("i64: %lld, f32: %f\n", b, a);
+        Outf("i64: %lld, f32: %f\n", b, a);
         a = 5.f;
-        printf("hex(5.0f) = %08x\n", *(i32*)&a);
+        Outf("hex(5.0f) = %08x\n", *(i32*)&a);
         
         f32 x = 1.1f;
         if (x == 1.1f)
-            printf("x equals 1.1f\n");
+            Outf("x equals 1.1f\n");
         
         if (x != 1.1)
-            printf("x doesn't equals 1.1\n");
+            Outf("x doesn't equals 1.1\n");
     }
 #endif
     
     DEMO("Context")
     {
-        printf("cl      = %d\n", COMPILER_CL);
-        printf("clang   = %d\n", COMPILER_CLANG);
-        printf("gcc     = %d\n", COMPILER_GCC);
-        printf("widnows = %d\n", OS_WIN);
-        printf("linux   = %d\n", OS_LINUX);
-        printf("mac     = %d\n", OS_MAC);
-        printf("x64     = %d\n", ARCH_X64);
-        printf("x86     = %d\n", ARCH_X86);
-        printf("arm     = %d\n", ARCH_ARM);
-        printf("arm64   = %d\n", ARCH_ARM64);
+        Outf("cl      = %d\n", COMPILER_CL);
+        Outf("clang   = %d\n", COMPILER_CLANG);
+        Outf("gcc     = %d\n", COMPILER_GCC);
+        Outf("widnows = %d\n", OS_WIN);
+        Outf("linux   = %d\n", OS_LINUX);
+        Outf("mac     = %d\n", OS_MAC);
+        Outf("x64     = %d\n", ARCH_X64);
+        Outf("x86     = %d\n", ARCH_X86);
+        Outf("arm     = %d\n", ARCH_ARM);
+        Outf("arm64   = %d\n", ARCH_ARM64);
     }
     
     Arena* arena = ArenaMake();
@@ -104,7 +103,7 @@ int main(void)
             TempBlock(temp, arena)
             {
                 String fStr = StrFromF64(arena, test[i].f, 17);
-                printf("Float: %22.17g String: %.*s\n", test[i].f, StrExpand(fStr));
+                Outf("Float: %22.17g String: %.*s\n", test[i].f, StrExpand(fStr));
             }
         }
     }
@@ -131,48 +130,48 @@ int main(void)
             LogPush(LOG_FATAL, "Log fatal");
         }
         
-        printf("-Normal-\n");
+        Outf("-Normal-\n");
         for (StringNode* node = logs.first; node; node = node->next)
-            printf("%.*s\n", StrExpand(node->string));
+            Outf("%.*s\n", StrExpand(node->string));
         
         u64 time = OSNowMS();
         u64 pos = ArenaCurrPos(arena);
         u64 overhead = ArenaCurrPos(logThread.arena);
         LogBlock(arena, logs, .callback = DemoLogCallback)
         {
-            printf("\n-Stress Test-\n");
+            Outf("\n-Stress Test-\n");
             for (u64 i = 0; i < 1024; ++i)
                 LogPush(i % LogType_Count, "Log: %llu", i);
         }
-        printf("Elapsed: %llums\n", OSNowMS() - time);
-        printf("Memory: %llu bytes, Overhead: %llu bytes\n", ArenaCurrPos(arena) - pos, ArenaCurrPos(logThread.arena) - overhead);
-        printf("Count: %llu nodes, Size: %llu bytes\n", logs.nodeCount, logs.totalSize);
+        Outf("Elapsed: %llums\n", OSNowMS() - time);
+        Outf("Memory: %llu bytes, Overhead: %llu bytes\n", ArenaCurrPos(arena) - pos, ArenaCurrPos(logThread.arena) - overhead);
+        Outf("Count: %llu nodes, Size: %llu bytes\n", logs.nodeCount, logs.totalSize);
     }
     
     DEMO("OS")
     {
-        printf("---PATHS---\n");
+        Outf("---PATHS---\n");
         String currentDir = OSCurrentDir(arena);
         String processDir = OSProcessDir();
         String appDataDir = OSAppDataDir();
         String appTempDir = OSAppTempDir();
-        printf("Curr: %.*s\\\n", StrExpand(currentDir));
-        printf("Exe:  %.*s\\\n", StrExpand(processDir));
-        printf("Data: %.*s\\\n", StrExpand(appDataDir));
-        printf("Temp: %.*s\\\n", StrExpand(appTempDir));
-        printf("File: %s\n", __FILE__);
+        Outf("Curr: %.*s\\\n", StrExpand(currentDir));
+        Outf("Exe:  %.*s\\\n", StrExpand(processDir));
+        Outf("Data: %.*s\\\n", StrExpand(appDataDir));
+        Outf("Temp: %.*s\\\n", StrExpand(appTempDir));
+        Outf("File: %s\n", __FILE__);
         
-        printf("\n");
-        printf("---TIMES---\n");
+        Outf("\n");
+        Outf("---TIMES---\n");
         u64 sleep = 100;
-        printf("Before: %llu ms\n", OSNowMS());
-        printf("Sleep:  %8llu ms\n", (OSSleepMS((u32)sleep), sleep));
-        printf("After:  %llu ms\n", OSNowMS());
+        Outf("Before: %llu ms\n", OSNowMS());
+        Outf("Sleep:  %8llu ms\n", (OSSleepMS((u32)sleep), sleep));
+        Outf("After:  %llu ms\n", OSNowMS());
         String now = StrFromTime(arena, OSNowUniTime());
-        printf("Today:  %.*s\n", StrExpand(now));
+        Outf("Today:  %.*s\n", StrExpand(now));
         
-        printf("\n");
-        printf("---STDIO---\n");
+        Outf("\n");
+        Outf("---STDIO---\n");
         OSWriteConsole(OS_STD_OUT, StrLit("Please enter your name: "));
         String input = OSReadConsole(arena, OS_STD_IN, 0);
         if (StrCompare(input, StrLit("Long"), 1))
@@ -183,8 +182,8 @@ int main(void)
             OSWriteConsole(OS_STD_ERR, StrPushf(arena, "ERROR: \"%.*s\" is a stupid name\n", StrExpand(input)));
         OSSleepMS(500);
         
-        printf("\n");
-        printf("---FILES---\n");
+        Outf("\n");
+        Outf("---FILES---\n");
         FileIterBlock(arena, iter, StrLit("code"))
         {
             FileProperties prop = iter.prop;
@@ -206,12 +205,12 @@ int main(void)
             }
             
             if (isFolder)
-                iter.name = StrPushf(arena, "%.*s: %d,", StrExpand(iter.name), childCount);
+                iter.name = StrPushf(arena, "%.*s: %llu,", StrExpand(iter.name), childCount);
             else
                 iter.name = StrJoin3(arena, iter.name, StrLit(","));
             
-            printf("%s %-17.*s Created: %.*s, Date modified: %.*s, Size: %6.2f KB\n", isFolder ? "Dir: " : "File:",
-                   StrExpand(iter.name), StrExpand(createTime), StrExpand(modifyTime), (f32)size / KB(1));
+            Outf("%s %-17.*s Created: %.*s, Date modified: %.*s, Size: %6.2f KB\n", isFolder ? "Dir: " : "File:",
+                 StrExpand(iter.name), StrExpand(createTime), StrExpand(modifyTime), (f64)size / KB(1));
         }
     }
     

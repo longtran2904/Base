@@ -1,13 +1,8 @@
-// NOTE(long): Stupid /analyze report some dump error.
-// winnt.h(3454) : warning C28301: No annotations for first declaration of '_mm_clflush'. See <no file>(0). 
-#pragma WarnDisable(28301)
 #undef function
 #include <Windows.h>
-#define function static
-#pragma WarnEnable(28301)
-
 #include <Userenv.h>
 #include <dwmapi.h>
+#define function static
 
 /* NOTE(long): This all the win32 APIs that I need
 VirtualAlloc
@@ -102,9 +97,7 @@ function b32 OSCommit(void* ptr, u64 size)
 
 function void OSDecommit(void* ptr, u64 size)
 {
-#pragma WarnDisable(6250) // Calling 'VirtualFree' without the MEM_RELEASE flag might cause address space leaks
     if (!VirtualFree(ptr, size, MEM_DECOMMIT))
-#pragma WarnEnable(6250)
     {
         DEBUG(error, DWORD error = GetLastError());
         PANIC("Failed to decommit memory");
@@ -122,17 +115,14 @@ function void OSRelease(void* ptr)
 
 //~ NOTE(long): Global Variables
 
-//global DWORD win32OSThreadContextIndex = 0;
-global DWORD win32TicksPerSecond = 0;
-
-global String win32BinaryPath = {0};
-global String win32UserPath = {0};
-global String win32TempPath = {0};
-
+global u64 win32TicksPerSecond = 0;
 global StringList win32CmdLine = {0};
 global HINSTANCE win32Instance = {0};
 
 global Arena* win32PermArena = {0};
+global String win32BinaryPath = {0};
+global String win32UserPath = {0};
+global String win32TempPath = {0};
 
 //~ NOTE(long): Setup
 
@@ -309,7 +299,7 @@ function u64 OSNowMS(void)
     if (QueryPerformanceCounter(&perfCounter))
     {
         u64 ticks = ((u64)perfCounter.HighPart << 32) | perfCounter.LowPart;
-        result = ticks * /*Million*/Thousand(1) / win32TicksPerSecond;
+        result = ticks * Thousand(1) / win32TicksPerSecond;
     }
     return result;
 }
@@ -348,7 +338,7 @@ function DateTime OSToUniTime(DateTime localTime)
     return result;
 }
 
-//~ NOTE(long): File Handling
+//~ NOTE(long): Console Handling
 
 function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData)
 {
@@ -372,7 +362,8 @@ function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData)
         u8* buffer = PushArray(arena, u8, bufferSize);
         
         DWORD actualRead = 0;
-        if (ReadFile(file, buffer, bufferSize - !!terminateData, &actualRead, 0) && ALWAYS(actualRead >= 2))
+        if (ReadFile(file, buffer, bufferSize - !!terminateData, &actualRead, 0) &&
+            ALWAYS(actualRead >= 2)) // NOTE(long): Stupid Microsoft with stupid \r\n
         {
             if (buffer[actualRead-1] == '\n')
                 actualRead--;
@@ -413,6 +404,8 @@ function b32 OSWriteConsole(i32 handle, String data)
     
     return result;
 }
+
+//~ NOTE(long): File Handling
 
 function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
 {

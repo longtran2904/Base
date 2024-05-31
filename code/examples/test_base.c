@@ -1,5 +1,5 @@
-#include <stdio.h>
-#include "DefaultMemory.h"
+//#include <stdio.h>
+#include "DefaultCRT.h"
 #include "Base.h"
 #include "LongOS.h"
 #include "Base.c"
@@ -40,7 +40,7 @@ function void TestBegin(char* name)
 {
     String str = StrFromCStr(name);
     i32 spaces = ClampBot(20 - (i32)str.size, 0);
-    printf("\"%.*s\"%.*s [", StrExpand(str), spaces, " ------------------------------");
+    Outf("\"%.*s\"%.*s [", StrExpand(str), spaces, " ------------------------------");
     
     ctx.testCount = 0;
     ctx.passCount = 0;
@@ -50,16 +50,16 @@ function void TestResult(b32 result)
 {
     ctx.testCount++;
     ctx.passCount += !!result;
-    printf(result ? "." : "X");
+    Outf(result ? "." : "X");
 }
 
 function void TestEnd()
 {
     i32 spaces = ClampBot(40 - ctx.testCount, 0);
     
-    printf("]%.*s ", spaces, "                                                                                ");
-    printf("[%2i/%-2i] %2i passed, %2i tests, ", ctx.passCount, ctx.testCount, ctx.passCount, ctx.testCount);
-    printf(ctx.testCount == ctx.passCount ? "SUCCESS ( )\n" : "FAILED (X)\n");
+    Outf("]%.*s ", spaces, "                                                                                ");
+    Outf("[%2i/%-2i] %2i passed, %2i tests, ", ctx.passCount, ctx.testCount, ctx.passCount, ctx.testCount);
+    Outf(ctx.testCount == ctx.passCount ? "SUCCESS ( )\n" : "FAILED (X)\n");
 }
 
 #define TEST(name) DeferBlock(TestBegin(name), TestEnd())
@@ -91,12 +91,12 @@ function void TestFloat(f64 f, String str)
 int main(void)
 {
     i32 space = Max(sizeof(CURRENT_COMPILER_NAME), Max(sizeof(CURRENT_OS_NAME), sizeof(CURRENT_ARCH_NAME))) - 1;
-    printf(  "------------------------------CONTEXT------------------------------\n");
-    printf("-----[COM:  %*s]-----\n", space, CURRENT_COMPILER_NAME);
-    printf("-----[OS:   %*s]-----\n", space, CURRENT_OS_NAME);
-    printf("-----[ARCH: %*s]-----\n", space, CURRENT_ARCH_NAME);
-    printf("\n");
-    printf("------------------------------TESTING------------------------------\n");
+    Outf(  "------------------------------CONTEXT------------------------------\n");
+    Outf("-----[COM:  %*s]-----\n", space, CURRENT_COMPILER_NAME);
+    Outf("-----[OS:   %*s]-----\n", space, CURRENT_OS_NAME);
+    Outf("-----[ARCH: %*s]-----\n", space, CURRENT_ARCH_NAME);
+    Outf("\n");
+    Outf("------------------------------TESTING------------------------------\n");
     
     TEST("Helper")
     {
@@ -292,17 +292,17 @@ int main(void)
         TestResult(Ceil_f64(+1./zero_f64) == Inf_f64() && Ceil_f64(-1./zero_f64) == NegInf_f64());
         TestResult(IsNanF64(Ceil_f64(0./zero_f64)));
         
-        TestResult(Round_f64(+2.0f) == +2.0f);
-        TestResult(Round_f64(+2.3f) == +2.0f);
-        TestResult(Round_f64(+2.5f) == +2.0f);
-        TestResult(Round_f64(-2.0f) == -2.0f);
-        TestResult(Round_f64(-2.3f) == -2.0f);
-        TestResult(Round_f64(-2.5f) == -2.0f);
-        TestResult(Round_f64(+2.6f) == +3.0f);
-        TestResult(Round_f64(-2.6f) == -3.0f);
+        TestResult(Round_f64(+2.0) == +2.0);
+        TestResult(Round_f64(+2.3) == +2.0);
+        TestResult(Round_f64(+2.5) == +2.0);
+        TestResult(Round_f64(-2.0) == -2.0);
+        TestResult(Round_f64(-2.3) == -2.0);
+        TestResult(Round_f64(-2.5) == -2.0);
+        TestResult(Round_f64(+2.6) == +3.0);
+        TestResult(Round_f64(-2.6) == -3.0);
         
-        TestResult(Round_f64(+1.f/zero_f64) == Inf_f64() && Round_f64(-1.f/zero_f64) == NegInf_f64());
-        TestResult(IsNanF64(Round_f64(0.f/zero_f64)));
+        TestResult(Round_f64(+1./zero_f64) == Inf_f64() && Round_f64(-1./zero_f64) == NegInf_f64());
+        TestResult(IsNanF64(Round_f64(0./zero_f64)));
     }
     
     TEST("Trigonometric F32")
@@ -355,48 +355,48 @@ int main(void)
     TEST("Trigonometric F64")
     {
         f64 debug = 0;
-        f64 epsilon = 0.0000009f;
+        f64 epsilon = 0.0000009;
         
-        TestResult(        (debug = Sin_f64(0.0f        )) == 0.0f);
-        TestResult(Abs_f64((debug = Sin_f64(+PI_F64/2.0f)) - +1.0f) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(+PI_F64     )) -  0.0f) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(+PI_F64*1.5f)) - -1.0f) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(+PI_F64/6.0f)) - +0.5f) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(-PI_F64/2.0f)) - -1.0f) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(-PI_F64     )) -  0.0f) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(-PI_F64*1.5f)) - +1.0f) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(-PI_F64/6.0f)) - -0.5f) < epsilon);
+        TestResult(        (debug = Sin_f64(0.0        )) == 0.0);
+        TestResult(Abs_f64((debug = Sin_f64(+PI_F64/2.0)) - +1.0) < epsilon);
+        TestResult(Abs_f64((debug = Sin_f64(+PI_F64     )) - 0.0) < epsilon);
+        TestResult(Abs_f64((debug = Sin_f64(+PI_F64*1.5)) - -1.0) < epsilon);
+        TestResult(Abs_f64((debug = Sin_f64(+PI_F64/6.0)) - +0.5) < epsilon);
+        TestResult(Abs_f64((debug = Sin_f64(-PI_F64/2.0)) - -1.0) < epsilon);
+        TestResult(Abs_f64((debug = Sin_f64(-PI_F64     )) - 0.0) < epsilon);
+        TestResult(Abs_f64((debug = Sin_f64(-PI_F64*1.5)) - +1.0) < epsilon);
+        TestResult(Abs_f64((debug = Sin_f64(-PI_F64/6.0)) - -0.5) < epsilon);
         
-        TestResult(        (debug = Cos_f64(0.0f        )) == 1.0f);
-        TestResult(Abs_f64((debug = Cos_f64(+PI_F64/2.0f)) -  0.0f) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(+PI_F64     )) - -1.0f) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(+PI_F64*1.5f)) -  0.0f) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(+PI_F64/3.0f)) - +0.5f) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(-PI_F64/2.0f)) -  0.0f) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(-PI_F64     )) - -1.0f) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(-PI_F64*1.5f)) -  0.0f) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(-PI_F64/3.0f)) - +0.5f) < epsilon);
+        TestResult(        (debug = Cos_f64(0.0        )) == 1.0);
+        TestResult(Abs_f64((debug = Cos_f64(+PI_F64/2.0)) -  0.0) < epsilon);
+        TestResult(Abs_f64((debug = Cos_f64(+PI_F64     ))- -1.0) < epsilon);
+        TestResult(Abs_f64((debug = Cos_f64(+PI_F64*1.5)) -  0.0) < epsilon);
+        TestResult(Abs_f64((debug = Cos_f64(+PI_F64/3.0)) - +0.5) < epsilon);
+        TestResult(Abs_f64((debug = Cos_f64(-PI_F64/2.0)) -  0.0) < epsilon);
+        TestResult(Abs_f64((debug = Cos_f64(-PI_F64     ))- -1.0) < epsilon);
+        TestResult(Abs_f64((debug = Cos_f64(-PI_F64*1.5)) -  0.0) < epsilon);
+        TestResult(Abs_f64((debug = Cos_f64(-PI_F64/3.0)) - +0.5) < epsilon);
         
-        TestResult(        (debug = Tan_f64(0.0f            )) == 0.0f);
-        TestResult(Abs_f64((debug = Tan_f64(PI_F64          )) -  0.0f) < epsilon);
-        TestResult(Abs_f64((debug = Tan_f64(PI_F64*1.0f/4.0f)) - +1.0f) < epsilon);
-        TestResult(Abs_f64((debug = Tan_f64(PI_F64*3.0f/4.0f)) - -1.0f) < epsilon);
-        TestResult(Abs_f64((debug = Tan_f64(PI_F64*5.0f/4.0f)) - +1.0f) < epsilon);
-        TestResult(Abs_f64((debug = Tan_f64(PI_F64*7.0f/4.0f)) - -1.0f) < epsilon);
+        TestResult(        (debug = Tan_f64(0.0            )) == 0.0);
+        TestResult(Abs_f64((debug = Tan_f64(PI_F64          )) -  0.0) < epsilon);
+        TestResult(Abs_f64((debug = Tan_f64(PI_F64*1.0/4.0)) - +1.0) < epsilon);
+        TestResult(Abs_f64((debug = Tan_f64(PI_F64*3.0/4.0)) - -1.0) < epsilon);
+        TestResult(Abs_f64((debug = Tan_f64(PI_F64*5.0/4.0)) - +1.0) < epsilon);
+        TestResult(Abs_f64((debug = Tan_f64(PI_F64*7.0/4.0)) - -1.0) < epsilon);
         
-        TestResult(        (debug = Atan_f64( 0.0f)) == 0.0f);
-        TestResult(Abs_f64((debug = Atan_f64(+1.0f)) - +PI_F64*1.0f/4.0f) < epsilon);
-        TestResult(Abs_f64((debug = Atan_f64(-1.0f)) - -PI_F64*1.0f/4.0f) < epsilon);
+        TestResult(        (debug = Atan_f64( 0.0)) == 0.0);
+        TestResult(Abs_f64((debug = Atan_f64(+1.0)) - +PI_F64*1.0/4.0) < epsilon);
+        TestResult(Abs_f64((debug = Atan_f64(-1.0)) - -PI_F64*1.0/4.0) < epsilon);
         
-        TestResult(Abs_f64((debug = Atan2_f64(+1.0f, +1.0f)) - +PI_F64*1.0f/4.0f) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(+1.0f, -1.0f)) - +PI_F64*3.0f/4.0f) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(-1.0f, -1.0f)) - -PI_F64*3.0f/4.0f) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(-1.0f, +1.0f)) - -PI_F64*1.0f/4.0f) < epsilon);
+        TestResult(Abs_f64((debug = Atan2_f64(+1.0, +1.0)) - +PI_F64*1.0/4.0) < epsilon);
+        TestResult(Abs_f64((debug = Atan2_f64(+1.0, -1.0)) - +PI_F64*3.0/4.0) < epsilon);
+        TestResult(Abs_f64((debug = Atan2_f64(-1.0, -1.0)) - -PI_F64*3.0/4.0) < epsilon);
+        TestResult(Abs_f64((debug = Atan2_f64(-1.0, +1.0)) - -PI_F64*1.0/4.0) < epsilon);
         
-        TestResult(Abs_f64((debug = Atan2_f64(+0.0f, +0.0f)) - 0.0f) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(+0.0f, -0.0f)) - PI_F64) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(+7.0f, +0.0f)) - PI_F64/2.0f) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(+7.0f, -0.0f)) - PI_F64/2.0f) < epsilon);
+        TestResult(Abs_f64((debug = Atan2_f64(+0.0, +0.0)) - 0.0) < epsilon);
+        TestResult(Abs_f64((debug = Atan2_f64(+0.0, -0.0)) - PI_F64) < epsilon);
+        TestResult(Abs_f64((debug = Atan2_f64(+7.0, +0.0)) - PI_F64/2.0) < epsilon);
+        TestResult(Abs_f64((debug = Atan2_f64(+7.0, -0.0)) - PI_F64/2.0) < epsilon);
     }
     
     TEST("Numeric F32")
@@ -473,7 +473,7 @@ int main(void)
         TestResult(FrExp_f64(-.5, &exp) == -.5 && exp ==  0);
         TestResult(FrExp_f64(1.0, &exp) == 0.5 && exp == +1);
         TestResult(FrExp_f64(.25, &exp) == 0.5 && exp == -1);
-        TestResult(FrExp_f64(0x1p23, &exp) == 0.5f && exp == 24);
+        TestResult(FrExp_f64(0x1p23, &exp) == 0.5 && exp == 24);
     }
     
     Arena* arena = ArenaMake();
@@ -494,7 +494,6 @@ int main(void)
         TestResult(StrCompare(StrPostfix(str, 2), StrLit("t!"), 0));
         TestResult(StrCompare( Substr(str, 2, 8), StrLit("re's a"), 0));
         
-#pragma WarnDisable(28182 6011) // Derefernecing NULL pointer
         {
             StringList list = StrSplitArr(arena, str, StrLit(" '"), 0);
             StrListPush(arena, &list, StrLit("Insert string"));
@@ -517,6 +516,7 @@ int main(void)
             TestResult(StrCompare(data, StrLit("Hello Word!\nThe date is 25"), 0));
         }
         
+        MSVC(WarnDisable(6011))
         {
             StringList list = {0};
             StrListPush(arena, &list, StrLit("A"));
@@ -548,8 +548,8 @@ int main(void)
             TestResult(StrCompare(StrLit("Long"), list.first->string, 0));
             TestResult(StrCompare( StrLit("Lan"), list. last->string, 0));
         }
-#pragma WarnEnable(28182)
     }
+    MSVC(WarnEnable(6011));
     
     TEST("Str -> I64")
     {
@@ -705,7 +705,7 @@ int main(void)
     {
         StringList logs = {0};
         LogBegin();
-        u64 startLine = __LINE__;
+        i32 startLine = __LINE__;
         {
             LogPush(LOG_TRACE, "Log #%d", LOG_TRACE);
             LogPush(LOG_DEBUG, "Log #%d", LOG_DEBUG);
@@ -751,7 +751,7 @@ int main(void)
             
             TestResult(logs.nodeCount == 1024);
         }
-        u64 endLine = __LINE__;
+        i32 endLine = __LINE__;
         
         Logger logger = LogEnd(arena);
         TestResult(logger.count == 15);
@@ -782,13 +782,13 @@ int main(void)
         TestResult(lanes[3] - lanes[2] == count);
         
         u64 elementSize = 2;
-        String  result1 =   BufferInterleave(arena,  lanes, LANE_COUNT, elementSize, count);
-        String* result2 = BufferUninterleave(arena, buffer, LANE_COUNT, elementSize, count);
+        String  result1 =   BufferInterleave(arena, (void**)lanes, LANE_COUNT, elementSize, count);
+        String* result2 = BufferUninterleave(arena,        buffer, LANE_COUNT, elementSize, count);
         
         String* result3 = BufferUninterleave(arena, result1.str, LANE_COUNT, elementSize, count);
         for (u64 i = 0; i < LANE_COUNT; ++i)
             lanes[i] = (u16*)result3[i].str;
-        String result4 = BufferInterleave(arena, lanes, LANE_COUNT, elementSize, count);
+        String result4 = BufferInterleave(arena, (void**)lanes, LANE_COUNT, elementSize, count);
         
         TestResult(result1.size / elementSize == size);
         TestResult(result4.size / elementSize == size);
@@ -1030,7 +1030,7 @@ int main(void)
 #endif
         
         buffer1 = ArenaPush(arena, bigCount);
-        u64 offset = 0;
+        i64 offset = 0;
         u64 smallCount = 50;
         TempPoisonBlock(temp, arena)
         {
@@ -1040,8 +1040,8 @@ int main(void)
             u8* dPtr = ArenaPush(arena, smallCount);
             
             offset = dPtr - (u8*)arena;
-            u64 start = AlignUpPow2(buffer1 - (u8*)arena + bigCount, MEM_POISON_ALIGNMENT) + MEM_POISON_SIZE;
-            TestResult(start == temp.pos);
+            i64 start = AlignUpPow2(buffer1 - (u8*)arena + bigCount, MEM_POISON_ALIGNMENT) + MEM_POISON_SIZE;
+            TestResult(start == (i64)temp.pos);
             
             TestResult(aPtr - (u8*)arena == start);
             start += AlignUpPow2(smallCount, arena->alignment);

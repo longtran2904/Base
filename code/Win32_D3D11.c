@@ -233,8 +233,6 @@ function b32 EquipD3D11Window(GFXWindow window)
         W32Window* slot = W32WindowFromGFXHandle(window);
         
         IDXGISwapChain* swapchain = 0;
-        ID3D11RenderTargetView* view = 0;
-        ID3D11Texture2D* backBuffer = 0;
         
         if (!error)
         {

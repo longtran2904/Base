@@ -4,11 +4,8 @@
 #define _BASE_H
 
 //~ TODO(long):
-// [ ] GCC/CLANG testing
-// [ ] Fuzzing
 // [ ] Custom printf format
-// [ ] readonly
-// [ ] Consider abstract OSWriteConsole from the base layer out like all the MemXXX functions
+// [ ] Import base layer as a DLL
 
 //~ NOTE(long): Context Cracking
 
@@ -67,8 +64,7 @@
 #define ARCH_X86 1
 #elif defined(_M_ARM)
 #define ARCH_ARM 1
-// TODO(long): ARM64
-#else
+#else // TODO(long): ARM64
 #error Missing ARCH detection
 #endif
 
@@ -81,7 +77,7 @@
 #elif _M_IX86_FP == 1
 #define __SSE__  //SSE x32
 #else
-// TODO(long): Maybe error out?
+#error You must have at least SSE1
 #endif
 
 #else // TODO(long): verify this works on clang and gcc
@@ -148,6 +144,25 @@
 #define CURRENT_ARCH_NAME   "ARM64"
 #endif
 
+#define MSVC(...)
+#define CLANG(...)
+#define GCC(...)
+
+#if COMPILER_CL
+#undef MSVC
+#define MSVC(...) __VA_ARGS__
+#endif
+
+#if COMPILER_CLANG
+#undef CLANG
+#define CLANG(...) __VA_ARGS__
+#endif
+
+#if COMPILER_GCC
+#undef GCC
+#define GCC(...) __VA_ARGS__
+#endif
+
 //- NOTE(long): Language
 #if defined(__cplusplus)
 # define LANG_CPP 1
@@ -171,22 +186,22 @@
 
 //- NOTE(long): Warning
 #if COMPILER_CL
-#    define WarnPush(...) warning(push, __VA_ARGS__)
-#    define WarnPop() warning(pop)
-#    define  WarnEnable(warn) warning(default: warn)
-#    define WarnDisable(warn) warning(disable: warn)
+# define WarnPush(...) _Pragma(Stringify(warning(push, __VA_ARGS__)))
+# define WarnPop() _Pragma("warning(pop)")
+# define WarnEnable(warn) _Pragma(Stringify(warning(default: warn)))
+# define WarnDisable(warn) _Pragma(Stringify(warning(disable: warn)))
 #elif COMPILER_GCC
-#    define WarnPush(...) GCC diagnostic push
-#    define WarnPop() GCC diagnostic pop
-#    define  WarnEnable(warn) GCC diagnostic warning warn
-#    define WarnDisable(warn) GCC diagnostic ignored warn
+# define WarnPush(...) GCC diagnostic push
+# define WarnPop() GCC diagnostic pop
+# define WarnEnable(warn) GCC diagnostic warning warn
+# define WarnDisable(warn) GCC diagnostic ignored warn
 #elif COMPILER_CLANG
-#    define WarnPush(...) clang diagnostic push
-#    define WarnPop() clang diagnostic pop
-#    define  WarnEnable(warn) clang diagnostic warning warn
-#    define WarnDisable(warn) clang diagnostic ignored warn
+# define WarnPush(...) _Pragma("clang diagnostic push")
+# define WarnPop() _Pragma("clang diagnostic pop")
+# define WarnEnable(warn) _Pragma(Stringify(clang diagnostic warning warn))
+# define WarnDisable(warn) _Pragma(Stringify(clang diagnostic ignored warn))
 #else
-#    error warnings are not modifiable in code for this compiler
+# error warnings are not modifiable in code for this compiler
 #endif
 
 //- NOTE(long): Extension
@@ -204,7 +219,7 @@
 #error threadvar is not defined for this compiler
 #endif
 
-#if COMPILER_CL
+#if COMPILER_CL || (COMPILER_CLANG && OS_WIN)
 #define libexport __declspec(dllexport)
 #define libimport __declspec(dllimport)
 #elif COMPILER_GCC || COMPILER_CLANG
@@ -225,9 +240,20 @@
 #endif
 
 #if COMPILER_CL
-#define CHECK_PRINTF _Printf_format_string_ const 
+#define CHECK_PRINTF _Printf_format_string_ const
+#define CHECK_PRINTF_FUNC(...)
 #else
-#error CHECK_PRINTF isn't defined for this compiler
+#define CHECK_PRINTF
+#define CHECK_PRINTF_FUNC(pos) __attribute__((format(printf, pos, pos + 1)))
+#endif
+
+#if COMPILER_CL || (COMPILER_CLANG && OS_WIN)
+#pragma section(".readonly", read)
+#define readonly __declspec(allocate(".readonly"))
+#elif COMPILER_CLANG && OS_LINUX
+#define readonly __attribute__((section(".urmom")))
+#else
+#error No idea on how to do this in GCC
 #endif
 
 // https://nullprogram.com/blog/2022/06/26/
@@ -252,17 +278,19 @@
 #define ENABLE_ASSERT 1
 #endif
 
-#define DebugPrint(str) OSWriteConsole(OS_STD_ERR, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " str))
 #if ENABLE_ASSERT
+#define DebugPrint(str) PrintErr((StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " str)))
 #define Assert(c) Stmnt(if (!(c)) { DebugPrint("Assertion \"" Stringify(c) "\" failed\n"); AssertBreak(); })
-#else
-#define Assert(...)
-#endif
-#define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
-
 #define PANIC(str) Stmnt(DebugPrint("PANIC \"" str "\"\n"); AssertBreak())
-#define ALWAYS(x) ((x) ? (x) : (DebugPrint("ALWAYS \"" Stringify(x) "\" is false\n"), AssertBreak(), (x)))
-#define  NEVER(x) ((x) ? (DebugPrint("NEVER \"" Stringify(x) "\" is true\n"), AssertBreak(), (x)) : (x))
+#else
+#define DebugPrint(...) 0
+#define Assert(...)
+#define PANIC(...)
+#endif
+
+#define ALWAYS(x) ((x) ? 1 : (DebugPrint("ALWAYS(" Stringify(x) ") is false\n"), AssertBreak(), 0))
+#define  NEVER(x) ((x) ? (DebugPrint("NEVER(" Stringify(x) ") is true\n"), AssertBreak(), 1) : 0)
+#define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
 
 #define Stringify_(s) #s
 #define Stringify(s) Stringify_(s)
@@ -271,7 +299,7 @@
 
 #define EnumCount(type) Concat(type, _Count)
 #define ArrayCount(a) (sizeof(a)/sizeof(*(a)))
-#define ArrayExpand(type, ...) (type[]){ __VA_ARGS__ }, ArrayCount((type[]){ __VA_ARGS__ })
+#define ArrayExpand(type, ...) (type[]){ __VA_ARGS__ }, ArrayCount(((type[]){ __VA_ARGS__ }))
 
 #define HasAnyFlags(flags, fl) ((flags) & (fl))
 #define HasAllFlags(flags, fl) (((flags) & (fl)) == (fl))
@@ -279,7 +307,8 @@
 
 #define Implies(a,b) (!(a) || (b))
 
-#define IntFromPtr(p) (unsigned long long)((char*)p - (char*)0)
+// TODO(long): Clang complains that this is UB
+#define IntFromPtr(p) (uptr)((char*)p - (char*)0)
 #define PtrFromInt(n) (void*)((char*)0 + (n))
 
 #define Member(T, m) (((T*)0)->m)
@@ -533,7 +562,6 @@ typedef void VoidFuncVoid(void*);
 
 //~ NOTE(long): Symbolic Constants
 
-typedef enum Axis Axis;
 enum Axis
 {
     Axis_X,
@@ -541,6 +569,7 @@ enum Axis
     Axis_Z,
     Axis_W,
 };
+typedef enum Axis Axis;
 
 typedef enum Side Side;
 enum Side
@@ -667,21 +696,6 @@ struct FileProperties
     DenseTime createTime;
     DenseTime modifyTime;
 };
-
-//~ NOTE(long): Base Memory Pre-Requisites
-
-#if !defined(MemReserve)
-# error missing definition for 'MemReserve' type: (U64)->void* 
-#endif
-#if !defined(MemCommit)
-# error missing definition for 'MemCommit' type: (void*,U64)->B32
-#endif
-#if !defined(MemDecommit)
-# error missing definition for 'MemDecommit' type: (void*,U64)->void
-#endif
-#if !defined(MemRelease)
-# error missing definition for 'MemRelease' type: (void*,U64)->void
-#endif
 
 //~ NOTE(long): Arena Types
 
@@ -930,7 +944,7 @@ function void      TempEnd(TempArena temp);
     TempArena ScratchName(name) = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)); Arena* name = ScratchName(name).arena; \
     i32 Concat(_debugVarOf_, name);
 #define ScratchEnd(scratch) Stmnt(ScratchClear(scratch); ScratchName(scratch) = (TempArena){0}; scratch = 0; \
-                                  Concat(_debugVarOf_, scratch);)
+                                  (void)Concat(_debugVarOf_, scratch);)
 
 #define TempBlock(name, arena) for (TempArena name = TempBegin(arena); name.arena != 0; TempEnd(name), name = (TempArena){0})
 #define TempPoisonBlock(name, arena) \
@@ -948,7 +962,7 @@ function void      TempEnd(TempArena temp);
 //~ NOTE(long): String Functions
 
 //- NOTE(long): Constructor Functions
-#define Str(...) (String){ __VA_ARGS__ }
+#define Str(...) ((String){ __VA_ARGS__ })
 #define StrRange(first, opl) (String){ (first), (opl) - (first) }
 #define StrConst(s) { (u8*)(s), sizeof(s) - 1 }
 #define StrLit(s) (String){ (u8*)(s), sizeof(s) - 1 }
@@ -994,7 +1008,7 @@ function String StrListPopFront(StringList* list);
 
 // NOTE(long): Need to put const here because of C6298
 function String StrPushfv(Arena* arena, char* fmt, va_list args);
-function String StrPushf (Arena* arena, CHECK_PRINTF char* fmt, ...);
+function String StrPushf (Arena* arena, CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(2);
 #define StrListPushf(arena, list, fmt, ...) StrListPush((arena), (list), StrPushf((arena), (fmt), __VA_ARGS__))
 
 function String StrPad(Arena* arena, String str, char chr, u32 count, i32 dir);
@@ -1099,6 +1113,9 @@ function String StrFromTime(Arena* arena, DateTime time);
 
 //~ NOTE(long): Logs/Errors
 
+function void Outf(CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(1);
+function void Errf(CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(1);
+
 typedef struct Record Record;
 struct Record
 {
@@ -1150,7 +1167,7 @@ function StringList StrListFromLogger(Arena* arena, Logger* logger);
 function LogInfo* LogGetInfo(void);
 function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args);
 function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list args);
-function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...);
+function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(4);
 #define LogPush(level, log, ...) LogPushf((level), __FILE__, __LINE__, (log), __VA_ARGS__)
 
 #define ErrorBegin(...) LogBegin(.level = LOG_ERROR, __VA_ARGS__)

@@ -1,4 +1,3 @@
-#include "DefaultMemory.h"
 #include "Base.h"
 #include "LongOS.h"
 #include "Base.c"
@@ -40,24 +39,17 @@ function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
                 glClearColor(0, 0, 0, 1);
             else
                 glClearColor(1.0f, 1.0f, 1.0f, 1.f);
-            
-            GLEnum error = glGetError();
-            
             glClear(GL_COLOR_BUFFER_BIT);
             
             GLFloat flts[4];
             glGetFloatv(GL_VIEWPORT, flts);
             
-            error = glGetError();
             glBegin(GL_TRIANGLES);
             glColor3f (1, 1, 1);
             glVertex3f(-1, -1, 0);
             glVertex3f(1, -1, 0);
             glVertex3f(0, 1, 0);
             glEnd();
-            error = glGetError();
-            
-            error = glGetError();
             
             EndGLRender();
         } break;
@@ -74,12 +66,10 @@ function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
 
 #define TEST_WINDOW_COUNT 6
 
-#pragma WarnDisable(28251) // Inconsistent annotation for WinMain
 int WinMain(HINSTANCE hInstance,
             HINSTANCE hPrevInstance,
             LPSTR lpCmdLine,
             int nShowCmd)
-#pragma WarnEnable(28251)
 {
     W32WinMainInit(hInstance, hPrevInstance, lpCmdLine, nShowCmd);
     

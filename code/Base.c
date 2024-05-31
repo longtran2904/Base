@@ -1,7 +1,29 @@
 
+//~ NOTE(long): Base Pre-Requisites
+
+#ifndef MemReserve
+# error missing definition for 'MemReserve' type: (U64)->void* 
+#endif
+#ifndef MemCommit
+# error missing definition for 'MemCommit' type: (void*,U64)->B32
+#endif
+#ifndef MemDecommit
+# error missing definition for 'MemDecommit' type: (void*,U64)->void
+#endif
+#ifndef MemRelease
+# error missing definition for 'MemRelease' type: (void*,U64)->void
+#endif
+
+#ifndef PrintOut
+#error missing definition for `PrintOut` type: (String)->b32
+#endif
+#ifndef PrintErr
+#error missing definition for `PrintfErr` type: (String)->b32
+#endif
+
 //~ NOTE(long): Symbolic Constants
 
-global String Compiler_names[] =
+readonly global String Compiler_names[] =
 {
     StrConst("None"),
     StrConst("CLANG"),
@@ -9,7 +31,7 @@ global String Compiler_names[] =
     StrConst("GCC"),
 };
 
-global String Arch_names[] =
+readonly global String Arch_names[] =
 {
     StrConst("None"),
     StrConst("X64"),
@@ -18,7 +40,7 @@ global String Arch_names[] =
     StrConst("ARM64"),
 };
 
-global String OS_names[] =
+readonly global String OS_names[] =
 {
     StrConst("None"),
     StrConst("WIN"),
@@ -26,7 +48,7 @@ global String OS_names[] =
     StrConst("MAC"),
 };
 
-global String Month_names[] =
+readonly global String Month_names[] =
 {
     StrConst("None"),
     StrConst("Jan"),
@@ -43,7 +65,7 @@ global String Month_names[] =
     StrConst("Dec"),
 };
 
-global String Day_names[] =
+readonly global String Day_names[] =
 {
     StrConst("None"),
     StrConst("Sunday"),
@@ -91,12 +113,12 @@ function f64 SinTurn64(f64 x)
 
 function f32 SinPi32(f32 x)
 {
-    return (f32)SinPi64(x);
+    return (f32)SinPi64((f64)x);
 }
 
 function f32 SinTurn32(f32 x)
 {
-    return (f32)SinTurn64(x);
+    return (f32)SinTurn64((f64)x);
 }
 
 function f64 CosPi64(f64 x)
@@ -231,19 +253,19 @@ function f64 Ceil_f64(f64 x)
     return _mm_cvtsd_f64(_mm_ceil_sd((__m128){0}, _mm_set_sd(x)));
 }
 #elif defined(__SSE2__)
-#define ROUND_F32(x, callback) \
+#define ROUND_F32(x, ...) \
     __m128 f = _mm_set_ss(x); \
     __m128 r = _mm_cvtepi32_ps(_mm_cvttps_epi32(f)); /*r = (f32)(i32)f*/ \
-    callback; \
+    __VA_ARGS__; \
     __m128 m = _mm_cmpgt_ss(_mm_set1_ps(0x1p31f), _mm_andnot_ps(_mm_set1_ps(-0.f), f)); \
     r = _mm_or_ps(_mm_and_ps(m, r), _mm_andnot_ps(m, f)); /*if (!(2**31 > abs(f))) r = f;*/ \
     x = _mm_cvtss_f32(r)
 
-#define ROUND_F64(x, callback) \
+#define ROUND_F64(x, ...) \
     __m128d f = _mm_set_sd(x); \
     __m128d r = _mm_cvtsi64_sd((__m128d){0}, _mm_cvttsd_si64(f)); /*r = (f64)(i64)f*/ \
-    callback; \
-    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63f), _mm_andnot_pd(_mm_set1_pd(-0.), f)); \
+    __VA_ARGS__; \
+    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63), _mm_andnot_pd(_mm_set1_pd(-0.), f)); \
     r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); /*if (!(2**63 > abs(f))) r = f;*/ \
     x = _mm_cvtsd_f64(r);
 
@@ -259,7 +281,7 @@ function f32 Round_f32(f32 x)
 
 function f32 Trunc_f32(f32 x)
 {
-    ROUND_F32(x, 0);
+    ROUND_F32(x);
     return x;
 }
 
@@ -278,16 +300,16 @@ function f32 Ceil_f32(f32 x)
 function f64 Round_f64(f64 x)
 {
     __m128d f = _mm_set_sd(x);
-    __m128d max_mantissa = _mm_set1_pd(x > 0 ? 0x1p52f : -0x1p52f);
+    __m128d max_mantissa = _mm_set1_pd(x > 0 ? 0x1p52 : -0x1p52);
     __m128d r = _mm_sub_sd(_mm_add_sd(f, max_mantissa), max_mantissa);
-    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63f), _mm_andnot_pd(_mm_set1_pd(-0.), f));
+    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63), _mm_andnot_pd(_mm_set1_pd(-0.), f));
     r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); //if (!(2**63 > abs(f))) r = f;
     return _mm_cvtsd_f64(r);
 }
 
 function f64 Trunc_f64(f64 x)
 {
-    ROUND_F64(x, 0);
+    ROUND_F64(x);
     return x;
 }
 
@@ -529,8 +551,8 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         {
             Arena* prev = current->prev;
             u64 cap = current->cap;
-            MemDecommit(current, cap); // NOTE(long): Maybe MemRelease
-            AsanPoison (current, cap); // NOTE(long): Do I need to poison the decommitted memory?
+            MemDecommit(current, cap); // @RECONSIDER(long): Maybe MemRelease?
+            AsanPoison (current, cap); // @RECONSIDER(long): Do I need to poison the decommitted memory?
             current = prev;
         }
         
@@ -548,7 +570,7 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         {
             // NOTE(long): Technically speaking, this can happen when:
             // 1. the user pushes a new chunk that surpasses the current cap
-            // When that happens, a new arena will be allocated to contain the allocation, leaving the old arena untouched
+            // When this happens, a new arena will be allocated to contain the allocation, leaving the old arena untouched
             // This means the old arena could contain an uncommitted region from the commitPos to cap
             // Later, the user can pop into that padded region, and because the region is never allocated, it is poisonous
             // I can handle that case by actually allocating that region, but if this happens there's a bug somewhere
@@ -570,9 +592,9 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         Assert(current->commitPos <= current->cap);
         
 #if BASE_ZERO_ON_POP
-#if ENABLE_SANITIZER
+# if ENABLE_SANITIZER
         AsanUnpoison(ptr, current->pos - newPos); // unpoison padding causes by alignment
-#else
+# else
         u64 alignedPos = AlignUpPow2(newPos, MEM_POISON_ALIGNMENT);
         if (current->commitPos != alignedPos)
         {
@@ -580,7 +602,7 @@ function void ArenaPopTo(Arena* arena, u64 pos)
             MemDecommit(commitPtr, current->commitPos - alignedPos);
             MemCommit  (commitPtr, current->commitPos - alignedPos);
         }
-#endif
+# endif
         
         ZeroMem(ptr, current->pos - newPos);
 #endif
@@ -898,7 +920,9 @@ function String StrListPop(StringList* list)
 
 #define STB_SPRINTF_IMPLEMENTATION
 #define STB_SPRINTF_STATIC
+CLANG(WarnDisable("-Wdouble-promotion"))
 #include "stb_sprintf.h"
+CLANG(WarnEnable("-Wdouble-promotion"))
 
 function String StrPushfv(Arena* arena, char* fmt, va_list args)
 {
@@ -910,30 +934,34 @@ function String StrPushfv(Arena* arena, char* fmt, va_list args)
     u32 bufferSize = 1024;
     u8* buffer = PushArray(arena, u8, bufferSize);
     // NOTE(long): vsnprintf doens't count the null terminator
-    u32 size = stbsp_vsnprintf((char*)buffer, bufferSize, fmt, args);
+    i32 size = stbsp_vsnprintf((char*)buffer, bufferSize, fmt, args);
     u32 allocSize = size + 1;
     
     String result = {0};
-    if (allocSize <= bufferSize)
+    if (ALWAYS(size >= 0))
     {
-        // if first try worked, put back the remaining
-        ArenaPop(arena, bufferSize - allocSize);
-        result = Str(buffer, size);
-    }
-    else
-    {
-        // if first try failed, reset and try again with the correct size
-        ArenaPop(arena, bufferSize);
-        u8* newBuffer = PushArray(arena, u8, allocSize);
-        stbsp_vsnprintf((char*)newBuffer, allocSize, fmt, args2);
-        result = Str(newBuffer, size);
+        if (allocSize <= bufferSize)
+        {
+            // if first try worked, put back the remaining
+            ArenaPop(arena, bufferSize - allocSize);
+            result = Str(buffer, size);
+        }
+        else
+        {
+            // if first try failed, reset and try again with the correct size
+            ArenaPop(arena, bufferSize);
+            u8* newBuffer = PushArray(arena, u8, allocSize);
+            size = stbsp_vsnprintf((char*)newBuffer, allocSize, fmt, args2);
+            if (ALWAYS(size >= 0))
+                result = Str(newBuffer, size);
+        }
     }
     
     va_end(args2);
     return result;
 }
 
-function String StrPushf(Arena* arena, CHECK_PRINTF char* fmt, ...)
+CHECK_PRINTF_FUNC(2) function String StrPushf(Arena* arena, CHECK_PRINTF char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -1717,20 +1745,42 @@ function String StrFromI64(Arena* arena, i64 x, u32 radix)
 
 //~ NOTE(long): Logs/Errors
 
+#define PRINT_INTERNAL_BUFFER_SIZE 1024
+
+CHECK_PRINTF_FUNC(1) function void Outf(CHECK_PRINTF char* fmt, ...)
+{
+    u8 buffer[PRINT_INTERNAL_BUFFER_SIZE];
+    va_list args;
+    va_start(args, fmt);
+    i32 size = stbsp_vsnprintf(buffer, sizeof(buffer), fmt, args);
+    if (ALWAYS(size >= 0))
+    {
+        b32 result = PrintOut(Str(buffer, size));
+        ALWAYS(result);
+    }
+    va_end(args);
+}
+
+CHECK_PRINTF_FUNC(1) function void Errf(CHECK_PRINTF char* fmt, ...)
+{
+    u8 buffer[PRINT_INTERNAL_BUFFER_SIZE];
+    va_list args;
+    va_start(args, fmt);
+    i32 size = stbsp_vsnprintf(buffer, sizeof(buffer), fmt, args);
+    if (ALWAYS(size >= 0))
+    {
+        b32 result = PrintErr(Str(buffer, size));
+        ALWAYS(result);
+    }
+    va_end(args);
+}
+
 //- NOTE(long): This was heavily inspired by Ryan, Allen, and rxi
 // https://www.rfleury.com/p/the-easiest-way-to-handle-errors
 // https://youtu.be/-XethY-QrR0?t=133
 // https://github.com/rxi/log.c
 
-// @RECONSIDER(long): Rather than take in an arena at the Begin function, Allen just pushes on to an
-// internal thread-local arena. Then later, the End function takes in a user arena and "paste" to it.
-// The problem with my approach is if the user passes in a scratch arena, there could be a collision
-// later down in the call stack. This means that part of the log can get rewritten or freed.
-// I can fix this by changing it to Allen's way, or somehow "lock" that scratch arena for the
-// entire duration between a Begin/End pair. For the latter, adding a flag to the arena to stop it
-// from being returned from GetScratch and force the user to call ArenaLockPush/Pop is probably enough.
-
-global String LogType_names[] =
+readonly global String LogType_names[] =
 {
     StrConst("TRACE"),
     StrConst("DEBUG"),
@@ -1819,7 +1869,7 @@ function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args)
         DateTime time = TimeToDate(record->time);
         String log = StrPushfv(scratch, fmt, args);
         String file = StrGetSubstr(StrFromCStr((u8*)record->file), OSProcessDir(), 0);
-        String level = GetEnumStr(LogType, record->level);
+        String level = StrCopy(scratch, GetEnumStr(LogType, record->level));
         StrToUpper(level);
         
         record->log = StrPushf(arena, "%02u:%02u:%02u %-5s %.*s:%d: %s", time.hour, time.min, time.sec,
@@ -1834,10 +1884,11 @@ function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list a
         DateTime time = TimeToDate(record->time);
         String log = StrPushfv(scratch, fmt, args);
         String file = StrGetSubstr(StrFromCStr((u8*)record->file), OSProcessDir(), 0);
-        String level = GetEnumStr(LogType, record->level);
+        String level = StrCopy(scratch, GetEnumStr(LogType, record->level));
         StrToUpper(level);
         
         // https://ss64.com/nt/syntax-ansi.html
+        Assert(InRange(record->level, 0, LogType_Count - 1));
         local const char* colors[] = { "\x1b[36m", "\x1b[94m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[95m" };
         record->log = StrPushf(arena, "[%02u:%02u:%02u] %s%5s \x1b[90m%.*s:%d: \x1b[97m%s\x1b[0m",
                                time.hour, time.min, time.sec,
@@ -1847,10 +1898,15 @@ function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list a
     }
 }
 
-function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...)
+CHECK_PRINTF_FUNC(4) function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...)
 {
     LOG_List* list = logThread.stack;
-    if (list && level >= list->info.level && ALWAYS(InRange(level, 0, LogType_Count - 1)))
+    if (NEVER(!InRange(level, 0, LogType_Count - 1)))
+        level = Clamp(level, 0, LogType_Count - 1);
+    if (NEVER(!InRange(list->info.level, 0, LogType_Count - 1)))
+        list->info.level = Clamp(list->info.level, 0, LogType_Count - 1);
+    
+    if (list && level >= list->info.level)
     {
         LOG_Node* node = PushStruct(logThread.arena, LOG_Node);
         SLLQueuePush(list->first, list->last, node);

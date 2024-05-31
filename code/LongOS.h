@@ -3,6 +3,28 @@
 #ifndef _LONG_O_S_H
 #define _LONG_O_S_H
 
+//~ NOTE(long): Base Setup
+
+#if !defined(MemReserve)
+#define MemReserve OSReserve
+#endif
+#if !defined(MemCommit)
+#define MemCommit OSCommit
+#endif
+#if !defined(MemDecommit)
+#define MemDecommit OSDecommit
+#endif
+#if !defined(MemRelease)
+#define MemRelease OSRelease
+#endif
+
+#ifndef PrintOut
+#define PrintOut(str) OSWriteConsole(OS_STD_OUT, (str))
+#endif
+#ifndef PrintErr
+#define PrintErr(str) OSWriteConsole(OS_STD_ERR, (str))
+#endif
+
 //~ NOTE(long): Setup
 
 function void OSInit(int argc, char **argv);
@@ -20,7 +42,7 @@ function void  OSRelease(void* ptr);
 function b32    OSCommit(void* ptr, u64 size);
 function void OSDecommit(void* ptr, u64 size);
 
-//~ NOTE(long): File Handling
+//~ NOTE(long): Console Handling
 
 enum
 {
@@ -32,6 +54,8 @@ enum
 
 function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData);
 function b32   OSWriteConsole(i32 handle, String data);
+
+//~ NOTE(long): File Handling
 
 function String OSReadFile(Arena* arena, String fileName, b32 terminateData);
 function b32   OSWriteList(String fileName, StringList* data);
