@@ -1,6 +1,8 @@
-
+#define BASE_LIB_STATIC 0
 #include "Base.h"
-#include <stdio.h>
+#include "LongOS.h"
+#include "Base.c"
+#include "LongOS_Win32.c"
 
 libexport i32 globalInt = 10;
 
@@ -12,8 +14,21 @@ libexport u32 Sum(u32* vals, u64 count)
     return sum;
 }
 
-libexport i32 DLLCallback(VoidFunc* func)
+libexport i32 DLLCallback(VoidFunc* func, b32 log)
 {
-    func();
+    LogPush(0, "DLL Initialize #1");
+    ScratchBlock(scratch)
+    {
+        StringList logs = {0};
+        LogBlock(scratch, logs)
+        {
+            LogPush(0, "DLL Initialize #2");
+            func();
+        }
+        
+        if (log)
+            StrListIter(&logs, node)
+                Outf("DLL: %.*s\n", StrExpand(node->string));
+    }
     return globalInt;
 }

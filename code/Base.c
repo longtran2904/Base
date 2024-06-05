@@ -2,28 +2,28 @@
 //~ NOTE(long): Base Pre-Requisites
 
 #ifndef MemReserve
-# error missing definition for 'MemReserve' type: (U64)->void* 
+# error missing definition for 'MemReserve'
 #endif
 #ifndef MemCommit
-# error missing definition for 'MemCommit' type: (void*,U64)->B32
+# error missing definition for 'MemCommit'
 #endif
 #ifndef MemDecommit
-# error missing definition for 'MemDecommit' type: (void*,U64)->void
+# error missing definition for 'MemDecommit'
 #endif
 #ifndef MemRelease
-# error missing definition for 'MemRelease' type: (void*,U64)->void
+# error missing definition for 'MemRelease'
 #endif
 
 #ifndef PrintOut
-#error missing definition for `PrintOut` type: (String)->b32
+#error missing definition for `PrintOut`
 #endif
 #ifndef PrintErr
-#error missing definition for `PrintfErr` type: (String)->b32
+#error missing definition for `PrintfErr`
 #endif
 
 //~ NOTE(long): Symbolic Constants
 
-readonly global String Compiler_names[] =
+readonly global const String Compiler_names[] =
 {
     StrConst("None"),
     StrConst("CLANG"),
@@ -31,7 +31,7 @@ readonly global String Compiler_names[] =
     StrConst("GCC"),
 };
 
-readonly global String Arch_names[] =
+readonly global const String Arch_names[] =
 {
     StrConst("None"),
     StrConst("X64"),
@@ -40,7 +40,7 @@ readonly global String Arch_names[] =
     StrConst("ARM64"),
 };
 
-readonly global String OS_names[] =
+readonly global const String OS_names[] =
 {
     StrConst("None"),
     StrConst("WIN"),
@@ -48,7 +48,7 @@ readonly global String OS_names[] =
     StrConst("MAC"),
 };
 
-readonly global String Month_names[] =
+readonly global const String Month_names[] =
 {
     StrConst("None"),
     StrConst("Jan"),
@@ -65,7 +65,7 @@ readonly global String Month_names[] =
     StrConst("Dec"),
 };
 
-readonly global String Day_names[] =
+readonly global const String Day_names[] =
 {
     StrConst("None"),
     StrConst("Sunday"),
@@ -89,7 +89,7 @@ readonly global String Day_names[] =
 #endif
 
 // https://web.archive.org/web/20060503192740/http://www.devmaster.net/forums/showthread.php?t=5784
-function f64 SinPi64(f64 x)
+internal f64 SinPi64(f64 x)
 {
     f64 y = 4 / PI_F64 * x + -4 / (PI_F64 * PI_F64) * x * Abs_f64(x);
     
@@ -102,7 +102,7 @@ function f64 SinPi64(f64 x)
     return y;
 }
 
-function f64 SinTurn64(f64 x)
+internal f64 SinTurn64(f64 x)
 {
     f64 y = 4 * x + -4 * x * Abs_f64(x);
 #ifdef EXTRA_PRECISION
@@ -111,17 +111,17 @@ function f64 SinTurn64(f64 x)
     return y;
 }
 
-function f32 SinPi32(f32 x)
+internal f32 SinPi32(f32 x)
 {
     return (f32)SinPi64((f64)x);
 }
 
-function f32 SinTurn32(f32 x)
+internal f32 SinTurn32(f32 x)
 {
     return (f32)SinTurn64((f64)x);
 }
 
-function f64 CosPi64(f64 x)
+internal f64 CosPi64(f64 x)
 {
     x += PI_F64 / 2;
     x -= (x > PI_F64) * (2 * PI_F64);
@@ -413,9 +413,28 @@ function DenseTime TimeToDense(DateTime time)
 
 //~ NOTE(long): Arena Functions
 
-function void* ChangeMemoryNoOp(void* ptr, u64 size) { UNUSED(size); return ptr; }
+#define ArenaMinSize(arena, ...) AlignUpPow2(sizeof(Arena), (__VA_ARGS__+0) ? (__VA_ARGS__+0) : (arena)->alignment)
 
-#define ArenaMinSize(arena) AlignUpPow2(sizeof(Arena), (arena)->alignment)
+function Arena* ArenaBuffer(u8* buffer, u64 size, u64 alignment)
+{
+    Arena* result = 0;
+    
+    if (ALWAYS(size >= sizeof(Arena)))
+    {
+        result = (Arena*)buffer;
+        *result = (Arena)
+        {
+            .curr = result,
+            .alignment = ClampBot(alignment, 1),
+            .commitPos = size,
+            .cap = size,
+        };
+        result->pos = ArenaMinSize(result);
+    }
+    
+    AsanPoison(result, size);
+    return result;
+}
 
 function Arena* ArenaReserve(u64 reserve, u64 alignment, b32 growing)
 {
@@ -621,13 +640,13 @@ function void* ArenaPush(Arena* arena, u64 size)
     return result;
 }
 
-function void ArenaPoison(Arena* arena, u64 size)
+internal void ArenaPoison(Arena* arena, u64 size)
 {
     Arena* current = arena->curr;
     if (ALWAYS(current->pos - ArenaMinSize(current) >= size))
     {
 #if ENABLE_SANITIZER
-        AsanPoison(PtrAdd(current, current->pos - size), size);
+        AsanPoison (PtrAdd(current, current->pos - size), size);
 #else
         MemDecommit(PtrAdd(current, current->pos - size), size);
 #endif
@@ -697,6 +716,7 @@ function void TempEnd(TempArena temp)
 }
 
 threadvar Arena* scratchPool[SCRATCH_POOL_COUNT] = {0};
+
 function TempArena GetScratch(Arena** conflictArray, u32 count)
 {
     Arena** pool = scratchPool;
@@ -828,7 +848,7 @@ function String StrCopy(Arena* arena, String str)
     return result;
 }
 
-function String GetFlagName_(Arena* arena, String* names, u64 nameCount, u64 flags)
+function String StrFromFlags(Arena* arena, String* names, u64 nameCount, u64 flags)
 {
     String result = {0};
     StringList list = {0};
@@ -1027,9 +1047,7 @@ function String ChrRepeat(Arena* arena, char chr, u64 count)
 
 function String StrJoinList(Arena* arena, StringList* list, StringJoin* join)
 {
-    StringJoin dummy = {0};
-    if (!join)
-        join = &dummy;
+    TempPointer(StringJoin, join);
     
     String pre = join->pre, mid = join->mid, post = join->post;
     
@@ -1041,7 +1059,7 @@ function String StrJoinList(Arena* arena, StringList* list, StringJoin* join)
     ptr += pre.size;
     
     b32 isMid = false;
-    for (StringNode* node = list->first; node != 0; node = node->next)
+    StrListIter(list, node)
     {
         if (isMid)
         {
@@ -1207,9 +1225,9 @@ function b32 ChrCompareArr(char chr, String arr, b32 noCase)
 
 function b32 StrListCompare(String str, StringList* values, b32 noCase)
 {
-    for (StringNode* node = values->first; node; node = node->next)
+    StrListIter(values, node)
         if (StrCompare(str, node->string, noCase))
-            return true;
+        return true;
     return false;
 }
 
@@ -1254,9 +1272,9 @@ function i64 StrFindArr(String str, String arr, StringFindFlags flags)
 
 function StringNode* StrFindList(String str, StringList* list, StringFindFlags flags)
 {
-    for (StringNode* node = list->first; node; node = node->next)
+    StrListIter(list, node)
         if (StrFindStr(str, node->string, flags) > -1)
-            return node;
+        return node;
     return 0;
 }
 
@@ -1590,9 +1608,7 @@ function u64 UTF8Length(String str)
 function u32 UTF8GetErr(String str, u64* index)
 {
     StringDecode decode = {0};
-    u64 _index;
-    if (!index)
-        index = &_index;
+    TempPointer(u64, index);
     
     Str8Stream(str, ptr, opl)
     {
@@ -1626,12 +1642,11 @@ function f64 F64FromStr(String str, b32* error)
 
 function i32 I32FromStr(String str, u32 radix, b32* error)
 {
-    b32 _err_ = 0;
-    i64 result = I64FromStr(str, radix, &_err_);
+    TempBool(error);
+    i64 result = I64FromStr(str, radix, error);
     if (result > MAX_I32 || result < MIN_I32)
-        _err_ = 1;
-    if (error) *error = _err_;
-    return (i32)result; // NOTE(long): UB or Iplementation define?
+        *error = 1;
+    return (i32)result; // NOTE(long): UB or Implementation define?
 }
 
 function i64 I64FromStr(String str, u32 radix, b32* error)
@@ -1656,8 +1671,7 @@ function i64 I64FromStr(String str, u32 radix, b32* error)
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
     };
     
-    b32 _err_ = 1;
-    
+    TempBool(error);
     i64 x = 0;
     if (str.size)
     {
@@ -1678,13 +1692,11 @@ function i64 I64FromStr(String str, u32 radix, b32* error)
         
         if (negative)
             x = -x;
-        _err_ = 0;
+        *error = 0;
     }
     
     END:
-    if (error)
-        *error = _err_;
-    return _err_ ? 0 : x;
+    return *error ? 0 : x;
 }
 
 function String StrFromTime(Arena* arena, DateTime time)
@@ -1694,12 +1706,42 @@ function String StrFromTime(Arena* arena, DateTime time)
     return StrPushf(arena, "%02u/%02u/%04u %02u:%02u %s", time.day, time.mon, (u16)time.year, hour, time.min, am ? "AM" : "PM");
 }
 
-String StrFromF32(Arena* arena, f32 x, u32 prec)
+function String StrFromArg(char* arg, b32* isArg, String* argValue)
+{
+    String result = StrFromCStr(arg);
+    TempBool(isArg);
+    TempPointer(String, argValue);
+    *argValue = (String){0};
+    
+    if (result.size > 1)
+    {
+        if (arg[0] == '-' || arg[0] == '/')
+        {
+            *isArg = 1;
+            result = StrSkip(result, 1);
+        }
+    }
+    
+    if (result.size > 1)
+    {
+        String value = StrSkipUntil(result, StrLit(":"), 0);
+        if (!StrIsIdentical(value, result))
+            *argValue = value;
+        else if (result.str[result.size - 1] == '-')
+            *argValue = StrPostfix(result, 1);
+        
+        result = StrChop(result, argValue->size);
+    }
+    
+    return result;
+}
+
+function String StrFromF32(Arena* arena, f32 x, u32 prec)
 {
     return StrFromF64(arena, (f64)x, prec);
 }
 
-String StrFromF64(Arena* arena, f64 x, u32 prec)
+function String StrFromF64(Arena* arena, f64 x, u32 prec)
 {
     String result = StrPushf(arena, "%.*e", (i32)prec, x);
     return result;
@@ -1745,7 +1787,7 @@ function String StrFromI64(Arena* arena, i64 x, u32 radix)
 
 //~ NOTE(long): Logs/Errors
 
-#define PRINT_INTERNAL_BUFFER_SIZE 1024
+#define PRINT_INTERNAL_BUFFER_SIZE KB(4)
 
 CHECK_PRINTF_FUNC(1) function void Outf(CHECK_PRINTF char* fmt, ...)
 {
@@ -1780,7 +1822,7 @@ CHECK_PRINTF_FUNC(1) function void Errf(CHECK_PRINTF char* fmt, ...)
 // https://youtu.be/-XethY-QrR0?t=133
 // https://github.com/rxi/log.c
 
-readonly global String LogType_names[] =
+readonly global const String LogType_names[] =
 {
     StrConst("TRACE"),
     StrConst("DEBUG"),
@@ -1868,7 +1910,7 @@ function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args)
     {
         DateTime time = TimeToDate(record->time);
         String log = StrPushfv(scratch, fmt, args);
-        String file = StrGetSubstr(StrFromCStr((u8*)record->file), OSProcessDir(), 0);
+        String file = StrGetSubstr(StrFromCStr((u8*)record->file), OSExecDir(), 0);
         String level = StrCopy(scratch, GetEnumStr(LogType, record->level));
         StrToUpper(level);
         
@@ -1883,18 +1925,20 @@ function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list a
     {
         DateTime time = TimeToDate(record->time);
         String log = StrPushfv(scratch, fmt, args);
-        String file = StrGetSubstr(StrFromCStr((u8*)record->file), OSProcessDir(), 0);
+        String file = StrGetSubstr(StrFromCStr((u8*)record->file), OSExecDir(), 0);
         String level = StrCopy(scratch, GetEnumStr(LogType, record->level));
         StrToUpper(level);
         
         // https://ss64.com/nt/syntax-ansi.html
-        Assert(InRange(record->level, 0, LogType_Count - 1));
-        local const char* colors[] = { "\x1b[36m", "\x1b[94m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[95m" };
-        record->log = StrPushf(arena, "[%02u:%02u:%02u] %s%5s \x1b[90m%.*s:%d: \x1b[97m%s\x1b[0m",
-                               time.hour, time.min, time.sec,
-                               colors[record->level], level.str,
-                               StrExpand(file), record->line,
-                               log.str);
+        if (ALWAYS(InRange(record->level, 0, LogType_Count - 1)))
+        {
+            local const char* colors[] = { "\x1b[36m", "\x1b[94m", "\x1b[32m", "\x1b[33m", "\x1b[31m", "\x1b[95m" };
+            record->log = StrPushf(arena, "[%02u:%02u:%02u] %s%5s \x1b[90m%.*s:%d: \x1b[97m%s\x1b[0m",
+                                   time.hour, time.min, time.sec,
+                                   colors[record->level], level.str,
+                                   StrExpand(file), record->line,
+                                   log.str);
+        }
     }
 }
 
@@ -1903,24 +1947,28 @@ CHECK_PRINTF_FUNC(4) function void LogPushf(i32 level, char* file, i32 line, CHE
     LOG_List* list = logThread.stack;
     if (NEVER(!InRange(level, 0, LogType_Count - 1)))
         level = Clamp(level, 0, LogType_Count - 1);
-    if (NEVER(!InRange(list->info.level, 0, LogType_Count - 1)))
-        list->info.level = Clamp(list->info.level, 0, LogType_Count - 1);
     
-    if (list && level >= list->info.level)
+    if (list)
     {
-        LOG_Node* node = PushStruct(logThread.arena, LOG_Node);
-        SLLQueuePush(list->first, list->last, node);
-        list->count++;
+        if (NEVER(!InRange(list->info.level, 0, LogType_Count - 1)))
+            list->info.level = Clamp(list->info.level, 0, LogType_Count - 1);
         
-        node->record = (Record){ .file = file, .line = line, .level = level };
-        DateTime date = OSNowUniTime();
-        date = OSToLocTime(date);
-        node->record.time = TimeToDense(date);
-        
-        va_list args;
-        va_start(args, fmt);
-        list->info.callback(logThread.arena, &node->record, (char*)fmt, args);
-        va_end(args);
+        if (level >= list->info.level)
+        {
+            LOG_Node* node = PushStruct(logThread.arena, LOG_Node);
+            SLLQueuePush(list->first, list->last, node);
+            list->count++;
+            
+            node->record = (Record){ .file = file, .line = line, .level = level };
+            DateTime date = OSNowUniTime();
+            date = OSToLocTime(date);
+            node->record.time = TimeToDense(date);
+            
+            va_list args;
+            va_start(args, fmt);
+            list->info.callback(logThread.arena, &node->record, (char*)fmt, args);
+            va_end(args);
+        }
     }
 }
 

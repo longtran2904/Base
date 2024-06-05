@@ -5,13 +5,8 @@
 #include "Base.c"
 #include "LongOS_Win32.c"
 
-typedef struct TestCtx TestCtx;
-struct TestCtx
-{
-    i32 testCount;
-    i32 passCount;
-};
-TestCtx ctx;
+#define LONG_TEST_IMPLEMENTATION
+#include "LongTest.h"
 
 global i32 snapshot;
 
@@ -35,34 +30,6 @@ void IncSnapshot(void)
     LogPush(LOG_TRACE, "Snapshot: %d", snapshot);
     snapshot++;
 }
-
-function void TestBegin(char* name)
-{
-    String str = StrFromCStr(name);
-    i32 spaces = ClampBot(20 - (i32)str.size, 0);
-    Outf("\"%.*s\"%.*s [", StrExpand(str), spaces, " ------------------------------");
-    
-    ctx.testCount = 0;
-    ctx.passCount = 0;
-}
-
-function void TestResult(b32 result)
-{
-    ctx.testCount++;
-    ctx.passCount += !!result;
-    Outf(result ? "." : "X");
-}
-
-function void TestEnd()
-{
-    i32 spaces = ClampBot(40 - ctx.testCount, 0);
-    
-    Outf("]%.*s ", spaces, "                                                                                ");
-    Outf("[%2i/%-2i] %2i passed, %2i tests, ", ctx.passCount, ctx.testCount, ctx.passCount, ctx.testCount);
-    Outf(ctx.testCount == ctx.passCount ? "SUCCESS ( )\n" : "FAILED (X)\n");
-}
-
-#define TEST(name) DeferBlock(TestBegin(name), TestEnd())
 
 function void TestFloat(f64 f, String str)
 {
@@ -88,6 +55,7 @@ function void TestFloat(f64 f, String str)
     }
 }
 
+MSVC(WarnDisable(28182 6011))
 int main(void)
 {
     i32 space = Max(sizeof(CURRENT_COMPILER_NAME), Max(sizeof(CURRENT_OS_NAME), sizeof(CURRENT_ARCH_NAME))) - 1;
@@ -497,7 +465,7 @@ int main(void)
         {
             StringList list = StrSplitArr(arena, str, StrLit(" '"), 0);
             StrListPush(arena, &list, StrLit("Insert string"));
-            for (StringNode* node = list.first; node; node = node->next)
+            StrListIter(&list, node)
             {
                 if (node->next)
                     TestResult(!StrContainsChr(node->string, " '"));
@@ -516,7 +484,6 @@ int main(void)
             TestResult(StrCompare(data, StrLit("Hello Word!\nThe date is 25"), 0));
         }
         
-        MSVC(WarnDisable(6011))
         {
             StringList list = {0};
             StrListPush(arena, &list, StrLit("A"));
@@ -549,7 +516,6 @@ int main(void)
             TestResult(StrCompare( StrLit("Lan"), list. last->string, 0));
         }
     }
-    MSVC(WarnEnable(6011));
     
     TEST("Str -> I64")
     {
@@ -852,11 +818,11 @@ int main(void)
             TestResult(StrCompare(OSReadFile(arena, FileName("Test2.txt"), 0), fileData, 0));
             TestResult(OSDeleteFile(FileName("Test2.txt")));
             
-            FileProperties file = GetFileProperties(FileName("Test.txt"));
+            FileProperties file = OSFileProperties(FileName("Test.txt"));
             OSRenameFile(FileName("Test.txt"), FileName("Test3.txt"));
             TestResult(OSReadFile(arena, FileName("Test.txt"), 0).size == 0);
             {
-                FileProperties _file = GetFileProperties(FileName("Test3.txt"));
+                FileProperties _file = OSFileProperties(FileName("Test3.txt"));
                 TestResult(CompareMem(&file, &_file, sizeof(FileProperties)));
             }
             OSRenameFile(FileName("Test3.txt"), FileName("Test.txt"));
@@ -865,11 +831,11 @@ int main(void)
         
         {
             u64 nameLen = sizeof("\\code\\examples\\test_base.c") - 1;
-            String currentDir = OSCurrentDir(arena);
+            String currentDir = OSCurrDir(arena);
             TestResult(StrCompare(currentDir, StrChop(StrLit(__FILE__), nameLen), 0));
-            TestResult(StrCompare(OSProcessDir(), StrJoin3(arena, currentDir, StrLit("\\build")), 0));
-            TestResult(StrCompare(OSAppDataDir(), StrLit("C:\\Users\\ADMIN"), 0));
-            TestResult(StrCompare(OSAppTempDir(), StrLit("C:\\Users\\ADMIN\\AppData\\Local\\Temp"), 0));
+            TestResult(StrCompare(OSExecDir(), StrJoin3(arena, currentDir, StrLit("\\build")), 0));
+            TestResult(StrCompare(OSUserDir(), StrLit("C:\\Users\\ADMIN"), 0));
+            TestResult(StrCompare(OSTempDir(), StrLit("C:\\Users\\ADMIN\\AppData\\Local\\Temp"), 0));
         }
         
         u64 entropy;
@@ -880,10 +846,10 @@ int main(void)
         LogBlock(arena, logs)
         {
             OSLib testLib = OSLoadLib(StrLit("build/TestDLL.dll"));
-            i32 (*init)(VoidFunc*);
+            i32 (*init)(VoidFunc*, b32);
             PrcCast(init, OSGetProc(testLib, "DLLCallback"));
             snapshot = 0;
-            TestResult(init(IncSnapshot) == 10 && snapshot == 1);
+            TestResult(init(IncSnapshot, 0) == 10 && snapshot == 1);
             u32(*func)(u32*, u64);
             PrcCast(func, OSGetProc(testLib, "Sum"));
             u32* array = (u32*)&entropy;
@@ -891,7 +857,7 @@ int main(void)
             i32* dllVar = (i32*)OSGetProc(testLib, "globalInt");
             TestResult(*dllVar == 10);
             *dllVar = 100;
-            TestResult(init(IncSnapshot) == 100 && snapshot == 2);
+            TestResult(init(IncSnapshot, 0) == 100 && snapshot == 2);
             OSFreeLib(testLib);
         }
         TestResult(logs.nodeCount == 2);
@@ -982,9 +948,13 @@ int main(void)
     TEST("Arena")
     {
         ScratchBlock(scratch, arena)
-        {
             TestResult(scratch != arena);
-        }
+        
+        ArenaStack(stackArena, 1024);
+        TestResult(stackArena && stackArena->pos == ArenaMinSize(stackArena) && !stackArena->growing);
+        u8* stackPtr = ArenaPushNZ(stackArena, 1024);
+        TestResult(stackArena->pos == stackArena->cap && stackArena->commitPos == stackArena->cap);
+        TestResult(stackPtr - (u8*)stackArena == sizeof(Arena)); 
         
         ArenaPopTo(arena, 0);
         TestResult(arena->cap == MEM_DEFAULT_RESERVE_SIZE);
@@ -1063,3 +1033,4 @@ int main(void)
 #endif
     }
 }
+MSVC(WarnEnable(28182 6011))

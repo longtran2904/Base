@@ -43,7 +43,7 @@ function void PrintType(Arena* arena, MetaInfo* type, u32 padding, StringList* i
     StrListPushf(arena, result, "%*.sType:  %s\n", padding, "", GetEnumName(MetaInfoKind, type->kind));
     StrListPushf(arena, result, "%*.sFlags: %s\n", padding, "",
                  GetFlagName(arena, MetaInfoFlag, type->flags));
-    StrListPushf(arena, result, "%*.sIndex: %d\n", padding, "", type->indexWithinTypeTable);
+    StrListPushf(arena, result, "%*.sIndex: %u\n", padding, "", type->indexWithinTypeTable);
     StrListPushf(arena, result, "%*.sSize:  %d\n", padding, "", type->runtimeSize);
     StrListPushf(arena, result, "%*.sRefs:  ", padding, "");
     
@@ -144,7 +144,7 @@ int main(void)
     for (MetaInfo* type = parser.table->first; type; type = type->next)
         printf("[%.*s: %s],\n", StrExpand(type->name), GetEnumName(MetaInfoKind, type->kind));
     
-    for (StringNode* node = parser.lexer->errorList->first; node; node = node->next)
+    StrListIter(parser.lexer->errorList, node)
         printf("%.*s", StrExpand(node->string));
     
     ScratchEnd(scratch);

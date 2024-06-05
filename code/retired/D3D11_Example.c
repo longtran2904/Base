@@ -212,24 +212,6 @@ typedef u64 GFXWindow;
 #undef POINTER_PREFIX
 
 #if 0
-typedef HRESULT W32CreateDXGIFactoryFunc(REFIID, void**);
-typedef HRESULT W32D3D11CreateDeviceFunc(IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*,
-                                         UINT, UINT, ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**);
-typedef HRESULT W32D3D11CreateDeviceAndSwapChainFunc(IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*,
-                                                     UINT, UINT, DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**,
-                                                     ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**);
-typedef HRESULT W32D3DReadFileToBlobFunc(LPCWSTR, ID3DBlob**);
-typedef HRESULT W32D3DCompileFunc(LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*,
-                                  LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**);
-
-global W32CreateDXGIFactoryFunc* w32CreateDXGIFactory = 0;
-global W32D3D11CreateDeviceFunc* w32D3D11CreateDevice = 0;
-global W32D3D11CreateDeviceAndSwapChainFunc* w32D3D11CreateDeviceAndSwapChain = 0;
-global W32D3DReadFileToBlobFunc* w32D3DReadFileToBlob = 0;
-global W32D3DCompileFunc* w32D3DCompile = 0;
-#endif
-
-#if 0
 global IID* iid_IDXGIFactory;
 global IID* iid_ID3D11Texture2D;
 global IID* iid_ID3D11Debug;
@@ -318,6 +300,7 @@ LRESULT W32GraphicsWindowProc(HWND   hwnd,
     return result;
 }
 
+MSVC(WarnDisable(6387 6011))
 function b32 InitD3D11(void)
 {
     String error = {0};
@@ -372,7 +355,7 @@ function b32 InitD3D11(void)
             // TODO: deal with the fact that there're multiple versions of this dll
             HMODULE d3dcompilerModule = LoadLibraryA("d3dcompiler_47.dll");
             if (!d3dcompilerModule)
-                StrLit("Error: Failed to load d3dcompiler_47.dll\n");
+                error = StrLit("Error: Failed to load d3dcompiler_47.dll\n");
             
             if (error.size == 0)
             {
@@ -514,6 +497,7 @@ function GFXWindow CreateD3D11Window(void)
         win32GraphicsError = error;
     return result;
 }
+MSVC(WarnEnable(6387 6011))
 
 function void ShowD3D11Window(GFXWindow window)
 {

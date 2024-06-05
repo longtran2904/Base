@@ -16,6 +16,11 @@ void DemoLogCallback(Arena* arena, Record* record, char* fmt, va_list args)
     }
 }
 
+void DemoLogDLL(void)
+{
+    LogPush(0, "Main Callback");
+}
+
 int main(void)
 {
     OSInit(0, 0);
@@ -131,7 +136,7 @@ int main(void)
         }
         
         Outf("-Normal-\n");
-        for (StringNode* node = logs.first; node; node = node->next)
+        StrListIter(&logs, node)
             Outf("%.*s\n", StrExpand(node->string));
         
         u64 time = OSNowMS();
@@ -151,10 +156,10 @@ int main(void)
     DEMO("OS")
     {
         Outf("---PATHS---\n");
-        String currentDir = OSCurrentDir(arena);
-        String processDir = OSProcessDir();
-        String appDataDir = OSAppDataDir();
-        String appTempDir = OSAppTempDir();
+        String currentDir = OSCurrDir(arena);
+        String processDir = OSExecDir();
+        String appDataDir = OSUserDir();
+        String appTempDir = OSTempDir();
         Outf("Curr: %.*s\\\n", StrExpand(currentDir));
         Outf("Exe:  %.*s\\\n", StrExpand(processDir));
         Outf("Data: %.*s\\\n", StrExpand(appDataDir));
@@ -211,6 +216,20 @@ int main(void)
             
             Outf("%s %-17.*s Created: %.*s, Date modified: %.*s, Size: %6.2f KB\n", isFolder ? "Dir: " : "File:",
                  StrExpand(iter.name), StrExpand(createTime), StrExpand(modifyTime), (f64)size / KB(1));
+        }
+        
+        Outf("\n");
+        Outf("---LIBS---\n");
+        {
+            OSLib lib = OSLoadLib(StrLit("build\\TestDLL.dll"));
+            i32 (*init)(VoidFunc*, b32);
+            PrcCast(init, OSGetProc(lib, "DLLCallback"));
+            
+            StringList logs = {0};
+            LogBlock(arena, logs)
+                init(DemoLogDLL, 1);
+            StrListIter(&logs, node)
+                Outf("Main: %.*s\n", StrExpand(node->string));
         }
     }
     

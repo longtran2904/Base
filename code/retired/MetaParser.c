@@ -448,8 +448,10 @@ function MetaInfo* PushMember(TypeTable* table, MetaInfo* type, MetaInfo* info)
     if (!type)
         type = table->last;
     if (type)
+    {
         member->indexWithinTypeTable = (u32)type->count++;
-    SLLQueuePush(type->first, type->last, member);
+        SLLQueuePush(type->first, type->last, member);
+    }
     return member;
 }
 

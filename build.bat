@@ -27,19 +27,15 @@ REM I haven't been able to reproduce this warning. Maybe this is only for C++ fu
 REM 4701 using unitinialized variables
 REM 4706 assignment within conditional expression (`if (a = b)`)
 
-REM 6250 calling 'VirtualFree' without the MEM_RELEASE flag might cause address space leaks
-REM This only reports the OSDecommit function when /analyze is on
+REM --The flags below are for the analyzer--
 
-REM 28182 derefernecing NULL pointer
-REM This is stupid so just disable it when /analyze is on
-REM Another warning that is similar to this is 6011 but I found it more useful
+REM 6011 and 28182: derefernecing NULL pointer
+REM 6250 calling 'VirtualFree' without the MEM_RELEASE flag might cause address space leaks
+REM 6334 sizeof operator applied to an expression with an operator may yield unexpected results
+REM 6387 invalid param value
 
 REM 28251 Inconsistent annotation for function
 REM This only reports the WinMain entry function in the codebase
-
-REM 28301 annotations weren't found at the first declaration of a given function
-REM I have zero idea what this warning does but it keep reports something stupid in winnt.h
-REM winnt.h(3454) : warning C28301: No annotations for first declaration of '_mm_clflush'. See <no file>(0). 
 
 set warns=-D_CRT_SECURE_NO_WARNINGS /W4 /WX /wd4057 /wd4201 /wd4389 /wd4189
 REM set warns=%warns% /wd4706
@@ -47,7 +43,7 @@ REM set warns=%warns% /wd4706
 REM ---unused  flags---
 REM set warns=%warns% /wd4100 /wd4101
 REM ---analyze flags---
-REM set warns=%warns% /analyze /wd6334 /wd6250 /wd28251 /wd28301 /wd28182
+REM set warns=%warns% /analyze /wd28251
 
 REM FC Full path of source code file in diagnostics
 REM GR Enable RTTI
@@ -72,12 +68,14 @@ set opts=%opts% /I%code%\code /I%code%\code\dependencies fast_float.obj
 
 IF NOT EXIST "fast_float.obj" cl /nologo /GR- /EHa- /nologo /O2 /c %code%\code\dependencies\fast_float.cpp
 
+cl %opts% %code%\code\examples\test_glob.c /Fetest_glob.exe /link %link%
 cl %opts% %code%\code\examples\test_base.c /Fetest_base.exe /link %links%
 cl %opts% %code%\code\examples\demo_gfx.c  /Fedemo_gfx.exe /link %links%
 cl %opts% %code%\code\examples\demo.c      /Fedemo.exe /link %links%
-cl %opts% %code%\code\examples\parser.c    /Feparser.exe -wd4706 /link %links%
 cl %opts% %code%\code\examples\TestDLL.c   /FeTestDLL.dll /LD
 
+REM cl %opts% %code%\code\examples\glob.c      /Feglob.exe -O2 /link %link%
+REM cl %opts% %code%\code\examples\parser.c    /Feparser.exe -wd4706 /link %links%
 REM cl %opts% %code%\code\retired\D3D11_Example.c /Fed3d11_exp.exe /link %links%
 REM cl %opts% %code%\code\retired\LongCompressor.c /Fecompressor.exe /link %links%
 REM cl %opts% %code%\code\retired\Meta.c /FeMeta.exe /link %links%

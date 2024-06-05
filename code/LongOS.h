@@ -6,16 +6,16 @@
 //~ NOTE(long): Base Setup
 
 #if !defined(MemReserve)
-#define MemReserve OSReserve
+#define MemReserve(size) OSReserve(size)
 #endif
 #if !defined(MemCommit)
-#define MemCommit OSCommit
+#define MemCommit(ptr, size) OSCommit(ptr, size)
 #endif
 #if !defined(MemDecommit)
-#define MemDecommit OSDecommit
+#define MemDecommit(ptr, size) OSDecommit((ptr), (size))
 #endif
 #if !defined(MemRelease)
-#define MemRelease OSRelease
+#define MemRelease(ptr) OSRelease(ptr)
 #endif
 
 #ifndef PrintOut
@@ -71,7 +71,7 @@ function b32 OSRenameFile(String oldName, String newName);
 function b32 OSCreateDir(String path);
 function b32 OSDeleteDir(String path);
 
-function FileProperties GetFileProperties(String fileName);
+function FileProperties OSFileProperties(String fileName);
 
 //~ NOTE(long): File Iteration
 
@@ -90,10 +90,12 @@ function void FileIterEnd(OSFileIter* iter);
 
 //~ NOTE(long): Paths
 
-function String OSCurrentDir(Arena* arena);
-function String OSProcessDir(void);
-function String OSAppDataDir(void);
-function String OSAppTempDir(void);
+function String OSCurrDir(Arena* arena);
+function String OSExecDir(void);
+function String OSUserDir(void);
+function String OSTempDir(void);
+
+// @CONSIDER(long): Maybe have a OSSetCurrDir and OSGetInitDir
 
 //~ NOTE(long): Time
 
@@ -119,5 +121,9 @@ function VoidFunc* OSGetProc(OSLib lib, char* name);
 //~ NOTE(long): Entropy
 
 function void OSGetEntropy(void* data, u64 size);
+
+//~ TODO(long): Processes/Threads
+
+//~ TODO(long): Network/Sockets/IPC
 
 #endif //_LONG_O_S_H

@@ -11,14 +11,17 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_STATIC
-#define STB_NO_STDIO
-#define STBI_REALLOC
-#define STBI_FREE
+#define STBI_NO_STDIO
+#define STBI_REALLOC(p, newsz) Stmnt(UNUSED(p); UNUSED(newsz);)
+#define STBI_FREE(p) UNUSED(p)
 
 Arena* stbArena;
 #define STBI_MALLOC(sz) ArenaPushNZ(stbArena, sz)
 #define STBI_REALLOC_SIZED(p, oldsz, newsz) CopyMem(ArenaPushNZ(stbArena, newsz), p, oldsz)
+
+MSVC(WarnDisable(6262))
 #include "stb_image.h"
+MSVC(WarnEnable(6262))
 
 #define CHANNEL_COUNT 4
 
@@ -157,9 +160,8 @@ int main(int argc, char** argv)
     u32 total = 0;
     
     String path = args.first->next->string;
-    OSFileIter iter = FileIterInit(path);
     PatternTable totalTable = CreateTable(arena, MB(1), BLOCK_SIZE);
-    for (String name; FileIterNext(arena, &iter, &name, 0);)
+    FileIterBlock(arena, iter, path)
     {
         ScratchBlock(scratch)
         {
@@ -188,18 +190,17 @@ int main(int argc, char** argv)
             if (table.usedBlocks < minBlock)
             {
                 minBlock = table.usedBlocks;
-                minName = name;
+                minName = iter.name;
                 minBlockSize = blockCount;
             }
-            printf("%-50.*s: %3u/%u blocks, %f%%\n", StrExpand(name), table.usedBlocks, blockCount, rate);
+            Outf("%-50.*s: %3u/%u blocks, %f%%\n", StrExpand(iter.name), table.usedBlocks, blockCount, rate);
             END:;
         }
     }
-    FileIterEnd(&iter);
     
-    printf("\n");
-    printf("MIN: %.*s: %u, %f\n", StrExpand(minName), minBlock, minBlock / (f32)minBlockSize);
-    printf("AVG: %f, %f\n", totalBlocks / (f32)totalCount, totalBlocks / (f32)total);
-    printf("Total pattern used: %u/%u\n", totalTable.usedBlocks, totalTable.maxBlockCount);
+    Outf("\n");
+    Outf("MIN: %.*s: %u, %f\n", StrExpand(minName), minBlock, minBlock / (f32)minBlockSize);
+    Outf("AVG: %f, %f\n", totalBlocks / (f32)totalCount, totalBlocks / (f32)total);
+    Outf("Total pattern used: %u/%u\n", totalTable.usedBlocks, totalTable.maxBlockCount);
     return 0;
 }

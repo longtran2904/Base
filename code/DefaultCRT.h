@@ -7,16 +7,16 @@
 #include <stdio.h>
 
 #ifndef MemReserve
-#define MemReserve malloc
+#define MemReserve(size) malloc(size)
 #endif
 #ifndef MemCommit
-#define MemCommit ChangeMemoryNoOp
+#define MemCommit(ptr, size) 1
 #endif
 #ifndef MemDecommit
-#define MemDecommit ChangeMemoryNoOp
+#define MemDecommit(ptr, size)
 #endif
 #ifndef MemRelease
-#define MemRelease free
+#define MemRelease(ptr) free(ptr)
 #endif
 
 #ifndef PrintOut

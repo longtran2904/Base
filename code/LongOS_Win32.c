@@ -1,8 +1,13 @@
+// NOTE(long): 28301: annotations weren't found at the first declaration of a given function
+// I have zero idea what this warning does but it keep reports something stupid in winnt.h
+// winnt.h(3454) : warning C28301: No annotations for first declaration of '_mm_clflush'. See <no file>(0). 
+MSVC(WarnDisable(28301))
 #undef function
 #include <Windows.h>
 #include <Userenv.h>
 #include <dwmapi.h>
 #define function static
+MSVC(WarnEnable(28301))
 
 /* NOTE(long): This all the win32 APIs that I need
 VirtualAlloc
@@ -95,6 +100,8 @@ function b32 OSCommit(void* ptr, u64 size)
     return result;
 }
 
+// NOTE(long): 6250: calling 'VirtualFree' without the MEM_RELEASE flag might cause address space leaks
+MSVC(WarnDisable(6250))
 function void OSDecommit(void* ptr, u64 size)
 {
     if (!VirtualFree(ptr, size, MEM_DECOMMIT))
@@ -103,6 +110,7 @@ function void OSDecommit(void* ptr, u64 size)
         PANIC("Failed to decommit memory");
     }
 }
+MSVC(WarnEnable(6250))
 
 function void OSRelease(void* ptr)
 {
@@ -232,15 +240,12 @@ function void W32WinMainInit(HINSTANCE hInstance,
                              LPSTR lpCmdLine,
                              int nShowCmd)
 {
-    int argc = __argc;
-    char** argv = __argv;
     win32Instance = hInstance;
-    
     UNUSED(hPrevInstance);
     UNUSED(lpCmdLine);
     UNUSED(nShowCmd);
     
-    OSInit(argc, argv);
+    OSInit(__argc, __argv);
 }
 
 function HINSTANCE W32GetInstance(void)
@@ -340,6 +345,9 @@ function DateTime OSToUniTime(DateTime localTime)
 
 //~ NOTE(long): Console Handling
 
+// https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
+#define CONSOLE_INTERNAL_BUFFER_SIZE KB(8)
+
 function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData)
 {
     String result = {0};
@@ -358,18 +366,31 @@ function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData)
     if (file != INVALID_HANDLE_VALUE)
     {
         TempArena restorePoint = TempBegin(arena);
-        DWORD bufferSize = 1024;
+        DWORD bufferSize = CONSOLE_INTERNAL_BUFFER_SIZE;
         u8* buffer = PushArray(arena, u8, bufferSize);
         
         DWORD actualRead = 0;
-        if (ReadFile(file, buffer, bufferSize - !!terminateData, &actualRead, 0) &&
-            ALWAYS(actualRead >= 2)) // NOTE(long): Stupid Microsoft with stupid \r\n
+        DWORD readSize = bufferSize - !!terminateData;
+        // TODO(long): If the handle is redirected to a file, just load the file.
+        if (ReadFile(file, buffer, readSize, &actualRead, 0))
         {
-            if (buffer[actualRead-1] == '\n')
-                actualRead--;
-            if (buffer[actualRead-1] == '\r')
-                actualRead--;
-            result = Str(buffer, actualRead);
+            if (actualRead)
+            {
+                result = Str(buffer, actualRead);
+                
+                // NOTE(long): Stupid Microsoft with stupid \r\n
+                if (ALWAYS(StrCompare(StrPostfix(result, 2), StrLit("\r\n"), 0)))
+                    result.size -= 2;
+                else
+                {
+                    // TODO(long): Handle this case where the input is larger than the buffer
+                    // Calling ReadFile in a loop and checking for \r\n and actualRead is probably enough
+                    // Assert this for now because if left unhandled the input will leak for subsequent ReadFile calls
+                    Assert(actualRead == readSize);
+                }
+                
+                ArenaPop(arena, readSize - result.size);
+            }
         }
         else
             TempEnd(restorePoint);
@@ -460,7 +481,7 @@ function b32 OSWriteList(String fileName, StringList* data)
     {
         result = 1;
         
-        for (StringNode* node = data->first; node != 0; node = node->next)
+        StrListIter(data, node)
         {
             u8* ptr = node->string.str;
             u8* opl = ptr + node->string.size;
@@ -502,7 +523,7 @@ function DataAccessFlags W32AccessFromAttributes(DWORD attributes)
     return result;
 }
 
-function FileProperties GetFileProperties(String fileName)
+function FileProperties OSFileProperties(String fileName)
 {
     FileProperties result = {0};
     WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
@@ -521,10 +542,10 @@ function FileProperties GetFileProperties(String fileName)
     return result;
 }
 
-function String OSProcessDir(void) { return win32BinaryPath; }
-function String OSAppDataDir(void) { return win32UserPath; }
-function String OSAppTempDir(void) { return win32TempPath; }
-function String OSCurrentDir(Arena* arena)
+function String OSExecDir(void) { return win32BinaryPath; }
+function String OSUserDir(void) { return win32UserPath; }
+function String OSTempDir(void) { return win32TempPath; }
+function String OSCurrDir(Arena* arena)
 {
     DWORD size = GetCurrentDirectoryA(0, 0);
     u8* buffer = PushArrayNZ(arena, u8, size);

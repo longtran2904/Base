@@ -6,8 +6,10 @@
 
 #define MD_DEFAULT_SPRINTF 0
 #define MD_IMPL_Vsnprintf stbsp_vsnprintf
+MSVC(WarnDisable(6250 28182))
 #include "md\md.h"
 #include "md\md.c"
+MSVC(WarnEnable(6250 28182))
 
 #define C_LIKE_OPS_NO_SIDE_EFFECTS(X) \
     X(ArraySubscript,      "[]",        Postfix,                18) \

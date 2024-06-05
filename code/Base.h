@@ -9,6 +9,10 @@
 
 //~ NOTE(long): Context Cracking
 
+#ifndef BASE_LIB_STATIC
+#define BASE_LIB_STATIC 0
+#endif
+
 //- NOTE(long): Compiler
 #if defined(__clang__)
 #define COMPILER_CLANG 1
@@ -269,13 +273,14 @@
 
 //~ NOTE(long): Helper Macros
 
-#define UNIQUE(name) Concat(name, __LINE__)
 #define Stmnt(S) do { S; } while (0)
+#define fallthrough
 #define UNUSED(x) ((void)(x))
 #define DEBUG(x, ...) Stmnt(__VA_ARGS__; UNUSED(x))
+#define DebugReturn() Stmnt(if (0) return)
 
 #ifndef ENABLE_ASSERT
-#define ENABLE_ASSERT 1
+#define ENABLE_ASSERT 0
 #endif
 
 #if ENABLE_ASSERT
@@ -296,6 +301,10 @@
 #define Stringify(s) Stringify_(s)
 #define Concat_(a, b) a##b
 #define Concat(a, b) Concat_(a, b)
+#define UNIQUE(name) Concat(name, __LINE__)
+
+#define TempPointer(type, ptr) type UNIQUE(ptr) = {0}; if (!(ptr)) (ptr) = &UNIQUE(ptr);
+#define TempBool(ptr) TempPointer(b32, ptr)
 
 #define EnumCount(type) Concat(type, _Count)
 #define ArrayCount(a) (sizeof(a)/sizeof(*(a)))
@@ -376,6 +385,7 @@
 
 #define global   static
 #define local    static
+#define internal static
 #define function static
 
 #include <string.h> // TODO(long): Replace memset, memcpy, and memcmp
@@ -508,10 +518,15 @@ StaticAssert(sizeof(uptr) == ARCH_SIZE/8, CheckUPTRSize);
 #define true  1
 #endif
 
-typedef i8 b8;
+typedef i8  b8;
 typedef i16 b16;
 typedef i32 b32;
 typedef i64 b64;
+
+typedef u8  Flags8;
+typedef u16 Flags16;
+typedef u32 Flags32;
+typedef u64 Flags64;
 
 typedef float f32;
 typedef double f64;
@@ -845,6 +860,7 @@ struct StringDecode
     u32 error;
 };
 
+#define StrListIter(list, name   ) for (StringNode* name = (list)->first; name; name = name->next)
 #define  Str8Stream(str, ptr, opl) for (u8  *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
 #define Str16Stream(str, ptr, opl) for (u16 *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
 #define Str32Stream(str, ptr, opl) for (u32 *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
@@ -902,6 +918,7 @@ function f64 Atan2_f64(f64 x, f64 y);
 
 //~ NOTE(long): Arena Functions
 
+function Arena* ArenaBuffer(u8* buffer, u64 size, u64 alignment);
 function Arena* ArenaReserve(u64 reserve, u64 alignment, b32 growing);
 function void   ArenaRelease(Arena* arena);
 
@@ -923,6 +940,8 @@ function void ArenaAlign  (Arena* arena, u64 alignment);
 function void ArenaAlignNZ(Arena* arena, u64 alignment);
 
 #define ArenaMake(...) ArenaReserve(MEM_DEFAULT_RESERVE_SIZE, MEM_DEFAULT_ALIGNMENT, (__VA_ARGS__ + 0))
+#define ArenaStack(name, size, ...) u8 UNIQUE(_buffer)[(size) + sizeof(Arena)] = {0}; \
+    Arena* name = ArenaBuffer(UNIQUE(_buffer), sizeof(UNIQUE(_buffer)), (__VA_ARGS__+0))
 #define ArenaPos(arena, pos) ((arena)->curr->basePos + (pos))
 #define ArenaCurrPos(arena) ArenaPos(arena, (arena)->curr->pos)
 
@@ -946,18 +965,19 @@ function void      TempEnd(TempArena temp);
 #define ScratchEnd(scratch) Stmnt(ScratchClear(scratch); ScratchName(scratch) = (TempArena){0}; scratch = 0; \
                                   (void)Concat(_debugVarOf_, scratch);)
 
-#define TempBlock(name, arena) for (TempArena name = TempBegin(arena); name.arena != 0; TempEnd(name), name = (TempArena){0})
+#define TempBlock(name, _arena) for (TempArena name = TempBegin(_arena); name.arena != 0; TempEnd(name), name = (TempArena){0})
 #define TempPoisonBlock(name, arena) \
     for (TempArena name = (ArenaPushPoisonEx((arena), 0, MEM_POISON_SIZE, 0), TempBegin(arena)), UNIQUE(name) = {0}; \
          UNIQUE(name).pos == 0; \
          UNIQUE(name).pos = ArenaCurrPos(arena), TempEnd(name), \
          ArenaPushPoisonEx((arena), 0, UNIQUE(name).pos - name.pos, MEM_POISON_SIZE))
 
-#define ScratchBlock(name, ...) struct { i32 i; TempArena temp; } UNIQUE(_i_) = \
-    { .temp = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)) }; \
-    for (Arena* name = UNIQUE(_i_).temp.arena; \
-         UNIQUE(_i_).i == 0; \
-         UNIQUE(_i_).i++, UNIQUE(_i_).temp = (TempEnd(UNIQUE(_i_).temp), (TempArena){0}))
+// NOTE(long): This macro is heavily coupled with how the TempArena/Begin/End and GetScratch works
+// It must be changed when any of those things change
+#define ScratchBlock(name, ...) for (Arena* name = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)).arena, \
+                                     UNIQUE(name) = { .pos = ArenaCurrPos(name) }; \
+                                     UNIQUE(name).pos; \
+                                     TempEnd((TempArena){ .arena = name, .pos = UNIQUE(name).pos }), UNIQUE(name).pos = 0)
 
 //~ NOTE(long): String Functions
 
@@ -991,10 +1011,10 @@ function String StrCopy(Arena* arena, String str);
 #define StrCloneCStr(arena, cstr) StrCopy((arena), StrFromCStr(cstr))
 #define StrToCStr(a, s) StrCopy((a), (s)).str
 
+function String StrFromFlags(Arena* arena, String* names, u64 nameCount, u64 flags);
 #define GetEnumStr(type, e) (InRange(e, 0, EnumCount(type) - 1) ? (Concat(type, _names)[(i32)(e)]) : StrLit("Invalid"))
 #define GetEnumName(type, e) GetEnumStr(type, e).str
-#define GetFlagStr(arena, type, flags) GetFlagName_((arena), Concat(type, _names), \
-                                                    ArrayCount(Concat(type, _names)), (flags))
+#define GetFlagStr(arena, type, flags) StrFromFlags((arena), Concat(type, _names), ArrayCount(Concat(type, _names)), (flags))
 #define GetFlagName(arena, type, flags) GetFlagStr(arena, type, flags).str
 
 function StringList StrList(Arena* arena, String* strArr, u64 count);
@@ -1055,9 +1075,10 @@ function String StrSkipUntil(String str, String arr, StringFindFlags flags);
 #define ChrCompareNoCase(a, b) (ChrToUpper(a) == ChrToUpper(b))
 
 #define StrIsIdentical(a, b) ((a).str == (b).str && (a).size == (b).size)
-#define StrIsSubstr(str, substr) ((str).str <= (substr).str && ((str).str + (str).size >= (substr).str + (substr).size))
-#define StrIsPrefix(str, prefix) ((str).str == (prefix).str && (str).size >= (prefix).size)
-#define StrIsPostfix(str, postfix) (((str).str + (str).size == (postfix).str + (postfix).size) && (str).str <= (postfix).str)
+#define StrIsSubstr(s, substr) ((s).str <= (substr).str && ((s).str + (s).size >= (substr).str + (substr).size))
+#define StrIsPrefix(s, prefix) ((s).str == (prefix).str && (s).size >= (prefix).size)
+#define StrIsPostfix(s, postfix) (((s).str + (s).size == (postfix).str + (postfix).size) && (s).str <= (postfix).str)
+#define StrIsChr(s, chr) ((s).size == 1 && (s).str[0] == (chr))
 
 #define StrStartsWith(str, val, noCase) (StrCompare(StrPrefix ((str), (val).size), (val), noCase))
 #define   StrEndsWith(str, val, noCase) (StrCompare(StrPostfix((str), (val).size), (val), noCase))
@@ -1095,8 +1116,8 @@ function u32 UTF8GetErr(String str, u64* index); // returns the first invalid ch
 #define UTF8IsValid(str) (UTF8GetErr(str) == -1)
 
 // TODO(long): https://dev.to/rdentato/utf-8-strings-in-c-3-3-2pc7
-function u32 RuneFolding(u32 rune); // NOTE(long): Should StrToLow(Upp)er use this?
-function b32 RuneIsBlank(u32 rune); // NOTE(long): Should StrIsWhitespace use this?
+function u32 RuneFolding(u32 rune); // @CONSIDER(long): Should StrToLow(Upp)er use this?
+function b32 RuneIsBlank(u32 rune); // @CONSIDER(long): Should StrIsWhitespace use this?
 
 //- NOTE(long): Convert Functions
 function String StrFromF32(Arena* arena, f32 x, u32 prec);
@@ -1110,6 +1131,7 @@ function i32 I32FromStr(String str, u32 radix, b32* error);
 function i64 I64FromStr(String str, u32 radix, b32* error);
 
 function String StrFromTime(Arena* arena, DateTime time);
+function String StrFromArg(char* arg, b32* isArg, String* argValue);
 
 //~ NOTE(long): Logs/Errors
 
