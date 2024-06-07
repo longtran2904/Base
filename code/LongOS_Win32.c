@@ -345,6 +345,38 @@ function DateTime OSToUniTime(DateTime localTime)
 
 //~ NOTE(long): Console Handling
 
+internal String W32ReadFile(Arena* arena, HANDLE file, b32 terminateData)
+{
+    String result = {0};
+    u64 size = 0;
+    
+    if (GetFileSizeEx(file, (PLARGE_INTEGER)&size) && size)
+    {
+        TempArena restorePoint = TempBegin(arena);
+        u8* buffer = PushArray(arena, u8, size + !!terminateData);
+        
+        u8* ptr = buffer;
+        u8* opl = buffer + size;
+        b32 success = 1;
+        for (DWORD actualRead = 0; ptr < opl && success; ptr += actualRead)
+        {
+            DWORD readAmount = (u32)ClampTop((u64)(opl - ptr), MAX_U32);
+            // ReadFile will always zero out actualRead
+            success =  ReadFile(file, ptr, readAmount, &actualRead, 0);
+            success &= actualRead;
+        }
+        
+        if (success)
+            result = Str(buffer, size);
+        else
+            TempEnd(restorePoint);
+    }
+    
+    return result;
+}
+
+// NOTE(long): CRT seems to be using 4KB for fgets internal buffer size
+// But `cmd.exe` allows up to 8KB - 1 characters, so I use that instead
 // https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
 #define CONSOLE_INTERNAL_BUFFER_SIZE KB(8)
 
@@ -365,35 +397,42 @@ function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData)
     HANDLE file = GetStdHandle(handles[handle]);
     if (file != INVALID_HANDLE_VALUE)
     {
-        TempArena restorePoint = TempBegin(arena);
-        DWORD bufferSize = CONSOLE_INTERNAL_BUFFER_SIZE;
-        u8* buffer = PushArray(arena, u8, bufferSize);
+        DWORD fileType = GetFileType(file);
+        if (fileType == FILE_TYPE_DISK)
+            result = W32ReadFile(arena, file, terminateData);
         
-        DWORD actualRead = 0;
-        DWORD readSize = bufferSize - !!terminateData;
-        // TODO(long): If the handle is redirected to a file, just load the file.
-        if (ReadFile(file, buffer, readSize, &actualRead, 0))
-        {
-            if (actualRead)
-            {
-                result = Str(buffer, actualRead);
-                
-                // NOTE(long): Stupid Microsoft with stupid \r\n
-                if (ALWAYS(StrCompare(StrPostfix(result, 2), StrLit("\r\n"), 0)))
-                    result.size -= 2;
-                else
-                {
-                    // TODO(long): Handle this case where the input is larger than the buffer
-                    // Calling ReadFile in a loop and checking for \r\n and actualRead is probably enough
-                    // Assert this for now because if left unhandled the input will leak for subsequent ReadFile calls
-                    Assert(actualRead == readSize);
-                }
-                
-                ArenaPop(arena, readSize - result.size);
-            }
-        }
         else
-            TempEnd(restorePoint);
+        {
+            TempArena restorePoint = TempBegin(arena);
+            DWORD bufferSize = CONSOLE_INTERNAL_BUFFER_SIZE;
+            DWORD actualRead = 0;
+            DWORD readSize = bufferSize - !!terminateData;
+            u8* buffer = PushArray(arena, u8, bufferSize);
+            
+            if (fileType == FILE_TYPE_PIPE)
+            {
+                // TODO(long): https://handmade.network/forums/t/8916-how_to_read_from_and_write_to_the_console_in_win32#30197
+            }
+            
+            if (ReadFile(file, buffer, readSize, &actualRead, 0))
+            {
+                if (actualRead)
+                {
+                    result = Str(buffer, actualRead);
+                    
+                    // NOTE(long): Stupid Microsoft with stupid \r\n
+                    if (StrCompare(StrPostfix(result, 2), StrLit("\r\n"), 0))
+                        result.size -= 2;
+                    else
+                        Assert(actualRead == readSize);
+                    
+                    ArenaPop(arena, readSize - result.size);
+                }
+            }
+            
+            if (!result.size)
+                TempEnd(restorePoint);
+        }
     }
     
     return result;
@@ -437,33 +476,7 @@ function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
     
     if (file != INVALID_HANDLE_VALUE)
     {
-        DWORD highSize = 0;
-        DWORD lowSize = GetFileSize(file, &highSize);
-        u64 totalSize = (((u64)highSize << 32) | (u64)lowSize);
-        
-        TempArena restorePoint = TempBegin(arena);
-        u8* buffer = PushArray(arena, u8, totalSize + !!terminateData);
-        
-        u8* ptr = buffer;
-        u8* opl = buffer + totalSize;
-        b32 success = 1;
-        for (; ptr < opl;)
-        {
-            DWORD readAmount = (u32)ClampTop((u64)(opl - ptr), MAX_U32);
-            DWORD actualRead = 0;
-            if (!ReadFile(file, ptr, readAmount, &actualRead, 0))
-            {
-                success = 0;
-                break;
-            }
-            ptr += actualRead;
-        }
-        
-        if (success)
-            result = Str(buffer, totalSize);
-        else
-            TempEnd(restorePoint);
-        
+        result = W32ReadFile(arena, file, terminateData);
         CloseHandle(file);
     }
     

@@ -177,6 +177,7 @@ int main(void)
         
         Outf("\n");
         Outf("---STDIO---\n");
+        //OSSleepMS(10000);
         OSWriteConsole(OS_STD_OUT, StrLit("Please enter your name: "));
         String input = OSReadConsole(arena, OS_STD_IN, 0);
         if (StrCompare(input, StrLit("Long"), 1))
@@ -185,6 +186,7 @@ int main(void)
             OSWriteConsole(OS_STD_ERR, StrLit("Then just kill yourself\n"));
         else
             OSWriteConsole(OS_STD_ERR, StrPushf(arena, "ERROR: \"%.*s\" is a stupid name\n", StrExpand(input)));
+        //input = OSReadConsole(arena, OS_STD_IN, 1);
         OSSleepMS(500);
         
         Outf("\n");
