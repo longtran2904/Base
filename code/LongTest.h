@@ -40,7 +40,7 @@ function void TestBegin(char* name, i32 padding)
 {
     String str = StrFromCStr(name);
     i32 spaces = ClampBot(padding - (i32)str.size, 0);
-    Outf("\"%.*s\"%.*s [", StrExpand(str), spaces, " ------------------------------");
+    LT_PRINTF("\"%.*s\"%.*s [", StrExpand(str), spaces, " ------------------------------");
     
     ctx.testCount = 0;
     ctx.passCount = 0;
@@ -50,7 +50,7 @@ function b32 TestResult(b32 result)
 {
     ctx.testCount++;
     ctx.passCount += !!result;
-    Outf(result ? "." : "X");
+    LT_PRINTF(result ? "." : "X");
     
     LT_ASSERT(result);
     return result;
@@ -60,8 +60,8 @@ function void TestEnd(i32 padding)
 {
     i32 spaces = ClampBot(padding - ctx.testCount, 0);
     
-    Outf("]%.*s ", spaces, "                                                                                ");
-    Outf("[%2i/%-2i] %2i passed, %2i tests, ", ctx.passCount, ctx.testCount, ctx.passCount, ctx.testCount);
-    Outf(ctx.testCount == ctx.passCount ? "SUCCESS ( )\n" : "FAILED (X)\n");
+    LT_PRINTF("]%.*s ", spaces, "                                                                                ");
+    LT_PRINTF("[%2i/%-2i] %2i passed, %2i tests, ", ctx.passCount, ctx.testCount, ctx.passCount, ctx.testCount);
+    LT_PRINTF(ctx.testCount == ctx.passCount ? "SUCCESS ( )\n" : "FAILED (X)\n");
 }
 #endif // LONG_TEST_IMPLEMENTATION

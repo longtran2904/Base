@@ -6,14 +6,16 @@
 //~ TODO(long):
 // [ ] Custom printf format
 // [ ] Import base layer as a DLL
+// [ ] Math functions and types
+// [ ] Add custom markers for functions
 
-//~ NOTE(long): Context Cracking
+//~ long: Context Cracking
 
 #ifndef BASE_LIB_STATIC
 #define BASE_LIB_STATIC 0
 #endif
 
-//- NOTE(long): Compiler
+//- long: Compiler
 #if defined(__clang__)
 #define COMPILER_CLANG 1
 #elif defined(_MSC_VER)
@@ -34,7 +36,7 @@
 #define COMPILER_GCC 0
 #endif
 
-//- NOTE(long): OS
+//- long: OS
 #ifdef _WIN32
 #define OS_WIN 1
 #elif defined(__gnu_linux__)
@@ -60,7 +62,7 @@
 #error Missing ARCH detection
 #endif
 
-//- NOTE(long): Architecture
+//- long: Architecture
 #if COMPILER_CL
 #ifdef _M_AMD64
 #define ARCH_X64 1
@@ -167,7 +169,7 @@
 #define GCC(...) __VA_ARGS__
 #endif
 
-//- NOTE(long): Language
+//- long: Language
 #if defined(__cplusplus)
 # define LANG_CPP 1
 #else
@@ -181,14 +183,14 @@
 # define LANG_C 0
 #endif
 
-//- NOTE(long): Pointer
+//- long: Pointer
 #if ARCH_X64 || ARCH_ARM64
 # define ARCH_SIZE 64
 #else
 # define ARCH_SIZE 32
 #endif
 
-//- NOTE(long): Warning
+//- long: Warning
 #if COMPILER_CL
 # define WarnPush(...) _Pragma(Stringify(warning(push, __VA_ARGS__)))
 # define WarnPop() _Pragma("warning(pop)")
@@ -208,7 +210,7 @@
 # error warnings are not modifiable in code for this compiler
 #endif
 
-//- NOTE(long): Extension
+//- long: Extension
 #if LANG_CPP
 #define clinkage extern "C"
 #else
@@ -271,7 +273,7 @@
 #  endif
 #endif
 
-//~ NOTE(long): Helper Macros
+//~ long: Helper Macros
 
 #define Stmnt(S) do { S; } while (0)
 #define fallthrough
@@ -280,7 +282,7 @@
 #define DebugReturn() Stmnt(if (0) return)
 
 #ifndef ENABLE_ASSERT
-#define ENABLE_ASSERT 0
+#define ENABLE_ASSERT 1
 #endif
 
 #if ENABLE_ASSERT
@@ -310,20 +312,21 @@
 #define ArrayCount(a) (sizeof(a)/sizeof(*(a)))
 #define ArrayExpand(type, ...) (type[]){ __VA_ARGS__ }, ArrayCount(((type[]){ __VA_ARGS__ }))
 
-#define HasAnyFlags(flags, fl) ((flags) & (fl))
+#define HasAnyFlags(flags, fl)  ((flags) & (fl))
 #define HasAllFlags(flags, fl) (((flags) & (fl)) == (fl))
 #define     NoFlags(flags, fl) (!HasAnyFlags(flags, fl))
 
 #define Implies(a,b) (!(a) || (b))
 
-// TODO(long): Clang complains that this is UB
+// @UB(long): Clang complains about these
 #define IntFromPtr(p) (uptr)((char*)p - (char*)0)
 #define PtrFromInt(n) (void*)((char*)0 + (n))
 
-#define Member(T, m) (((T*)0)->m)
+#define   Member(T, m) (((T*)0)->m)
 #define OffsetOf(T, m) IntFromPtr(&Member(T, m))
+#define MemberFromOffset(T, ptr, off) (T)((((u8*)ptr) + (off)))
 
-#define BitCast(type, var) (*((type)*)(&(var))) // NOTE(long): UB
+#define BitCast(type, var) (*((type)*)(&(var))) // @UB(long)
 #define PrcCast(a, b) ((*(VoidFunc**)(&(a))) = (VoidFunc*)(b))
 
 #define Min(a, b) ((a)<(b)?(a):(b))
@@ -426,38 +429,40 @@
 
 #define DeferBlock(begin, end) for (int UNIQUE(_i_) = ((begin), 0); UNIQUE(_i_) == 0; (UNIQUE(_i_) += 1), (end))
 
-//~ NOTE(long): Linked List Macros
+#define CheckNil(nil, p) ((p) == 0 || (p) == nil)
 
-#define DLLPushBack_NP(f, l, n, next, prev) (((f)==0?\
-                                              (f)=(l)=(n):\
-                                              ((l)->next=(n),(l)=(n))),\
-                                             (n)->next=(n)->prev=0)
+//~ long: Linked List Macros
+
+#define DLLPushBack_NPZ(nil, f, l, n, next, prev) (CheckNil(nil, f) ? \
+                                                   ((f)=(l)=(n), (n)->next=(n)->prev=(nil)) : \
+                                                   ((l)->next=(n), (l)=(n), (n)->prev=(l), (n)->next=(nil)))
+#define DLLPushBack_NP(f, l, n, next, prev) DLLPushBack_NPZ(0, f, l, next, prev)
 #define DLLPushBack(f, l, n) DLLPushBack_NP(f, l, n, next, prev)
 #define DLLPushFront(f, l, n) DLLPushBack_NP(l, f, n, prev, next)
 
-#define DLLRemove_NP(f, l, n, next, prev) (((f)==(n)?\
-                                            ((f)=(f)->next, (f)->prev=0):\
-                                            (l)==(n)?\
-                                            ((l)=(l)->prev,(l)->next=0):\
-                                            ((n)->next->prev=(n)->prev,\
-                                             (n)->prev->next=(n)->next)))
+#define DLLRemove_NPZ(nil, f, l, n, next, prev) ((f)==(n) ? \
+                                                 ((f)==(l) ? ((f)=(l)=(nil)) : ((f)=(f)->next,(f)->prev=(nil))) : \
+                                                 ((l)==(n) ? ((l)=(l)->prev,(l)->next=(nil)) : ((n)->next->prev=(n)->prev, \
+                                                                                                (n)->prev->next=(n)->next)))
+#define DLLRemove_NP(f, l, n, next, prev) DLLRemove_NPZ(0, f, l, n, next, prev)
 #define DLLRemove(f, l, n) DLLRemove_NP(f, l, n, next, prev)
 
-#define SLLQueuePush(f, l, n) ((f)==0?\
-                               (f)=(l)=(n):\
-                               ((l)->next=(n),(l)=(n)),\
-                               (n)->next=0)
-#define SLLQueuePushFront(f, l, n) ((f)==0?\
-                                    ((f)=(l)=(n),(n)->next=0):\
-                                    ((n)->next=(f),(f)=(n)))
-#define SLLQueuePop(f, l) ((f)==(l)?\
-                           ((f)=(l)=0):\
-                           ((f)=(f)->next))
+#define SLLQueuePush_N(f, l, n, next) (((f)==0 ? ((f)=(l)=(n)) : ((l)->next=(n),(l)=(n))), (n)->next=0)
+#define SLLQueuePush(f, l, n) SLLQueuePush_N(f, l, n, next)
 
-#define SLLStackPush(f, n) ((n)->next=(f),(f)=(n))
-#define SLLStackPop(f) ((f)==0?0:((f)=(f)->next))
+#define SLLQueuePushFront_N(f, l, n, next) ((f)==0 ? ((f)=(l)=(n), (n)->next=0) : ((n)->next=(f), (f)=(n)))
+#define SLLQueuePushFront(f, l, n) SLLQueuePushFront_N(f, l, n, next)
 
-//~ NOTE(long): Basic Types
+#define SLLQueuePop_N(f, l, next) ((f)==(l) ? ((f)=(l)=0) : ((f)=(f)->next))
+#define SLLQueuePop(f, l) SLLQueuePop_N(f, l, next)
+
+#define SLLStackPush_N(f, n, next) ((n)->next=(f), (f)=(n))
+#define SLLStackPush(f, n) SLLStackPush_N(f, n, next)
+
+#define SLLStackPop_N(f, next) ((f)==0 ? 0 :((f)=(f)->next))
+#define SLLStackPop(f) SLLStackPop_N(f, next)
+
+//~ long: Basic Types
 
 #if COMPILER_CL
 // https://learn.microsoft.com/vi-vn/cpp/cpp/int8-int16-int32-int64?view=msvc-160
@@ -504,14 +509,14 @@ StaticAssert(sizeof(u64) == 8, CheckU64Size);
 StaticAssert(sizeof(iptr) == ARCH_SIZE/8, CheckIPTRSize);
 StaticAssert(sizeof(uptr) == ARCH_SIZE/8, CheckUPTRSize);
 
-#define  I8(x) (x)
-#define I16(x) (x)
-#define I32(x) (x)
-#define I64(x) (x ## LL)
-#define  U8(x) (x)
-#define U16(x) (x)
-#define U32(x) (x ## U)
-#define U64(x) (x ## ULL)
+#define  I8L(x) (x)
+#define I16L(x) (x)
+#define I32L(x) (x)
+#define I64L(x) (x ## LL)
+#define  U8L(x) (x)
+#define U16L(x) (x)
+#define U32L(x) (x ## U)
+#define U64L(x) (x ## ULL)
 
 #ifdef LANG_C
 #define false 0
@@ -534,22 +539,22 @@ typedef double f64;
 typedef void VoidFunc(void);
 typedef void VoidFuncVoid(void*);
 
-//~ NOTE(long): Basic Constants
+//~ long: Basic Constants
 
-#define MIN_I8  I8(0x80)
-#define MIN_I16 I16(0x8000)
-#define MIN_I32 I32(0x80000000)
-#define MIN_I64 I64(0x8000000000000000)
+#define MIN_I8   I8L(0x80)
+#define MIN_I16 I16L(0x8000)
+#define MIN_I32 I32L(0x80000000)
+#define MIN_I64 I64L(0x8000000000000000)
 
-#define MAX_I8  I8(0x7f)
-#define MAX_I16 I16(0x7fff)
-#define MAX_I32 I32(0x7fffffff)
-#define MAX_I64 I64(0x7fffffffffffffff)
+#define MAX_I8   I8L(0x7f)
+#define MAX_I16 I16L(0x7fff)
+#define MAX_I32 I32L(0x7fffffff)
+#define MAX_I64 I64L(0x7fffffffffffffff)
 
-#define MAX_U8  U8(0xff)
-#define MAX_U16 U16(0xffff)
-#define MAX_U32 U32(0xffffffff)
-#define MAX_U64 U64(0xffffffffffffffff)
+#define MAX_U8   U8L(0xff)
+#define MAX_U16 U16L(0xffff)
+#define MAX_U32 U32L(0xffffffff)
+#define MAX_U64 U64L(0xffffffffffffffff)
 
 #if ARCH_SIZE == 64
 #define MIN_IPTR MIN_I64
@@ -575,7 +580,7 @@ typedef void VoidFuncVoid(void*);
 #define GOLD_BIG_F64   ((f64)1.61803398875)
 #define GOLD_SMALL_F64 ((f64)0.61803398875)
 
-//~ NOTE(long): Symbolic Constants
+//~ long: Symbolic Constants
 
 enum Axis
 {
@@ -667,7 +672,7 @@ enum Day
     Day_Count
 };
 
-//~ NOTE(long): Time
+//~ long: Time
 
 typedef u64 DenseTime;
 
@@ -686,7 +691,7 @@ struct DateTime
 function  DateTime TimeToDate (DenseTime time);
 function DenseTime TimeToDense(DateTime  time);
 
-//~ NOTE(long): File Properties
+//~ long: File Properties
 
 typedef u32 DataAccessFlags;
 enum
@@ -712,7 +717,7 @@ struct FileProperties
     DenseTime modifyTime;
 };
 
-//~ NOTE(long): Arena Types
+//~ long: Arena Types
 
 typedef struct Arena Arena;
 struct Arena
@@ -748,7 +753,7 @@ struct TempArena
 #define ARCH_ALLOC_GRANULARITY KB(4)
 #endif
 
-#define SCRATCH_POOL_COUNT 4
+#define SCRATCH_POOL_COUNT 2
 
 // @RECONSIDER(long): Rather than constants, arenas can take runtime values and these just become default values
 #ifndef MEM_DEFAULT_RESERVE_SIZE
@@ -780,7 +785,7 @@ StaticAssert(MEM_POISON_ALIGNMENT <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
 StaticAssert(ARCH_PAGE_SIZE <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
 StaticAssert(sizeof(Arena) <= MEM_INITIAL_COMMIT, checkMemDefault);
 
-//~ NOTE(long): String Types
+//~ long: String Types
 
 typedef struct String String;
 struct String
@@ -810,6 +815,13 @@ struct StringNode
     String string;
 };
 
+typedef struct StringMetaNode StringMetaNode;
+struct StringMetaNode
+{
+    StringMetaNode* next;
+    StringNode* node;
+};
+
 typedef struct StringList StringList;
 struct StringList
 {
@@ -830,16 +842,27 @@ struct StringJoin
 typedef u32 StringFindFlags;
 enum
 {
-    FindStr_NoCase    = 1 << 0,
-    FindStr_LastMatch = 1 << 1,
+    FindStr_IgnoreCase  = 1 << 0,
+    FindStr_IgnoreSlash = 1 << 1,
+    FindStr_RightSloppy = 1 << 2,
+    FindStr_LastMatch   = 1 << 3,
+    SplitStr_KeepEmpties = 1 << 4
 };
 
-typedef u32 StringSplitFlags;
-enum
+typedef enum PathStyle PathStyle;
+enum PathStyle
 {
-    SplitStr_NoCase           = 1 << 0,
-    SplitStr_IncludeSeperator = 1 << 1,
-    SplitStr_AllowEmptyMember = 1 << 2,
+    PathStyle_Relative,
+    PathStyle_WindowsAbsolute,
+    PathStyle_UnixAbsolute,
+    
+#if OS_WIN
+    PathStyle_SystemAbsolute = PathStyle_WindowsAbsolute
+#elif OS_LINUX
+    PathStyle_SystemAbsolute = PathStyle_UnixAbsolute
+#else
+#error Absolute path style is undefined for this OS
+#endif
 };
 
 typedef enum DecodeError DecodeError;
@@ -860,12 +883,15 @@ struct StringDecode
     u32 error;
 };
 
+#define StrListFirst(list) ((list)->first ? (list)->first->string : (String){0})
+#define  StrListLast(list) ((list)-> last ? (list)-> last->string : (String){0})
+
 #define StrListIter(list, name   ) for (StringNode* name = (list)->first; name; name = name->next)
 #define  Str8Stream(str, ptr, opl) for (u8  *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
 #define Str16Stream(str, ptr, opl) for (u16 *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
 #define Str32Stream(str, ptr, opl) for (u32 *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
 
-//~ NOTE(long): Math Functions
+//~ long: Math Functions
 
 //- NOTE(long) Float Constant Functions
 function f32 Inf_f32(void);
@@ -876,7 +902,7 @@ function f64 Inf_f64(void);
 function f64 NegInf_f64(void);
 function b32 InfOrNan_f64(f64 x);
 
-//- NOTE(long): Numeric Functions
+//- long: Numeric Functions
 function i32 AbsI32(i32 x);
 function i64 AbsI64(i64 x);
 function f32 Abs_f32(f32 x);
@@ -903,7 +929,7 @@ function f64 Ln_f64(f64 x);
 function f64 Pow_f64(f64 base, f64 x);
 function f64 FrExp_f64(f64 x, i32* exp);
 
-//- NOTE(long): Trigonometric Functions
+//- long: Trigonometric Functions
 function f32 Sin_f32(f32 x);
 function f32 Cos_f32(f32 x);
 function f32 Tan_f32(f32 x);
@@ -916,7 +942,7 @@ function f64 Tan_f64(f64 x);
 function f64 Atan_f64(f64 x);
 function f64 Atan2_f64(f64 x, f64 y);
 
-//~ NOTE(long): Arena Functions
+//~ long: Arena Functions
 
 function Arena* ArenaBuffer(u8* buffer, u64 size, u64 alignment);
 function Arena* ArenaReserve(u64 reserve, u64 alignment, b32 growing);
@@ -953,7 +979,7 @@ function void ArenaAlignNZ(Arena* arena, u64 alignment);
 #define  PushArrayNZ(arena, type, count) (type*)ArenaPushNZ((arena), sizeof(type) * (count))
 
 function TempArena TempBegin(Arena* arena);
-function TempArena GetScratch(Arena** conflictArray, u32 count);
+function TempArena GetScratch(Arena** conflictArray, u64 count);
 function void      TempEnd(TempArena temp);
 
 #define ScratchName(name) Concat(_tempArenaOf_, name)
@@ -979,9 +1005,9 @@ function void      TempEnd(TempArena temp);
                                      UNIQUE(name).pos; \
                                      TempEnd((TempArena){ .arena = name, .pos = UNIQUE(name).pos }), UNIQUE(name).pos = 0)
 
-//~ NOTE(long): String Functions
+//~ long: String Functions
 
-//- NOTE(long): Constructor Functions
+//- long: Constructor Functions
 #define Str(...) ((String){ __VA_ARGS__ })
 #define StrRange(first, opl) (String){ (first), (opl) - (first) }
 #define StrConst(s) { (u8*)(s), sizeof(s) - 1 }
@@ -1006,7 +1032,7 @@ function String StrTrim(String str, String arr, i32 dir);
 #define  StrTrimLeadingWspace(str) StrTrim((str), StrLit(WspaceStr), -1)
 #define StrTrimTrailingWspace(str) StrTrim((str), StrLit(WspaceStr), +1)
 
-//- NOTE(long): Allocation Functions
+//- long: Allocation Functions
 function String StrCopy(Arena* arena, String str);
 #define StrCloneCStr(arena, cstr) StrCopy((arena), StrFromCStr(cstr))
 #define StrToCStr(a, s) StrCopy((a), (s)).str
@@ -1020,8 +1046,14 @@ function String StrFromFlags(Arena* arena, String* names, u64 nameCount, u64 fla
 function StringList StrList(Arena* arena, String* strArr, u64 count);
 function StringList StrListExplicit(StringNode* nodes, String* strs, u64 count);
 
+// NOTE(long): IP stands for in place, which means the function will modify the passed-in pointer
+// In this case, the function will mutate the `list` argument
+// In other cases, the function might mutate the content of a string
+// These functions usually don't take in any arena or return anything
+function void StrListConcatIP(StringList* list, StringList* toPush);
 function void StrListPush(Arena* arena, StringList* list, String str);
 function void StrListPushNode(StringList* list, String str, StringNode* nodeMem);
+#define StrListPushNodeMem(list, node) StrListPushNode(list, (node)->string, node)
 
 function String StrListPop     (StringList* list);
 function String StrListPopFront(StringList* list);
@@ -1045,26 +1077,28 @@ function String StrJoinMax3(Arena* arena, StringJoin* join);
 #define StrJoin(arena, list, ...) StrJoinList((arena), (list), &(StringJoin){ .pre = {0}, .mid = {0}, .post = {0}, __VA_ARGS__ })
 #define StrJoin3(arena, ...) StrJoinMax3((arena), &(StringJoin){ __VA_ARGS__ })
 
-function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringSplitFlags flags);
-function StringList StrSplitArr (Arena* arena, String str, String      splits, StringSplitFlags flags);
-function StringList StrSplit    (Arena* arena, String str, String      split , StringSplitFlags flags);
+function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringFindFlags flags);
+function StringList StrSplitArr (Arena* arena, String str, String      splits, StringFindFlags flags);
+function StringList StrSplit    (Arena* arena, String str, String      split , StringFindFlags flags);
 
-function String StrReplaceList(Arena* arena, String str, StringList* oldStr, String newStr, b32 noCase);
-function String StrReplaceArr (Arena* arena, String str, String      oldArr, String newStr, b32 noCase);
-function String StrReplace    (Arena* arena, String str, String      oldStr, String newStr, b32 noCase);
+function String StrReplaceList(Arena* arena, String str, StringList* oldStr, String newStr, StringFindFlags flags);
+function String StrReplaceArr (Arena* arena, String str, String      oldArr, String newStr, StringFindFlags flags);
+function String StrReplace    (Arena* arena, String str, String      oldStr, String newStr, StringFindFlags flags);
 
-//- NOTE(long): Comparision Functions
-function b32 ChrCompare(char a, char b, b32 noCase);
-function b32 StrCompare(String a, String b, b32 noCase);
-function b32 ChrCompareArr(char chr, String arr, b32 noCase);
-function b32 StrListCompare(String str, StringList* values, b32 noCase);
+function String StrToLower(Arena* arena, String str);
+function String StrToUpper(Arena* arena, String str);
+
+//- long: Comparision Functions
+function b32 ChrCompare(char a, char b, StringFindFlags flags); // IgnoreCase/Slash
+function b32 StrCompare(String a, String b, StringFindFlags flags); // RightSloppy
+function b32 ChrCompareArr(char chr, String arr, StringFindFlags flags);
+function b32 StrListCompare(String str, StringList* values, StringFindFlags falgs);
 function b32 StrIsWhitespace(String str); // Empty strings will return true
 
 function i64 StrFindStr(String str, String val, StringFindFlags flags);
 function i64 StrFindArr(String str, String arr, StringFindFlags flags);
 function StringNode* StrFindList(String str, StringList* list, StringFindFlags flags);
 
-function String StrGetSubstr(String a, String b, StringFindFlags flags);
 function String StrChopAfter(String str, String arr, StringFindFlags flags);
 function String StrSkipUntil(String str, String arr, StringFindFlags flags);
 
@@ -1089,15 +1123,37 @@ function String StrSkipUntil(String str, String arr, StringFindFlags flags);
 #define StrContainsNums(str) (StrFindChr((str), Digits, 0) > -1)
 #define StrContainsChrs(str) (StrFindChr((str), Characters, 0) > -1)
 
-//- NOTE(long): Mutable Functions
+//- long: Path Helpers
+
+#if OS_WIN
+#define OSPathMatchFlags FindStr_IgnoreSlash|FindStr_IgnoreCase
+#else
+#define OSPathMatchFlags FindStr_IgnoreSlash
+#endif
+
+#define StrChopLastSlash(str) StrChopAfter((str), StrLit("/"), FindStr_LastMatch|FindStr_IgnoreSlash)
+#define StrSkipLastSlash(str) StrSkipUntil((str), StrLit("/"), FindStr_LastMatch|FindStr_IgnoreSlash)
+#define   StrChopLastDot(str) StrChopAfter((str), StrLit("."), FindStr_LastMatch)
+#define   StrSkipLastDot(str) StrSkipUntil((str), StrLit("."), FindStr_LastMatch)
+
+#define StrSplitPath(arena, str) StrSplitArr(arena, str, StrLit(SlashStr), 0)
+#define StrJoinPaths(arena, path, style) StrJoinList(arena, path, &(StringJoin){ .mid = StrLit("/"), \
+                                                         .pre = (style) == PathStyle_UnixAbsolute ? StrLit("/") : (String){0} })
+
+function PathStyle PathStyleFromStr(String str);
+
+function String PathRelFromAbs(Arena* arena, String dst, String src);
+function String PathAbsFromRel(Arena* arena, String dst, String src);
+function String PathNormString(Arena* arena, String path);
+
+function void PathListResolveDotsIP(StringList* path, PathStyle style);
+internal StringList PathListNormString(Arena* arena, String path, PathStyle* out);
+
+//- long: Serialize Functions
 function String StrWriteToStr(String src, u64 srcOffset, String dst, u64 dstOffset);
 #define StrWriteToMem(data, offset, dst, size) StrWriteToStr((data), (offset), Str(dst, size), 0)
 
-function void StrToLower(String str);
-function void StrToUpper(String str);
-function void StrSwapChr(String str, char o, char n);
-
-//- NOTE(long): Unicode Functions
+//- long: Unicode Functions
 function StringDecode StrDecodeUTF8(u8 * str, u64 cap);
 function StringDecode StrDecodeWide(u16* str, u64 cap);
 function u32          StrEncodeUTF8(u8 * dst, u32 codepoint);
@@ -1119,7 +1175,7 @@ function u32 UTF8GetErr(String str, u64* index); // returns the first invalid ch
 function u32 RuneFolding(u32 rune); // @CONSIDER(long): Should StrToLow(Upp)er use this?
 function b32 RuneIsBlank(u32 rune); // @CONSIDER(long): Should StrIsWhitespace use this?
 
-//- NOTE(long): Convert Functions
+//- long: Convert Functions
 function String StrFromF32(Arena* arena, f32 x, u32 prec);
 function String StrFromF64(Arena* arena, f64 x, u32 prec);
 function String StrFromI32(Arena* arena, i32 x, u32 radix);
@@ -1133,7 +1189,7 @@ function i64 I64FromStr(String str, u32 radix, b32* error);
 function String StrFromTime(Arena* arena, DateTime time);
 function String StrFromArg(char* arg, b32* isArg, String* argValue);
 
-//~ NOTE(long): Logs/Errors
+//~ long: Logs/Errors
 
 function void Outf(CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(1);
 function void Errf(CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(1);
@@ -1197,13 +1253,13 @@ function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, 
 #define ErrorSet(error, errno) ((errno) = 1, ErrorFmt(error))
 #define ErrorFmt(error, ...) LogPush(LOG_ERROR, error, __VA_ARGS__)
 
-//~ NOTE(long): Buffer Functions
+//~ long: Buffer Functions
 
 function String  BufferInterleave  (Arena* arena, void** in, u64 laneCount, u64 elementSize, u64 elementCount);
 function String* BufferUninterleave(Arena* arena, void*  in, u64 laneCount, u64 elementSize, u64 elementCount);
 #define BufferRead(buffer, offset, value) StrWriteToMem((buffer), (offset), (value), sizeof(*(value)))
 
-//~ NOTE(long): PRNG Functions
+//~ long: PRNG Functions
 
 typedef struct RNG RNG;
 struct RNG

@@ -362,8 +362,8 @@ internal String W32ReadFile(Arena* arena, HANDLE file, b32 terminateData)
         {
             DWORD readAmount = (u32)ClampTop((u64)(opl - ptr), MAX_U32);
             // ReadFile will always zero out actualRead
-            success =  ReadFile(file, ptr, readAmount, &actualRead, 0);
-            success &= actualRead;
+            success = ReadFile(file, ptr, readAmount, &actualRead, 0);
+            success = success && actualRead;
         }
         
         if (success)

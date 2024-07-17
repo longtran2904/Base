@@ -27,14 +27,29 @@ commands = {
         .win = "build.bat",
         .linux = "./build.sh",
         .mac = "./build.sh", },
-    .run = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
+    .build_release = { .out = "*compilation*", .footer_panel = true, .save_dirty_files = true,
+        .win = "build.bat release",
+        .linux = "./build.sh release",
+        .mac = "./build.sh release", },
+    .test = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
+        .win = "build\\test_base.exe",
+        .linux = "build/test_base.exe",
+        .mac = "build/test_base.exe", },
+    .demo = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
         .win = "build\\demo.exe",
         .linux = "build/demo.exe",
         .mac = "build/demo.exe", },
+    .demo_gfx = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
+        .win = "build\\demo_gfx.exe",
+        .linux = "build/demo_gfx.exe",
+        .mac = "build/demo_gfx.exe", },
 };
 fkey_command = {
     .F1 = "build",
-    .F2 = "run",
+    .F2 = "build_release",
+    .F5 = "test",
+    .F6 = "demo",
+    .F7 = "demo_gfx"
 };
 
 reference_paths =

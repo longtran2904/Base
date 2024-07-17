@@ -46,13 +46,15 @@ REM ---analyze flags---
 REM set warns=%warns% /analyze /wd28251
 
 REM FC Full path of source code file in diagnostics
-REM GR Enable RTTI
+REM GR Enables RTTI
 REM EH Enables standard C++ stack unwinding
-REM WL Enable One-Line Diagnostics (appends additional information to an error or warning message)
+REM WL Enables One-Line Diagnostics (appends additional information to an error or warning message)
+REM JMC Just my code debug
+REM FA generates an assembler listing file (s includes source code while c includes machine code)
 
 set opts=/FC /GR- /EHa- /nologo /Zi %warns%
 REM set opts=%opts% /fsanitize=address /JMC
-if [%1]==[release] set opts=%opts% /O2
+if [%1]==[release] (set opts=%opts% /O2 && echo [release mode]) ELSE echo [debug mode]
 
 set code=%cd%
 set links=/incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
@@ -68,13 +70,14 @@ set opts=%opts% /I%code%\code /I%code%\code\dependencies fast_float.obj
 
 IF NOT EXIST "fast_float.obj" cl /nologo /GR- /EHa- /nologo /O2 /c %code%\code\dependencies\fast_float.cpp
 
-cl %opts% %code%\code\examples\test_glob.c /Fetest_glob.exe /link %link%
 cl %opts% %code%\code\examples\test_base.c /Fetest_base.exe /link %links%
 cl %opts% %code%\code\examples\demo_gfx.c  /Fedemo_gfx.exe /link %links%
 cl %opts% %code%\code\examples\demo.c      /Fedemo.exe /link %links%
+cl %opts% %code%\code\Metamain.c           /Femetagen.exe /link %links%
 cl %opts% %code%\code\examples\TestDLL.c   /FeTestDLL.dll /LD
 
-REM cl %opts% %code%\code\examples\glob.c      /Feglob.exe -O2 /link %link%
+REM cl %opts% %code%\code\examples\glob.c      /Feglob.exe /O2 /link %link%
+REM cl %opts% %code%\code\examples\test_glob.c /Fetest_glob.exe /link %link%
 REM cl %opts% %code%\code\examples\parser.c    /Feparser.exe -wd4706 /link %links%
 REM cl %opts% %code%\code\retired\D3D11_Example.c /Fed3d11_exp.exe /link %links%
 REM cl %opts% %code%\code\retired\LongCompressor.c /Fecompressor.exe /link %links%

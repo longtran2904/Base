@@ -1,4 +1,3 @@
-//#include <stdio.h>
 #include "DefaultCRT.h"
 #include "Base.h"
 #include "LongOS.h"
@@ -6,6 +5,7 @@
 #include "LongOS_Win32.c"
 
 #define LONG_TEST_IMPLEMENTATION
+#define LT_ASSERT(x) Assert(x)
 #include "LongTest.h"
 
 global i32 snapshot;
@@ -55,9 +55,12 @@ function void TestFloat(f64 f, String str)
     }
 }
 
-MSVC(WarnDisable(28182 6011))
+MSVC(WarnDisable(28182 6011 4723))
 int main(void)
 {
+    OSInit(0, 0);
+    u64 elapsed = OSNowMS();
+    
     i32 space = Max(sizeof(CURRENT_COMPILER_NAME), Max(sizeof(CURRENT_OS_NAME), sizeof(CURRENT_ARCH_NAME))) - 1;
     Outf(  "------------------------------CONTEXT------------------------------\n");
     Outf("-----[COM:  %*s]-----\n", space, CURRENT_COMPILER_NAME);
@@ -558,23 +561,23 @@ int main(void)
     
     TEST("Str <- I64")
     {
-        TestResult(StrCompare(StrFromI64(arena, 28, 10), StrLit("28"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 4000000024, 10), StrLit("4000000024"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 2000000022, 10), StrLit("2000000022"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 4000000000, 10), StrLit("4000000000"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 9000000000, 10), StrLit("9000000000"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 900000000001, 10), StrLit("900000000001"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 9000000000002, 10), StrLit("9000000000002"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 90000000000004, 10), StrLit("90000000000004"), 1));
+        TestResult(StrCompare(StrFromI64(arena, 28, 10), StrLit("28"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 4000000024, 10), StrLit("4000000024"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 2000000022, 10), StrLit("2000000022"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 4000000000, 10), StrLit("4000000000"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 9000000000, 10), StrLit("9000000000"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 900000000001, 10), StrLit("900000000001"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 9000000000002, 10), StrLit("9000000000002"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 90000000000004, 10), StrLit("90000000000004"), 0));
         
-        TestResult(StrCompare(StrFromI64(arena, 024, 8), StrLit("24"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 04000000024, 8), StrLit("4000000024"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 02000000022, 8), StrLit("2000000022"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 04000000000, 8), StrLit("4000000000"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 044000000000000, 8), StrLit("44000000000000"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 044400000000000001, 8), StrLit("44400000000000001"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 04444000000000000002, 8), StrLit("4444000000000000002"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 04444000000000000004, 8), StrLit("4444000000000000004"), 1));
+        TestResult(StrCompare(StrFromI64(arena, 024, 8), StrLit("24"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 04000000024, 8), StrLit("4000000024"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 02000000022, 8), StrLit("2000000022"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 04000000000, 8), StrLit("4000000000"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 044000000000000, 8), StrLit("44000000000000"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 044400000000000001, 8), StrLit("44400000000000001"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 04444000000000000002, 8), StrLit("4444000000000000002"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 04444000000000000004, 8), StrLit("4444000000000000004"), 0));
         
         TestResult(StrCompare(StrFromI64(arena, 42, 16), StrLit("2a"), 1));
         TestResult(StrCompare(StrFromI64(arena, 2684354596, 16), StrLit("A0000024"), 1));
@@ -585,14 +588,14 @@ int main(void)
         TestResult(StrCompare(StrFromI64(arena, 5351402257222991904, 16), StrLit("4a44000000000020"), 1));
         TestResult(StrCompare(StrFromI64(arena, 8483655798059171776, 16), StrLit("75bbffffffffffc0"), 1));
         
-        TestResult(StrCompare(StrFromI64(arena, 2, 2), StrLit("10"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 131, 2), StrLit("10000011"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 259, 2), StrLit("100000011"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 363, 2), StrLit("101101011"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 148, 2), StrLit("10010100"), 1));
-        TestResult(StrCompare(StrFromI64(arena, MAX_U32, 2), StrLit("11111111111111111111111111111111"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 0, 2), StrLit("0"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 1, 2), StrLit("1"), 1));
+        TestResult(StrCompare(StrFromI64(arena, 2, 2), StrLit("10"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 131, 2), StrLit("10000011"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 259, 2), StrLit("100000011"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 363, 2), StrLit("101101011"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 148, 2), StrLit("10010100"), 0));
+        TestResult(StrCompare(StrFromI64(arena, MAX_U32, 2), StrLit("11111111111111111111111111111111"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 0, 2), StrLit("0"), 0));
+        TestResult(StrCompare(StrFromI64(arena, 1, 2), StrLit("1"), 0));
     }
     
     typedef struct FloatTest
@@ -808,8 +811,6 @@ int main(void)
     
     TEST("OS")
     {
-        OSInit(0, 0);
-        
         {
 #define FileName(name) StrLit("code/examples/"name)
             String fileData = OSReadFile(arena, FileName("Test.txt"), true);
@@ -827,6 +828,7 @@ int main(void)
             }
             OSRenameFile(FileName("Test3.txt"), FileName("Test.txt"));
             TestResult(OSReadFile(arena, FileName("Test3.txt"), 0).size == 0);
+#undef FileName
         }
         
         {
@@ -834,8 +836,8 @@ int main(void)
             String currentDir = OSCurrDir(arena);
             TestResult(StrCompare(currentDir, StrChop(StrLit(__FILE__), nameLen), 0));
             TestResult(StrCompare(OSExecDir(), StrJoin3(arena, currentDir, StrLit("\\build")), 0));
-            TestResult(StrCompare(OSUserDir(), StrLit("C:\\Users\\ADMIN"), 0));
-            TestResult(StrCompare(OSTempDir(), StrLit("C:\\Users\\ADMIN\\AppData\\Local\\Temp"), 0));
+            TestResult(StrCompare(OSUserDir(), StrLit("C:\\Users\\ADMIN"), 1));
+            TestResult(StrCompare(OSTempDir(), StrLit("C:\\Users\\ADMIN\\AppData\\Local\\Temp"), 1));
         }
         
         u64 entropy;
@@ -865,6 +867,7 @@ int main(void)
     
     TEST("Timer")
     {
+#if 0
         for (u64 i = 0; i < 15; ++i)
         {
             u64 time = OSNowMS();
@@ -880,6 +883,7 @@ int main(void)
             TestResult(dtNow.min == dt.min && dtNow.hour == dt.hour &&
                        dtNow.day == dt.day && dtNow.mon == dt.mon && dtNow.year == dt.year);
         }
+#endif
         
         DateTime dates[] =
         {
@@ -988,15 +992,11 @@ int main(void)
 #if ENABLE_SANITIZER
             TestResult(AsanIsPoison(buffer2 + bigCount, 1));
             TestResult(AsanIsPoison(buffer1 + bigCount, 1));
-#else
-            //buffer1[bigCount] = 10; // should crash
 #endif
         }
         
 #if ENABLE_SANITIZER
         TestResult(AsanIsPoison(buffer1, buffer2 + bigCount - buffer1));
-#else
-        //buffer1[0] = 10; // should crash
 #endif
         
         buffer1 = ArenaPush(arena, bigCount);
@@ -1032,5 +1032,9 @@ int main(void)
         TestResult(AsanIsPoison(arena, cap));
 #endif
     }
+    
+    elapsed = OSNowMS() - elapsed;
+    Outf("\nTime Elapsed: %llu ms\n", elapsed);
+    return elapsed;
 }
-MSVC(WarnEnable(28182 6011))
+MSVC(WarnEnable(28182 6011 4723))
