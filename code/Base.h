@@ -6,8 +6,9 @@
 //~ TODO(long):
 // [ ] Custom printf format
 // [ ] Import base layer as a DLL
-// [ ] Math functions and types
+// [X] Math functions and types
 // [ ] Add custom markers for functions
+// [ ] Support for custom data structures
 
 //~ long: Context Cracking
 
@@ -342,8 +343,9 @@
 #define IsPow2OrZero(x) (((x)&((x)-1)) == 0)
 
 #define Swap(type, a, b) do { type temp = (a); (a) = (b); (b) = temp; } while (0)
-#define Lerp(t, a, b) ((1 - (t)) * (a) + (t) * (b))
-#define UnLerp(x, a, b) (((x) - (a))/((b) - (a)))
+#define Lerp(a, b, t) ((1 - (t)) * (a) + (t) * (b))
+#define LerpInt(a, b, t) ((i32)Lerp((f32)a, (f32)b, (f32)t))
+#define UnLerp(a, b, x) (((x) - (a))/((b) - (a)))
 #define GetSign(n) ((n) > 0 ? 1 : ((n) < 0 ? -1 : 0))
 #define GetUnsigned(n) ((n) >= 0 ? 1 : -1)
 
@@ -580,7 +582,122 @@ typedef void VoidFuncVoid(void*);
 #define GOLD_BIG_F64   ((f64)1.61803398875)
 #define GOLD_SMALL_F64 ((f64)0.61803398875)
 
-//~ long: Symbolic Constants
+//~ long: Compound Types
+
+//- long: 2D Vectors
+
+typedef union v2f32 v2f32;
+union v2f32
+{
+    struct { f32 x, y; };
+    f32 v[2];
+};
+
+typedef union v2i64 v2i64;
+union v2i64
+{
+    struct { i64 x, y; };
+    i64 v[2];
+};
+
+typedef union v2i32 v2i32;
+union v2i32
+{
+    struct { i32 x, y; };
+    i32 v[2];
+};
+
+typedef union v2i16 v2i16;
+union v2i16
+{
+    struct { i16 x, y; };
+    i16 v[2];
+};
+
+//- long: 3D Vectors
+
+typedef union v3f32 v3f32;
+union v3f32
+{
+    struct { f32 x, y, z; };
+    struct
+    {
+        v2f32 xy;
+        f32 _z0;
+    };
+    struct
+    {
+        f32 _x0;
+        v2f32 yz;
+    };
+    f32 v[3];
+};
+
+typedef union v3i32 v3i32;
+union v3i32
+{
+    struct { i32 x, y, z; };
+    struct
+    {
+        v2i32 xy;
+        i32 _z0;
+    };
+    struct
+    {
+        i32 _x0;
+        v2i32 yz;
+    };
+    i32 v[3];
+};
+
+//- TODO(long): 4D Vectors/Colors
+
+//- TODO(long): 2x2/3x3/4x4 Matrix
+
+//- long: 1D Range
+
+typedef union r1i32 r1i32;
+union r1i32
+{
+    struct { i32 min, max; };
+    i32 v[2];
+};
+
+typedef union r1u64 r1u64;
+union r1u64
+{
+    struct { u64 min, max; };
+    u64 v[2];
+};
+
+typedef union r1f32 r1f32;
+union r1f32
+{
+    struct { f32 min, max; };
+    f32 v[2];
+};
+
+//- long: 2D Range (rectangles)
+
+typedef union r2i32 r2i32;
+union r2i32
+{
+    struct { v2i32 min, max; };
+    struct { v2i32 p0, p1; };
+    struct { i32 x0, y0, x1, y1; };
+    v2i32 v[2];
+};
+
+typedef union r2f32 r2f32;
+union r2f32
+{
+    struct { v2f32 min, max; };
+    struct { v2f32 p0, p1; };
+    struct { f32 x0, y0, x1, y1; };
+    v2f32 v[2];
+};
+
+//~ long: Symbolic Types
 
 enum Axis
 {
@@ -893,7 +1010,7 @@ struct StringDecode
 
 //~ long: Math Functions
 
-//- NOTE(long) Float Constant Functions
+//- long: Float Functions
 function f32 Inf_f32(void);
 function f32 NegInf_f32(void);
 function b32 InfOrNan_f32(f32 x);
@@ -902,12 +1019,12 @@ function f64 Inf_f64(void);
 function f64 NegInf_f64(void);
 function b32 InfOrNan_f64(f64 x);
 
-//- long: Numeric Functions
 function i32 AbsI32(i32 x);
 function i64 AbsI64(i64 x);
 function f32 Abs_f32(f32 x);
 function f64 Abs_f64(f64 x);
 
+//- long: Scalar Functions
 function f32 Round_f32(f32 x);
 function f32 Trunc_f32(f32 x);
 function f32 Floor_f32(f32 x);
@@ -941,6 +1058,124 @@ function f64 Cos_f64(f64 x);
 function f64 Tan_f64(f64 x);
 function f64 Atan_f64(f64 x);
 function f64 Atan2_f64(f64 x, f64 y);
+
+// TODO(long): polar and angle
+
+//- long: Vector Functions
+function v2f32 V2F32(f32 x, f32 y);
+function v2f32 AddV2F32(v2f32 a, v2f32 b);
+function v2f32 SubV2F32(v2f32 a, v2f32 b);
+function v2f32 MulV2F32(v2f32 a, v2f32 b);
+function v2f32 DivV2F32(v2f32 a, v2f32 b);
+function v2f32 ScaleV2F32(v2f32 v, f32 s);
+function f32 DotV2F32(v2f32 a, v2f32 b);
+function f32 SqrMagV2F32(v2f32 v);
+function f32 MagV2F32(v2f32 v);
+function v2f32 NormV2F32(v2f32 v);
+function v2f32 LerpV2F32(v2f32 a, v2f32 b, f32 t);
+
+function v2i64 V2I64(i64 x, i64 y);
+function v2i64 AddV2I64(v2i64 a, v2i64 b);
+function v2i64 SubV2I64(v2i64 a, v2i64 b);
+function v2i64 MulV2I64(v2i64 a, v2i64 b);
+function v2i64 DivV2I64(v2i64 a, v2i64 b);
+function v2i64 ScaleV2I64(v2i64 v, i64 s);
+function i64 DotV2I64(v2i64 a, v2i64 b);
+function i64 SqrMagV2I64(v2i64 v);
+function i64 MagV2I64(v2i64 v);
+function v2i64 NormV2I64(v2i64 v);
+function v2i64 LerpV2I64(v2i64 a, v2i64 b, f32 t);
+
+function v2i32 V2I32(i32 x, i32 y);
+function v2i32 AddV2I32(v2i32 a, v2i32 b);
+function v2i32 SubV2I32(v2i32 a, v2i32 b);
+function v2i32 MulV2I32(v2i32 a, v2i32 b);
+function v2i32 DivV2I32(v2i32 a, v2i32 b);
+function v2i32 ScaleV2I32(v2i32 v, i32 s);
+function i32 DotV2I32(v2i32 a, v2i32 b);
+function i32 SqrMagV2I32(v2i32 v);
+function i32 MagV2I32(v2i32 v);
+function v2i32 NormV2I32(v2i32 v);
+function v2i32 LerpV2I32(v2i32 a, v2i32 b, f32 t);
+
+function v3f32 V3F32(f32 x, f32 y, f32 z);
+function v3f32 AddV3F32(v3f32 a, v3f32 b);
+function v3f32 SubV3F32(v3f32 a, v3f32 b);
+function v3f32 MulV3F32(v3f32 a, v3f32 b);
+function v3f32 DivV3F32(v3f32 a, v3f32 b);
+function v3f32 ScaleV3F32(v3f32 v, f32 s);
+function f32 DotV3F32(v3f32 a, v3f32 b);
+function f32 SqrMagV3F32(v3f32 v);
+function f32 MagV3F32(v3f32 v);
+function v3f32 NormV3F32(v3f32 v);
+function v3f32 LerpV3F32(v3f32 a, v3f32 b, f32 t);
+function v3f32 CrossV3F32(v3f32 a, v3f32 b);
+
+function v3i32 V3I32(i32 x, i32 y, i32 z);
+function v3i32 AddV3I32(v3i32 a, v3i32 b);
+function v3i32 SubV3I32(v3i32 a, v3i32 b);
+function v3i32 MulV3I32(v3i32 a, v3i32 b);
+function v3i32 DivV3I32(v3i32 a, v3i32 b);
+function v3i32 ScaleV3I32(v3i32 v, i32 s);
+function i32 DotV3I32(v3i32 a, v3i32 b);
+function i32 SqrMagV3I32(v3i32 v);
+function i32 MagV3I32(v3i32 v);
+function v3i32 NormV3I32(v3i32 v);
+function v3i32 LerpV3I32(v3i32 a, v3i32 b, f32 t);
+function v3i32 CrossV3I32(v3i32 a, v3i32 b);
+
+//- long: Range Functions
+function r1i32 R1I32(i32 min, i32 max);
+function r1i32 ShiftR1I32(r1i32 r, i32 x);
+function r1i32 PadR1I32(r1i32 r, i32 x);
+function i32 CenterR1I32(r1i32 r);
+function b32 ContainsR1I32(r1i32 r, i32 x);
+function i32 DimR1I32(r1i32 r);
+function r1i32 UnionR1I32(r1i32 a, r1i32 b);
+function r1i32 IntersectR1I32(r1i32 a, r1i32 b);
+function i32 ClampR1I32(r1i32 r, i32 v);
+
+function r1u64 R1U64(u64 min, u64 max);
+function r1u64 ShiftR1u64(r1u64 r, u64 x);
+function r1u64 PadR1u64(r1u64 r, u64 x);
+function u64 CenterR1u64(r1u64 r);
+function b32 ContainsR1u64(r1u64 r, u64 x);
+function u64 DimR1u64(r1u64 r);
+function r1u64 UnionR1u64(r1u64 a, r1u64 b);
+function r1u64 IntersectR1u64(r1u64 a, r1u64 b);
+function u64 ClampR1u64(r1u64 r, u64 v);
+
+function r1f32 R1F32(f32 min, f32 max);
+function r1f32 ShiftR1F32(r1f32 r, f32 x);
+function r1f32 PadR1F32(r1f32 r, f32 x);
+function f32 CenterR1F32(r1f32 r);
+function b32 ContainsR1F32(r1f32 r, f32 x);
+function f32 DimR1F32(r1f32 r);
+function r1f32 UnionR1F32(r1f32 a, r1f32 b);
+function r1f32 IntersectR1F32(r1f32 a, r1f32 b);
+function f32 ClampR1F32(r1f32 r, f32 v);
+
+#define R2I32P(x, y, z, w) R2I32(V2I32((x), (y)), V2I32((z), (w)))
+function r2i32 R2I32(v2i32 min, v2i32 max);
+function r2i32 ShiftR2I32(r2i32 r, v2i32 x);
+function r2i32 PadR2I32(r2i32 r, i32 x);
+function v2i32 CenterR2I32(r2i32 r);
+function b32 ContainsR2I32(r2i32 r, v2i32 x);
+function v2i32 DimR2I32(r2i32 r);
+function r2i32 UnionR2I32(r2i32 a, r2i32 b);
+function r2i32 IntersectR2I32(r2i32 a, r2i32 b);
+function v2i32 ClampR2I32(r2i32 r, v2i32 v);
+
+#define R2F32P(x, y, z, w) R2F32(V2F32((x), (y)), V2F32((z), (w)))
+function r2f32 R2F32(v2f32 min, v2f32 max);
+function r2f32 ShiftR2F32(r2f32 r, v2f32 x);
+function r2f32 PadR2F32(r2f32 r, f32 x);
+function v2f32 CenterR2F32(r2f32 r);
+function b32 ContainsR2F32(r2f32 r, v2f32 x);
+function v2f32 DimR2F32(r2f32 r);
+function r2f32 UnionR2F32(r2f32 a, r2f32 b);
+function r2f32 IntersectR2F32(r2f32 a, r2f32 b);
+function v2f32 ClampR2F32(r2f32 r, v2f32 v);
 
 //~ long: Arena Functions
 

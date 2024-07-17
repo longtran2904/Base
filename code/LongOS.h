@@ -122,6 +122,8 @@ function VoidFunc* OSGetProc(OSLib lib, char* name);
 
 function void OSGetEntropy(void* data, u64 size);
 
+//~ TODO(long): Clipboard
+
 //~ TODO(long): Processes/Threads
 
 //~ TODO(long): Network/Sockets/IPC

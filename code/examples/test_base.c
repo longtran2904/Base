@@ -142,8 +142,8 @@ int main(void)
         StaticAssert(Clamp(80,  0,  7) ==  7);
         StaticAssert(Clamp(20,  5, 30) == 20);
         
-        StaticAssert(  Lerp( .75f, 1.f, 10.f) == 7.75f);
-        StaticAssert(UnLerp(7.75f, 1.f, 10.f) ==  .75f);
+        StaticAssert(  Lerp(1.f, 10.f, 0.75f) == 7.75f);
+        StaticAssert(UnLerp(1.f, 10.f, 7.75f) ==  .75f);
         
         StaticAssert(GetSign(-2) == -1);
         StaticAssert(GetSign(+2) == +1);

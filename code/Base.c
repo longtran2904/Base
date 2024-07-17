@@ -187,7 +187,6 @@ function b32 InfOrNan_f64(f64 x)
     return (u & 0x7ff0000000000000) == 0x7ff0000000000000;
 }
 
-//- long: Numeric Functions
 function i32 AbsI32(i32 x)
 {
     i32 mask = x >> 31;
@@ -212,6 +211,7 @@ function f64 Abs_f64(f64 x)
     return *(f64*)&u;
 }
 
+//- long: Scalar Functions
 #ifdef __SSE4__
 function f32 Round_f32(f32 x)
 {
@@ -338,6 +338,120 @@ function f64 Pow_f64(f64 base, f64 x) { return pow (base, x); }
 
 function f32 FrExp_f32(f32 x, i32* exp) { return frexpf(x, exp); }
 function f64 FrExp_f64(f64 x, i32* exp) { return frexp (x, exp); }
+
+//- long: Vector Functions
+function v2f32 V2F32(f32 x, f32 y)                { return (v2f32){ x, y }; }
+function v2f32 AddV2F32(v2f32 a, v2f32 b)         { return (v2f32){ a.x + b.x, a.y + b.y }; }
+function v2f32 SubV2F32(v2f32 a, v2f32 b)         { return (v2f32){ a.x - b.x, a.y - b.y }; }
+function v2f32 MulV2F32(v2f32 a, v2f32 b)         { return (v2f32){ a.x * b.x, a.y * b.y }; }
+function v2f32 DivV2F32(v2f32 a, v2f32 b)         { return (v2f32){ a.x / b.x, a.y / b.y }; }
+function v2f32 ScaleV2F32(v2f32 v, f32 s)         { return (v2f32){ v.x * s, v.y * s }; }
+function f32 DotV2F32(v2f32 a, v2f32 b)           { return a.x * b.x + a.y * b.y; }
+function f32 SqrMagV2F32(v2f32 v)                 { return v.x * v.x + v.y * v.y; }
+function f32 MagV2F32(v2f32 v)                    { return Sqrt_f32(v.x * v.x + v.y * v.y); }
+function v2f32 NormV2F32(v2f32 v)                 { return ScaleV2F32(v, 1.f/MagV2F32(v)); }
+function v2f32 LerpV2F32(v2f32 a, v2f32 b, f32 t) { return (v2f32){ Lerp(a.x, b.x, t), Lerp(a.y, b.y, t) }; }
+
+function v2i32 V2I32(i32 x, i32 y)                { return (v2i32){ x, y }; }
+function v2i32 AddV2I32(v2i32 a, v2i32 b)         { return (v2i32){ a.x + b.x, a.y + b.y }; }
+function v2i32 SubV2I32(v2i32 a, v2i32 b)         { return (v2i32){ a.x - b.x, a.y - b.y }; }
+function v2i32 MulV2I32(v2i32 a, v2i32 b)         { return (v2i32){ a.x * b.x, a.y * b.y }; }
+function v2i32 DivV2I32(v2i32 a, v2i32 b)         { return (v2i32){ a.x / b.x, a.y / b.y }; }
+function v2i32 ScaleV2I32(v2i32 v, i32 s)         { return (v2i32){ v.x * s, v.y * s }; }
+function i32 DotV2I32(v2i32 a, v2i32 b)           { return a.x * b.x + a.y * b.y; }
+function i32 SqrMagV2I32(v2i32 v)                 { return v.x * v.x + v.y * v.y; }
+function i32 MagV2I32(v2i32 v)                    { return (i32)Sqrt_f32((f32)(v.x * v.x + v.y * v.y)); }
+function v2i32 NormV2I32(v2i32 v)                 { return ScaleV2I32(v, (i32)(1.f/MagV2I32(v))); }
+function v2i32 LerpV2I32(v2i32 a, v2i32 b, f32 t) { return (v2i32){ LerpInt(a.x, b.x, t), LerpInt(a.y, b.y, t) }; }
+
+function v2i64 V2I64(i64 x, i64 y)                { return (v2i64){ x, y }; }
+function v2i64 AddV2I64(v2i64 a, v2i64 b)         { return (v2i64){ a.x + b.x, a.y + b.y }; }
+function v2i64 SubV2I64(v2i64 a, v2i64 b)         { return (v2i64){ a.x - b.x, a.y - b.y }; }
+function v2i64 MulV2I64(v2i64 a, v2i64 b)         { return (v2i64){ a.x * b.x, a.y * b.y }; }
+function v2i64 DivV2I64(v2i64 a, v2i64 b)         { return (v2i64){ a.x / b.x, a.y / b.y }; }
+function v2i64 ScaleV2I64(v2i64 v, i64 s)         { return (v2i64){ v.x * s, v.y * s }; }
+function i64 DotV2I64(v2i64 a, v2i64 b)           { return a.x * b.x + a.y * b.y; }
+function i64 SqrMagV2I64(v2i64 v)                 { return v.x * v.x + v.y * v.y; }
+function i64 MagV2I64(v2i64 v)                    { return (i64)Sqrt_f32((f32)(v.x * v.x + v.y * v.y)); }
+function v2i64 NormV2I64(v2i64 v)                 { return ScaleV2I64(v, (i64)(1.f/MagV2I64(v))); }
+function v2i64 LerpV2I64(v2i64 a, v2i64 b, f32 t) { return (v2i64){ LerpInt(a.x, b.x, t), LerpInt(a.y, b.y, t) }; }
+
+function v3f32 V3F32(f32 x, f32 y, f32 z)         { return (v3f32){ x, y, z }; }
+function v3f32 AddV3F32(v3f32 a, v3f32 b)         { return (v3f32){ a.x + b.x, a.y + b.y, a.z + b.z }; }
+function v3f32 SubV3F32(v3f32 a, v3f32 b)         { return (v3f32){ a.x - b.x, a.y - b.y, a.z - b.z }; }
+function v3f32 MulV3F32(v3f32 a, v3f32 b)         { return (v3f32){ a.x * b.x, a.y * b.y, a.z * b.z }; }
+function v3f32 DivV3F32(v3f32 a, v3f32 b)         { return (v3f32){ a.x / b.x, a.y / b.y, a.z / b.z }; }
+function v3f32 ScaleV3F32(v3f32 v, f32 s)         { return (v3f32){ v.x * s, v.y * s, v.z * s }; }
+function f32 DotV3F32(v3f32 a, v3f32 b)           { return a.x * b.x + a.y * b.y + a.z * b.z; }
+function f32 SqrMagV3F32(v3f32 v)                 { return v.x * v.x + v.y * v.y + v.z * v.z; }
+function f32 MagV3F32(v3f32 v)                    { return Sqrt_f32(v.x * v.x + v.y * v.y + v.z * v.z); }
+function v3f32 NormV3F32(v3f32 v)                 { return ScaleV3F32(v, 1.f/MagV3F32(v)); }
+function v3f32 LerpV3F32(v3f32 a, v3f32 b, f32 t) { return (v3f32){ Lerp(a.x, b.x, t), Lerp(a.y, b.y, t), Lerp(a.z, b.z, t) }; }
+function v3f32 CrossV3F32(v3f32 a, v3f32 b)       { return (v3f32){ a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x }; }
+
+function v3i32 V3I32(i32 x, i32 y, i32 z)         { return (v3i32){ x, y, z }; }
+function v3i32 AddV3I32(v3i32 a, v3i32 b)         { return (v3i32){ a.x + b.x, a.y + b.y, a.z + b.z }; }
+function v3i32 SubV3I32(v3i32 a, v3i32 b)         { return (v3i32){ a.x - b.x, a.y - b.y, a.z - b.z }; }
+function v3i32 MulV3I32(v3i32 a, v3i32 b)         { return (v3i32){ a.x * b.x, a.y * b.y, a.z * b.z }; }
+function v3i32 DivV3I32(v3i32 a, v3i32 b)         { return (v3i32){ a.x / b.x, a.y / b.y, a.z / b.z }; }
+function v3i32 ScaleV3I32(v3i32 v, i32 s)         { return (v3i32){ v.x * s, v.y * s, v.z * s }; }
+function i32 DotV3I32(v3i32 a, v3i32 b)           { return a.x * b.x + a.y * b.y + a.z * b.z; }
+function i32 SqrMagV3I32(v3i32 v)                 { return v.x * v.x + v.y * v.y + v.z * v.z; }
+function i32 MagV3I32(v3i32 v)                    { return (i32)Sqrt_f32((f32)(v.x * v.x + v.y * v.y + v.z * v.z)); }
+function v3i32 NormV3I32(v3i32 v)                 { return ScaleV3I32(v, (i32)(1.f/MagV3I32(v))); }
+function v3i32 LerpV3I32(v3i32 a, v3i32 b, f32 t) { return (v3i32){ LerpInt(a.x, b.x, t), LerpInt(a.y, b.y, t), LerpInt(a.z, b.z, t) }; }
+function v3i32 CrossV3I32(v3i32 a, v3i32 b)       { return (v3i32){ a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x }; }
+
+//- long: Range Functions
+function r1i32 R1I32(i32 min, i32 max)          { return (r1i32){ min, max }; }
+function r1i32 ShiftR1I32(r1i32 r, i32 x)       { r.min += x; r.max += x; return r; }
+function r1i32 PadR1I32(r1i32 r, i32 x)         { r.min += x; r.max -= x; return r; }
+function i32 CenterR1I32(r1i32 r)               { return (r.min + r.max) / 2; }
+function b32 ContainsR1I32(r1i32 r, i32 x)      { return r.min <= x && x < r.max; }
+function i32 DimR1I32(r1i32 r)                  { return r.max - r.min; }
+function r1i32 UnionR1I32(r1i32 a, r1i32 b)     { return (r1i32){ Min(a.min, b.min), Max(a.max, b.max) }; }
+function r1i32 IntersectR1I32(r1i32 a, r1i32 b) { return (r1i32){ Max(a.min, b.min), Min(a.max, b.max) }; }
+function i32 ClampR1I32(r1i32 r, i32 v)         { return Clamp(v, r.min, r.max); }
+
+function r1u64 R1U64(u64 min, u64 max)          { return (r1u64){ min, max }; }
+function r1u64 ShiftR1U64(r1u64 r, u64 x)       { r.min += x; r.max += x; return r; }
+function r1u64 PadR1U64(r1u64 r, u64 x)         { r.min += x; r.max -= x; return r; }
+function u64 CenterR1U64(r1u64 r)               { return (r.min + r.max) / 2; }
+function b32 ContainsR1U64(r1u64 r, u64 x)      { return r.min <= x && x < r.max; }
+function u64 DimR1U64(r1u64 r)                  { return r.max - r.min; }
+function r1u64 UnionR1U64(r1u64 a, r1u64 b)     { return (r1u64){ Min(a.min, b.min), Max(a.max, b.max) }; }
+function r1u64 IntersectR1U64(r1u64 a, r1u64 b) { return (r1u64){ Max(a.min, b.min), Min(a.max, b.max) }; }
+function u64 ClampR1U64(r1u64 r, u64 v)         { return Clamp(v, r.min, r.max); }
+
+function r1f32 R1F32(f32 min, f32 max)          { return (r1f32){ min, max }; }
+function r1f32 ShiftR1F32(r1f32 r, f32 x)       { r.min += x; r.max += x; return r; }
+function r1f32 PadR1F32(r1f32 r, f32 x)         { r.min += x; r.max -= x; return r; }
+function f32 CenterR1F32(r1f32 r)               { return (r.min + r.max) / 2.f; }
+function b32 ContainsR1F32(r1f32 r, f32 x)      { return r.min <= x && x < r.max; }
+function f32 DimR1F32(r1f32 r)                  { return r.max - r.min; }
+function r1f32 UnionR1F32(r1f32 a, r1f32 b)     { return (r1f32){ Min(a.min, b.min), Max(a.max, b.max) }; }
+function r1f32 IntersectR1F32(r1f32 a, r1f32 b) { return (r1f32){ Max(a.min, b.min), Min(a.max, b.max) }; }
+function f32 ClampR1F32(r1f32 r, f32 v)         { return Clamp(v, r.min, r.max); }
+
+function r2i32 R2I32(v2i32 min, v2i32 max)      { return (r2i32){ min, max }; }
+function r2i32 ShiftR2I32(r2i32 r, v2i32 x)     { r.min = AddV2I32(r.min, x); r.max = AddV2I32(r.max, x); return r; }
+function r2i32 PadR2I32(r2i32 r, i32 x)         { r.x0 += x; r.x1 += x; r.y0 += x; r.y1 += x; return r; }
+function v2i32 CenterR2I32(r2i32 r)             { return (v2i32){ (r.min.x + r.max.x)/2, (r.min.y + r.max.y)/2 }; }
+function b32 ContainsR2I32(r2i32 r, v2i32 x)    { return r.min.x <= x.x && x.x < r.max.x && r.min.y <= x.y && x.y < r.max.y; }
+function v2i32 DimR2I32(r2i32 r)                { return (v2i32){ r.max.x - r.min.x, r.max.y - r.min.y }; }
+function r2i32 UnionR2I32(r2i32 a, r2i32 b)     { return (r2i32){ Min(a.x0, b.x0), Min(a.y0, b.y0), Max(a.x1, b.x1), Max(a.y1, b.y1) }; }
+function r2i32 IntersectR2I32(r2i32 a, r2i32 b) { return (r2i32){ Max(a.x0, b.x0), Max(a.y0, b.y0), Min(a.x1, b.x1), Min(a.y1, b.y1) }; }
+function v2i32 ClampR2I32(r2i32 r, v2i32 v)     { return (v2i32){ Clamp(v.x, r.min.x, r.max.x), Clamp(v.y, r.min.y, r.max.y) }; }
+
+function r2f32 R2F32(v2f32 min, v2f32 max)      { return (r2f32){ min, max }; }
+function r2f32 ShiftR2F32(r2f32 r, v2f32 x)     { r.min = AddV2F32(r.min, x); r.max = AddV2F32(r.max, x); return r; }
+function r2f32 PadR2F32(r2f32 r, f32 x)         { r.x0 += x; r.x1 += x; r.y0 += x; r.y1 += x; return r; }
+function v2f32 CenterR2F32(r2f32 r)             { return (v2f32){ (r.min.x + r.max.x)/2.f, (r.min.y + r.max.y)/2.f }; }
+function b32 ContainsR2F32(r2f32 r, v2f32 x)    { return r.min.x <= x.x && x.x < r.max.x && r.min.y <= x.y && x.y < r.max.y; }
+function v2f32 DimR2F32(r2f32 r)                { return (v2f32){ r.max.x - r.min.x, r.max.y - r.min.y }; }
+function r2f32 UnionR2F32(r2f32 a, r2f32 b)     { return (r2f32){ Min(a.x0, b.x0), Min(a.y0, b.y0), Max(a.x1, b.x1), Max(a.y1, b.y1) }; }
+function r2f32 IntersectR2F32(r2f32 a, r2f32 b) { return (r2f32){ Max(a.x0, b.x0), Max(a.y0, b.y0), Min(a.x1, b.x1), Min(a.y1, b.y1) }; }
+function v2f32 ClampR2F32(r2f32 r, v2f32 v)     { return (v2f32){ Clamp(v.x, r.min.x, r.max.x), Clamp(v.y, r.min.y, r.max.y) }; }
 
 //~ long: PRNG Functions
 
