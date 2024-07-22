@@ -3,11 +3,8 @@
 #endif
 
 #include "Base.h"
-#include "LongOS.h"
-
 #if !GLOB_STATIC_LIB
 #include "Base.c"
-#include "LongOS_Win32.c"
 #endif
 
 enum
@@ -287,9 +284,9 @@ void main(i32 argc, char** argv)
                     arg = StrChop(arg, 1);
                 
                 if (StrCompare(arg, StrLit(".."), 0))
-                    arg = StrChopAfter(OSCurrDir(scratch), StrLit("\\"), FindStr_LastMatch);
+                    arg = StrChopAfter(OSGetCurrDir(scratch), StrLit("\\"), FindStr_LastMatch);
                 if (!arg.size || StrIsChr(arg, '.'))
-                    arg = OSCurrDir(scratch);
+                    arg = OSGetCurrDir(scratch);
                 
                 if (OSFileProperties(arg).flags & FilePropertyFlag_IsFolder)
                 {

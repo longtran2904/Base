@@ -5,16 +5,79 @@
 
 //~ TODO(long):
 // [ ] Custom printf format
-// [ ] Import base layer as a DLL
+// [X] Import base layer as a DLL
 // [X] Math functions and types
-// [ ] Add custom markers for functions
+// [X] Merge Base and OS layers
+// [X] Add custom markers for functions
 // [ ] Support for custom data structures
 
-//~ long: Context Cracking
+//~/////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+////////////////        BASE DECLARATION        ////////////////
+////////////////////////////////////////////////////////////////
+//-/////////////////////////////////////////////////////////////
 
-#ifndef BASE_LIB_STATIC
-#define BASE_LIB_STATIC 0
+//~ long: Base Setup
+
+#if !defined(MemReserve)
+#define MemReserve(size) OSReserve(size)
 #endif
+#if !defined(MemCommit)
+#define MemCommit(ptr, size) OSCommit(ptr, size)
+#endif
+#if !defined(MemDecommit)
+#define MemDecommit(ptr, size) OSDecommit((ptr), (size))
+#endif
+#if !defined(MemRelease)
+#define MemRelease(ptr) OSRelease(ptr)
+#endif
+
+#ifndef PrintOut
+#define PrintOut(str) OSWriteConsole(OS_STD_OUT, (str))
+#endif
+#ifndef PrintErr
+#define PrintErr(str) OSWriteConsole(OS_STD_ERR, (str))
+#endif
+
+#ifndef BASE_LIB_EXPORT_SYMBOLS
+#define BASE_LIB_EXPORT_SYMBOLS 0
+#endif
+#ifndef BASE_LIB_IMPORT_SYMBOLS
+#define BASE_LIB_IMPORT_SYMBOLS 0
+#endif
+#ifndef BASE_LIB_RUNTIME_IMPORT
+#define BASE_LIB_RUNTIME_IMPORT 0
+#endif
+
+#if BASE_LIB_EXPORT_SYMBOLS && BASE_LIB_IMPORT_SYMBOLS
+#error BASE_LIB_EXPORT_SYMBOLS and BASE_LIB_IMPORT_SYMBOLS can't both be true
+#endif
+
+#if BASE_LIB_EXPORT_SYMBOLS
+#define BASE_SHARABLE(name) libexport name
+#elif BASE_LIB_IMPORT_SYMBOLS
+#define BASE_SHARABLE(name) libimport name
+#elif BASE_LIB_RUNTIME_IMPORT
+#define BASE_SHARABLE(name) global (*name)
+#else
+#define BASE_SHARABLE(name) function name
+#endif
+
+#ifndef global
+#define global static
+#endif
+#ifndef local
+#define local static
+#endif
+
+#ifndef function
+#define function static
+#endif
+#ifndef internal
+#define internal static
+#endif
+
+//~ long: Context Cracking
 
 //- long: Compiler
 #if defined(__clang__)
@@ -274,6 +337,20 @@
 #  endif
 #endif
 
+#if OS_WIN
+#pragma section(".CRT$XCU", read)
+#define BeforeMain(n) static void n(void);      \
+    __declspec(allocate(".CRT$XCU"))              \
+    __pragma(comment(linker,"/include:" #n "__")) \
+    void (*n##__)(void) = n;                      \
+    static void n(void)
+#elif OS_LINUX
+#define BeforeMain(n) \
+    __attribute__((constructor)) static void n(void)
+#else
+#error BeforeMain missing for this OS
+#endif
+
 //~ long: Helper Macros
 
 #define Stmnt(S) do { S; } while (0)
@@ -387,11 +464,6 @@
 #define SpaceStr " \t\f\v"
 #define NlineStr "\n\r"
 #define WspaceStr Concat(SpaceStr, NlineStr)
-
-#define global   static
-#define local    static
-#define internal static
-#define function static
 
 #include <string.h> // TODO(long): Replace memset, memcpy, and memcmp
 #define SetMem(ptr, val, size) memset((ptr), (val), (size))
@@ -1059,8 +1131,6 @@ function f64 Tan_f64(f64 x);
 function f64 Atan_f64(f64 x);
 function f64 Atan2_f64(f64 x, f64 y);
 
-// TODO(long): polar and angle
-
 //- long: Vector Functions
 function v2f32 V2F32(f32 x, f32 y);
 function v2f32 AddV2F32(v2f32 a, v2f32 b);
@@ -1071,6 +1141,8 @@ function v2f32 ScaleV2F32(v2f32 v, f32 s);
 function f32 DotV2F32(v2f32 a, v2f32 b);
 function f32 SqrMagV2F32(v2f32 v);
 function f32 MagV2F32(v2f32 v);
+function f32 AngleV2F32(v2f32 v);
+function v2f32 V2F32Angle(f32 theta, f32 radius);
 function v2f32 NormV2F32(v2f32 v);
 function v2f32 LerpV2F32(v2f32 a, v2f32 b, f32 t);
 
@@ -1213,8 +1285,8 @@ function void ArenaAlignNZ(Arena* arena, u64 alignment);
 #define    PushArray(arena, type, count) (type*)  ArenaPush((arena), sizeof(type) * (count))
 #define  PushArrayNZ(arena, type, count) (type*)ArenaPushNZ((arena), sizeof(type) * (count))
 
+TempArena BASE_SHARABLE(GetScratch)(Arena** conflictArray, u64 count);
 function TempArena TempBegin(Arena* arena);
-function TempArena GetScratch(Arena** conflictArray, u64 count);
 function void      TempEnd(TempArena temp);
 
 #define ScratchName(name) Concat(_tempArenaOf_, name)
@@ -1293,7 +1365,6 @@ function void StrListPushNode(StringList* list, String str, StringNode* nodeMem)
 function String StrListPop     (StringList* list);
 function String StrListPopFront(StringList* list);
 
-// NOTE(long): Need to put const here because of C6298
 function String StrPushfv(Arena* arena, char* fmt, va_list args);
 function String StrPushf (Arena* arena, CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(2);
 #define StrListPushf(arena, list, fmt, ...) StrListPush((arena), (list), StrPushf((arena), (fmt), __VA_ARGS__))
@@ -1473,15 +1544,17 @@ struct Logger
 #define LogBlock(arena, list, ...) for (Logger UNIQUE(dummy) = (LogBegin(__VA_ARGS__), (Logger){ .count = MAX_U64 }); \
                                         UNIQUE(dummy).count == MAX_U64; \
                                         UNIQUE(dummy) = LogEnd(arena), list = StrListFromLogger(arena, &UNIQUE(dummy)))
-function void   LogBeginEx(LogInfo info);
-function Logger LogEnd(Arena* arena);
-function StringList StrListFromLogger(Arena* arena, Logger* logger);
-
-function LogInfo* LogGetInfo(void);
-function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args);
-function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list args);
-function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(4);
 #define LogPush(level, log, ...) LogPushf((level), __FILE__, __LINE__, (log), __VA_ARGS__)
+
+void BASE_SHARABLE(LogBeginEx)(LogInfo info);
+Logger BASE_SHARABLE(LogEnd)(Arena* arena);
+
+void BASE_SHARABLE(LogPushf)(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(4);
+void BASE_SHARABLE(LogFmtStd)(Arena* arena, Record* record, char* fmt, va_list args);
+void BASE_SHARABLE(LogFmtANSIColor)(Arena* arena, Record* record, char* fmt, va_list args);
+LogInfo BASE_SHARABLE(LogGetInfo)(void);
+
+function StringList StrListFromLogger(Arena* arena, Logger* logger);
 
 #define ErrorBegin(...) LogBegin(.level = LOG_ERROR, __VA_ARGS__)
 #define ErrorEnd(arena) LogEnd(arena)
@@ -1520,5 +1593,113 @@ function u64 Hash64 (u8* values, u64 count);
 #define RandomRangeI32(rng, minIn, maxIn) ((i32)(minIn) + RandomU32(rng) % ((i32)(maxIn) - (i32)(minIn)))
 #define RandomRangeF32(rng, minIn, maxIn) ((minIn) + RandomF32((maxIn) - (minIn)))
 #define Random(rng, prob) (RandomF32(rng) < prob ? true : false)
+
+//~/////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+////////////////         OS DECLARATION         ////////////////
+////////////////////////////////////////////////////////////////
+//-/////////////////////////////////////////////////////////////
+
+//~ long: OS Setup
+
+function void OSInit(int argc, char **argv);
+function void OSExit(u32 code);
+function StringList OSCmdArgs(void);
+
+//~ long: Memory Functions
+
+function void* OSReserve(u64 size);
+function void  OSRelease(void* ptr);
+function b32    OSCommit(void* ptr, u64 size);
+function void OSDecommit(void* ptr, u64 size);
+
+//~ long: Console Handling
+
+enum
+{
+    OS_STD_NONE,
+    OS_STD_IN,
+    OS_STD_OUT,
+    OS_STD_ERR,
+};
+
+function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData);
+function b32   OSWriteConsole(i32 handle, String data);
+
+//~ long: File Handling
+
+function String OSReadFile(Arena* arena, String fileName, b32 terminateData);
+function b32   OSWriteList(String fileName, StringList* data);
+#define OSWriteFile(file, data) OSWriteList((file), &(StringList) \
+                                            { \
+                                                .first = &(StringNode){ .string = (data) }, \
+                                                .last  = &(StringNode){ .string = (data) }, \
+                                                .nodeCount = 1, .totalSize = (data).size, \
+                                            })
+
+function b32 OSDeleteFile(String fileName);
+function b32 OSRenameFile(String oldName, String newName);
+function b32 OSCreateDir(String path);
+function b32 OSDeleteDir(String path);
+
+function FileProperties OSFileProperties(String fileName);
+
+//~ long: File Iteration
+
+typedef struct OSFileIter
+{
+    String name;
+    FileProperties prop;
+    u8 v[640];
+} OSFileIter;
+
+function OSFileIter FileIterInit(String path);
+function b32 FileIterNext(Arena* arena, OSFileIter* iter);
+function void FileIterEnd(OSFileIter* iter);
+#define FileIterBlock(arena, name, path) for (OSFileIter name = FileIterInit(path); \
+                                              FileIterNext(arena, &name) ? 1 : (FileIterEnd(&name), 0);)
+
+//~ long: Paths
+
+function String OSGetCurrDir(Arena* arena);
+function String  OSGetExeDir(void);
+function String OSGetUserDir(void);
+function String OSGetTempDir(void);
+
+// @CONSIDER(long): Maybe have a OSSetCurrDir and OSGetInitDir
+
+//~ long: Time
+
+function void OSSleepMS(u32 ms);
+function u64  OSNowMS(void);
+
+function DateTime OSNowUniTime(void);
+function DateTime OSToLocTime(DateTime universalTime);
+function DateTime OSToUniTime(DateTime localTime);
+
+//~ long: Libraries
+
+typedef struct OSLib OSLib;
+struct OSLib
+{
+    u64 v[1];
+};
+
+function OSLib     OSLoadLib(String path);
+function void      OSFreeLib(OSLib lib);
+function VoidFunc* OSGetProc(OSLib lib, char* name);
+
+//~ long: Entropy
+
+function void OSGetEntropy(void* data, u64 size);
+
+//~ long: Clipboard
+
+function void   OSSetClipboard(String string);
+function String OSGetClipboard(Arena *arena);
+
+//~ TODO(long): Processes/Threads
+
+//~ TODO(long): Network/Sockets/IPC
 
 #endif //_BASE_H

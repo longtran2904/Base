@@ -1,8 +1,6 @@
-#define BASE_LIB_STATIC 0
+#define BASE_LIB_RUNTIME_IMPORT 1
 #include "Base.h"
-#include "LongOS.h"
 #include "Base.c"
-#include "LongOS_Win32.c"
 
 libexport i32 globalInt = 10;
 
@@ -22,7 +20,7 @@ libexport i32 DLLCallback(VoidFunc* func, b32 log)
         StringList logs = {0};
         LogBlock(scratch, logs)
         {
-            LogPush(0, "DLL Initialize #2");
+            LogPush(0, "DLL Initialize #2 %d", 3.f);
             func();
         }
         

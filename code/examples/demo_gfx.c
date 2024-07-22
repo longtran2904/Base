@@ -1,7 +1,5 @@
 #include "Base.h"
-#include "LongOS.h"
 #include "Base.c"
-#include "LongOS_Win32.c"
 
 #include "LongGFX.h"
 #include "LongGFX_Win32.c"

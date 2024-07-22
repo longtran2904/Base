@@ -1,8 +1,7 @@
-#include "DefaultCRT.h"
+#define BASE_LIB_EXPORT_SYMBOLS 1
 #include "Base.h"
-#include "LongOS.h"
 #include "Base.c"
-#include "LongOS_Win32.c"
+#include <stdio.h>
 
 #define LONG_TEST_IMPLEMENTATION
 #define LT_ASSERT(x) Assert(x)
@@ -683,17 +682,6 @@ int main(void)
             LogPush(LOG_ERROR, "Log #%d", LOG_ERROR);
             LogPush(LOG_FATAL, "Log #%d", LOG_FATAL);
             
-            LogInfo* info = LogGetInfo();
-            info->level = LOG_INFO;
-            LogPush(LOG_TRACE, "Log trace");
-            LogPush(LOG_DEBUG, "Log debug");
-            LogPush(LOG_INFO , "Log info");
-            LogPush(LOG_WARN , "Log warn");
-            LogPush(LOG_ERROR, "Log error");
-            LogPush(LOG_FATAL, "Log fatal");
-            
-            info->level = LOG_DEBUG;
-            info->callback = TestLogCallback;
             LogPush(LOG_TRACE, "Log trace");
             LogPush(LOG_DEBUG, "Log debug");
             LogPush(LOG_INFO , "Log info");
@@ -833,11 +821,11 @@ int main(void)
         
         {
             u64 nameLen = sizeof("\\code\\examples\\test_base.c") - 1;
-            String currentDir = OSCurrDir(arena);
+            String currentDir = OSGetCurrDir(arena);
             TestResult(StrCompare(currentDir, StrChop(StrLit(__FILE__), nameLen), 0));
-            TestResult(StrCompare(OSExecDir(), StrJoin3(arena, currentDir, StrLit("\\build")), 0));
-            TestResult(StrCompare(OSUserDir(), StrLit("C:\\Users\\ADMIN"), 1));
-            TestResult(StrCompare(OSTempDir(), StrLit("C:\\Users\\ADMIN\\AppData\\Local\\Temp"), 1));
+            TestResult(StrCompare(OSGetExeDir(), StrJoin3(arena, currentDir, StrLit("\\build")), 0));
+            TestResult(StrCompare(OSGetUserDir(), StrLit("C:\\Users\\ADMIN"), 1));
+            TestResult(StrCompare(OSGetTempDir(), StrLit("C:\\Users\\ADMIN\\AppData\\Local\\Temp"), 1));
         }
         
         u64 entropy;

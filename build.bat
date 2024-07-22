@@ -57,8 +57,6 @@ REM set opts=%opts% /fsanitize=address /JMC
 if [%1]==[release] (set opts=%opts% /O2 && echo [release mode]) ELSE echo [debug mode]
 
 set code=%cd%
-set links=/incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
-
 IF NOT EXIST build mkdir build
 pushd build
 
@@ -66,22 +64,23 @@ del *.pdb > NUL 2> NUL
 del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
 
+set links=/incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
 set opts=%opts% /I%code%\code /I%code%\code\dependencies fast_float.obj
 
 IF NOT EXIST "fast_float.obj" cl /nologo /GR- /EHa- /nologo /O2 /c %code%\code\dependencies\fast_float.cpp
 
-cl %opts% %code%\code\examples\test_base.c /Fetest_base.exe /link %links%
-cl %opts% %code%\code\examples\demo_gfx.c  /Fedemo_gfx.exe /link %links%
-cl %opts% %code%\code\examples\demo.c      /Fedemo.exe /link %links%
-cl %opts% %code%\code\Metamain.c           /Femetagen.exe /link %links%
-cl %opts% %code%\code\examples\TestDLL.c   /FeTestDLL.dll /LD
+cl %opts% %code%\code\examples\test_base.c /Fetest_base /LD /link %links%
+cl %opts% %code%\code\examples\demo_gfx.c  /Fedemo_gfx /link %links%
+cl %opts% %code%\code\examples\demo.c      /Fedemo /link %links%
+cl %opts% %code%\code\Metamain.c           /Femetagen /link %links%
+cl %opts% %code%\code\examples\TestDLL.c   /FeTestDLL /LD
 
-REM cl %opts% %code%\code\examples\glob.c      /Feglob.exe /O2 /link %link%
-REM cl %opts% %code%\code\examples\test_glob.c /Fetest_glob.exe /link %link%
-REM cl %opts% %code%\code\examples\parser.c    /Feparser.exe -wd4706 /link %links%
-REM cl %opts% %code%\code\retired\D3D11_Example.c /Fed3d11_exp.exe /link %links%
-REM cl %opts% %code%\code\retired\LongCompressor.c /Fecompressor.exe /link %links%
-REM cl %opts% %code%\code\retired\Meta.c /FeMeta.exe /link %links%
+REM cl %opts% %code%\code\examples\glob.c      /Feglob /O2 /link %link%
+REM cl %opts% %code%\code\examples\test_glob.c /Fetest_glob /link %link%
+REM cl %opts% %code%\code\examples\parser.c    /Feparser -wd4706 /link %links%
+REM cl %opts% %code%\code\retired\D3D11_Example.c /Fed3d11_exp /link %links%
+REM cl %opts% %code%\code\retired\LongCompressor.c /Fecompressor /link %links%
+REM cl %opts% %code%\code\retired\Meta.c /FeMeta /link %links%
 
 ren fast_float.obj fast_float.temp > NUL 2> NUL
 del *.obj > NUL 2> NUL

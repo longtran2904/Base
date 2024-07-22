@@ -444,7 +444,7 @@ function void GFXErrorBox(Logger* logger, i32 code)
         }
         
         if (code)
-            OSExitProcess(code);
+            OSExit(code);
     }
 }
 

@@ -1,8 +1,6 @@
+#define BASE_LIB_EXPORT_SYMBOLS 1
 #include "Base.h"
-#include "LongOS.h"
 #include "Base.c"
-#include "LongOS_Win32.c"
-#include <stdio.h>
 
 #define DEMO(name) DeferBlock(Outf("[%s]\n", name), Outf("\n"))
 
@@ -113,6 +111,8 @@ int main(void)
         }
     }
     
+    MemCommit(arena, KB(4));
+    
     DEMO("Log")
     {
         StringList logs = {0};
@@ -125,8 +125,6 @@ int main(void)
             LogPush(LOG_ERROR, "Log #%d", LOG_ERROR);
             LogPush(LOG_FATAL, "Log #%d", LOG_FATAL);
             
-            LogInfo* info = LogGetInfo();
-            info->level = LOG_INFO;
             LogPush(LOG_TRACE, "Log trace");
             LogPush(LOG_DEBUG, "Log debug");
             LogPush(LOG_INFO , "Log info");
@@ -141,7 +139,7 @@ int main(void)
         
         u64 time = OSNowMS();
         u64 pos = ArenaCurrPos(arena);
-        u64 overhead = ArenaCurrPos(logThread.arena);
+        //u64 overhead = ArenaCurrPos(logThread.arena);
         LogBlock(arena, logs, .callback = DemoLogCallback)
         {
             Outf("\n-Stress Test-\n");
@@ -149,17 +147,17 @@ int main(void)
                 LogPush(i % LogType_Count, "Log: %llu", i);
         }
         Outf("Elapsed: %llums\n", OSNowMS() - time);
-        Outf("Memory: %llu bytes, Overhead: %llu bytes\n", ArenaCurrPos(arena) - pos, ArenaCurrPos(logThread.arena) - overhead);
+        //Outf("Memory: %llu bytes, Overhead: %llu bytes\n", ArenaCurrPos(arena) - pos, ArenaCurrPos(logThread.arena) - overhead);
         Outf("Count: %llu nodes, Size: %llu bytes\n", logs.nodeCount, logs.totalSize);
     }
     
     DEMO("OS")
     {
         Outf("---PATHS---\n");
-        String currentDir = OSCurrDir(arena);
-        String processDir = OSExecDir();
-        String appDataDir = OSUserDir();
-        String appTempDir = OSTempDir();
+        String currentDir = OSGetCurrDir(arena);
+        String processDir = OSGetExeDir();
+        String appDataDir = OSGetUserDir();
+        String appTempDir = OSGetTempDir();
         Outf("Curr: %.*s\\\n", StrExpand(currentDir));
         Outf("Exe:  %.*s\\\n", StrExpand(processDir));
         Outf("Data: %.*s\\\n", StrExpand(appDataDir));
@@ -223,6 +221,7 @@ int main(void)
         Outf("\n");
         Outf("---LIBS---\n");
         {
+            OSLoadLib(StrLit("build\\test_base"));
             OSLib lib = OSLoadLib(StrLit("build\\TestDLL.dll"));
             i32 (*init)(VoidFunc*, b32);
             PrcCast(init, OSGetProc(lib, "DLLCallback"));

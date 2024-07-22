@@ -1,8 +1,5 @@
-
 #include "Base.h"
-#include "LongOS.h"
 #include "Base.c"
-#include "LongOS_Win32.c"
 
 typedef u64 GFXWindow;
 #include "LongGFX_D3D11.h"

@@ -1,7 +1,5 @@
 #include "Base.h"
-#include "LongOS.h"
 #include "Base.c"
-#include "LongOS_Win32.c"
 
 #define LONG_TEST_IMPLEMENTATION
 #define LT_NAME_PADDING 20

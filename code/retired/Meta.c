@@ -1,9 +1,7 @@
 //#define MEM_DEFAULT_RESERVE_SIZE MB(64)
 
 #include "Base.h"
-#include "LongOS.h"
 #include "Base.c"
-#include "LongOS_Win32.c"
 #include <stdio.h>
 
 #include "MetaParser.h"
