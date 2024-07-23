@@ -5,7 +5,7 @@
 
 i32 main(i32 argc, char** argv)
 {
-    OSInit(argc, argv);
+    OSSetArgs(argc, argv);
 #if 0
     Arena* arena = ArenaMake();
     StringList files = {0};

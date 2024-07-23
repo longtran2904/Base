@@ -22,8 +22,6 @@ void DemoLogDLL(void)
 
 int main(void)
 {
-    OSInit(0, 0);
-    
 #if 0
     DEMO("Char")
     {

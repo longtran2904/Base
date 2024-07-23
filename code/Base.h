@@ -1578,9 +1578,9 @@ function u64 Hash64 (u8* values, u64 count);
 
 //~ long: OS Setup
 
-function void OSInit(int argc, char **argv);
+function StringList OSGetArgs(void);
+function void OSSetArgs(int argc, char **argv);
 function void OSExit(u32 code);
-function StringList OSCmdArgs(void);
 
 //~ long: Memory Functions
 

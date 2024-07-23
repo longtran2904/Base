@@ -1994,7 +1994,7 @@ function String StrFromArg(char* arg, b32* isArg, String* argValue)
     
     if (result.size > 1)
     {
-        String value = StrSkipUntil(result, StrLit(":"), 0);
+        String value = StrSkipUntil(result, StrLit(":="), 0);
         if (!StrIsIdentical(value, result))
             *argValue = value;
         else if (result.str[result.size - 1] == '-')
@@ -2386,7 +2386,7 @@ global String win32TempPath = {0};
     X(LogGetInfo) \
     X(LogPushf) \
     X(LogFmtStd) \
-    X(LogFmtANSIColor) \
+    X(LogFmtANSIColor)
 
 BeforeMain(BaseInitRuntime)
 {
@@ -2409,6 +2409,7 @@ BeforeMain(BaseInitRuntime)
 #define X(name) if (!name) continue;
             RUNTIME_FUNCS(X)
 #undef X
+#undef RUNTIME_FUNCS
             
             success = 1;
         }
@@ -2418,7 +2419,7 @@ BeforeMain(BaseInitRuntime)
 }
 #endif
 
-function void OSInit(int argc, char **argv)
+BeforeMain(BaseInit)
 {
     //- Setup precision time
     {
@@ -2428,17 +2429,7 @@ function void OSInit(int argc, char **argv)
         timeBeginPeriod(1);
     }
     
-    //- Setup arena/args
-    {
-        win32PermArena = ArenaMake();
-        
-        for (int i = 0; i <argc; ++i)
-        {
-            String arg = StrFromCStr(argv[i]);
-            StrListPush(win32PermArena, &win32CmdLine, arg);
-        }
-    }
-    
+    win32PermArena = ArenaMake();
     ScratchBegin(scratch);
     
     //- Setup binary path
@@ -2505,7 +2496,16 @@ function void OSInit(int argc, char **argv)
     ScratchEnd(scratch);
 }
 
-function StringList OSCmdArgs(void)
+function void OSSetArgs(int argc, char** argv)
+{
+    for (int i = 0; i < argc; ++i)
+    {
+        String arg = StrFromCStr(argv[i]);
+        StrListPush(win32PermArena, &win32CmdLine, arg);
+    }
+}
+
+function StringList OSGetArgs(void)
 {
     return win32CmdLine;
 }
@@ -2529,7 +2529,7 @@ function void W32WinMainInit(HINSTANCE hInstance,
     UNUSED(lpCmdLine);
     UNUSED(nShowCmd);
     
-    OSInit(__argc, __argv);
+    OSSetArgs(__argc, __argv);
 }
 
 function HINSTANCE W32GetInstance(void)

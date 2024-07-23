@@ -351,8 +351,6 @@ function MD_Node* ParseIdentifier(Parser* parser, b32 ignoreFlags)
 
 int main(int argc, char** argv)
 {
-    OSInit(0, 0);
-    
     // setup the global arena
     MD_Arena* arena = MD_ArenaAlloc();
     

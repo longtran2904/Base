@@ -68,7 +68,6 @@ function void PrintType(Arena* arena, MetaInfo* type, u32 padding, StringList* i
 
 int main(void)
 {
-    OSInit(0, 0);
     ScratchBegin(scratch);
     
     String fileName = StrLit("code/retired/MetaTest.txt");

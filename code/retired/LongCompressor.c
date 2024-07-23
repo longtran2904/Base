@@ -142,10 +142,10 @@ function u8* HashBlockPattern(PatternTable* table, u8* pattern)
 
 int main(int argc, char** argv)
 {
-    OSInit(argc, argv);
+    OSSetArgs(argc, argv);
     Arena* arena = ArenaReserve(GB(1), MEM_DEFAULT_ALIGNMENT, 0);
     
-    StringList args = OSCmdArgs();;
+    StringList args = OSGetArgs();;
     if (args.nodeCount != 2)
         return 0;
     

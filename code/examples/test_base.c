@@ -57,7 +57,6 @@ function void TestFloat(f64 f, String str)
 MSVC(WarnDisable(28182 6011 4723))
 int main(void)
 {
-    OSInit(0, 0);
     u64 elapsed = OSNowMS();
     
     i32 space = Max(sizeof(CURRENT_COMPILER_NAME), Max(sizeof(CURRENT_OS_NAME), sizeof(CURRENT_ARCH_NAME))) - 1;
