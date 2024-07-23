@@ -3,11 +3,11 @@
 
 #include "LongMD.h"
 
-void main(i32 argc, char** argv)
+i32 main(i32 argc, char** argv)
 {
     OSInit(argc, argv);
-    Arena* arena = ArenaMake();
 #if 0
+    Arena* arena = ArenaMake();
     StringList files = {0};
     //- TODO(long): Setup paths and search for files
     
@@ -58,4 +58,6 @@ void main(i32 argc, char** argv)
         }
     }
 #endif
+    
+    return 0;
 }

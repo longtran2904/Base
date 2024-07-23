@@ -93,8 +93,12 @@ typedef TempArena Temp;
 #define scratch_begin GetScratch
 #define scratch_end TempEnd
 
+WarnPush(0)
+WarnDisable("-Wall")
+WarnDisable("-Wextra")
 #include "mdesk\mdesk.h"
 #include "mdesk\mdesk.c"
+WarnPop()
 #endif
 
 #endif //_LONG_M_D_H

@@ -20,7 +20,7 @@ libexport i32 DLLCallback(VoidFunc* func, b32 log)
         StringList logs = {0};
         LogBlock(scratch, logs)
         {
-            LogPush(0, "DLL Initialize #2 %d", 3.f);
+            LogPush(0, "DLL Initialize #2");
             func();
         }
         

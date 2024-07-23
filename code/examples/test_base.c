@@ -1023,6 +1023,6 @@ int main(void)
     
     elapsed = OSNowMS() - elapsed;
     Outf("\nTime Elapsed: %llu ms\n", elapsed);
-    return elapsed;
+    return 0;
 }
 MSVC(WarnEnable(28182 6011 4723))

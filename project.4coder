@@ -31,6 +31,15 @@ commands = {
         .win = "build.bat release",
         .linux = "./build.sh release",
         .mac = "./build.sh release", },
+    .build_clang = { .out = "*compilation*", .footer_panel = true, .save_dirty_files = true,
+        .win = "build.bat clang",
+        .linux = "./build.sh",
+        .mac = "./build.sh", },
+    .build_clang_release = { .out = "*compilation*", .footer_panel = true, .save_dirty_files = true,
+        .win = "build.bat clang release",
+        .linux = "./build.sh release",
+        .mac = "./build.sh release", },
+    
     .test = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
         .win = "build\\test_base.exe",
         .linux = "build/test_base.exe",
@@ -47,6 +56,8 @@ commands = {
 fkey_command = {
     .F1 = "build",
     .F2 = "build_release",
+    .F3 = "build_clang",
+    .F4 = "build_clang_release",
     .F5 = "test",
     .F6 = "demo",
     .F7 = "demo_gfx"

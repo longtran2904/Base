@@ -1,4 +1,5 @@
 #define BASE_LIB_EXPORT_SYMBOLS 1
+#define function libexport
 #include "Base.h"
 #include "Base.c"
 
@@ -111,7 +112,7 @@ int main(void)
         }
     }
     
-    MemCommit(arena, KB(4));
+    OSCommit(arena, KB(4));
     
     DEMO("Log")
     {
@@ -139,7 +140,7 @@ int main(void)
         
         u64 time = OSNowMS();
         u64 pos = ArenaCurrPos(arena);
-        //u64 overhead = ArenaCurrPos(logThread.arena);
+        u64 overhead = ArenaCurrPos(logThread.arena);
         LogBlock(arena, logs, .callback = DemoLogCallback)
         {
             Outf("\n-Stress Test-\n");
@@ -147,7 +148,7 @@ int main(void)
                 LogPush(i % LogType_Count, "Log: %llu", i);
         }
         Outf("Elapsed: %llums\n", OSNowMS() - time);
-        //Outf("Memory: %llu bytes, Overhead: %llu bytes\n", ArenaCurrPos(arena) - pos, ArenaCurrPos(logThread.arena) - overhead);
+        Outf("Memory: %llu bytes, Overhead: %llu bytes\n", ArenaCurrPos(arena) - pos, ArenaCurrPos(logThread.arena) - overhead);
         Outf("Count: %llu nodes, Size: %llu bytes\n", logs.nodeCount, logs.totalSize);
     }
     

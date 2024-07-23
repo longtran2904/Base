@@ -5,10 +5,6 @@
 
 //~ TODO(long):
 // [ ] Custom printf format
-// [X] Import base layer as a DLL
-// [X] Math functions and types
-// [X] Merge Base and OS layers
-// [X] Add custom markers for functions
 // [ ] Support for custom data structures
 
 //~/////////////////////////////////////////////////////////////
@@ -18,26 +14,6 @@
 //-/////////////////////////////////////////////////////////////
 
 //~ long: Base Setup
-
-#if !defined(MemReserve)
-#define MemReserve(size) OSReserve(size)
-#endif
-#if !defined(MemCommit)
-#define MemCommit(ptr, size) OSCommit(ptr, size)
-#endif
-#if !defined(MemDecommit)
-#define MemDecommit(ptr, size) OSDecommit((ptr), (size))
-#endif
-#if !defined(MemRelease)
-#define MemRelease(ptr) OSRelease(ptr)
-#endif
-
-#ifndef PrintOut
-#define PrintOut(str) OSWriteConsole(OS_STD_OUT, (str))
-#endif
-#ifndef PrintErr
-#define PrintErr(str) OSWriteConsole(OS_STD_ERR, (str))
-#endif
 
 #ifndef BASE_LIB_EXPORT_SYMBOLS
 #define BASE_LIB_EXPORT_SYMBOLS 0
@@ -101,7 +77,7 @@
 #endif
 
 //- long: OS
-#ifdef _WIN32
+#if defined(_WIN32)
 #define OS_WIN 1
 #elif defined(__gnu_linux__)
 #define OS_LINUX 1
@@ -128,7 +104,7 @@
 
 //- long: Architecture
 #if COMPILER_CL
-#ifdef _M_AMD64
+#if defined(_M_AMD64)
 #define ARCH_X64 1
 #elif defined(_M_I68)
 #define ARCH_X86 1
@@ -151,7 +127,7 @@
 #endif
 
 #else // TODO(long): verify this works on clang and gcc
-#ifdef __amd64__
+#if defined(__amd64__)
 #define ARCH_X64 1
 #elif defined(__i386__)
 #define ARCH_X86 1
@@ -364,7 +340,7 @@
 #endif
 
 #if ENABLE_ASSERT
-#define DebugPrint(str) PrintErr((StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " str)))
+#define DebugPrint(str) OSWriteConsole(OS_STD_ERR, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " str))
 #define Assert(c) Stmnt(if (!(c)) { DebugPrint("Assertion \"" Stringify(c) "\" failed\n"); AssertBreak(); })
 #define PANIC(str) Stmnt(DebugPrint("PANIC \"" str "\"\n"); AssertBreak())
 #else
@@ -1453,7 +1429,7 @@ function String PathAbsFromRel(Arena* arena, String dst, String src);
 function String PathNormString(Arena* arena, String path);
 
 function void PathListResolveDotsIP(StringList* path, PathStyle style);
-internal StringList PathListNormString(Arena* arena, String path, PathStyle* out);
+function StringList PathListNormString(Arena* arena, String path, PathStyle* out);
 
 //- long: Serialize Functions
 function String StrWriteToStr(String src, u64 srcOffset, String dst, u64 dstOffset);
@@ -1667,6 +1643,7 @@ function String OSGetUserDir(void);
 function String OSGetTempDir(void);
 
 // @CONSIDER(long): Maybe have a OSSetCurrDir and OSGetInitDir
+// https://devblogs.microsoft.com/oldnewthing/20101109-00/?p=12323
 
 //~ long: Time
 

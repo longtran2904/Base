@@ -347,7 +347,7 @@ function v2i32 ScaleV2I32(v2i32 v, i32 s)         { return (v2i32){ v.x * s, v.y
 function i32 DotV2I32(v2i32 a, v2i32 b)           { return a.x * b.x + a.y * b.y; }
 function i32 SqrMagV2I32(v2i32 v)                 { return v.x * v.x + v.y * v.y; }
 function i32 MagV2I32(v2i32 v)                    { return (i32)Sqrt_f32((f32)(v.x * v.x + v.y * v.y)); }
-function v2i32 NormV2I32(v2i32 v)                 { return ScaleV2I32(v, (i32)(1.f/MagV2I32(v))); }
+function v2i32 NormV2I32(v2i32 v)                 { return ScaleV2I32(v, (i32)(1.f/(f32)MagV2I32(v))); }
 function v2i32 LerpV2I32(v2i32 a, v2i32 b, f32 t) { return (v2i32){ LerpInt(a.x, b.x, t), LerpInt(a.y, b.y, t) }; }
 
 function v2i64 V2I64(i64 x, i64 y)                { return (v2i64){ x, y }; }
@@ -359,7 +359,7 @@ function v2i64 ScaleV2I64(v2i64 v, i64 s)         { return (v2i64){ v.x * s, v.y
 function i64 DotV2I64(v2i64 a, v2i64 b)           { return a.x * b.x + a.y * b.y; }
 function i64 SqrMagV2I64(v2i64 v)                 { return v.x * v.x + v.y * v.y; }
 function i64 MagV2I64(v2i64 v)                    { return (i64)Sqrt_f32((f32)(v.x * v.x + v.y * v.y)); }
-function v2i64 NormV2I64(v2i64 v)                 { return ScaleV2I64(v, (i64)(1.f/MagV2I64(v))); }
+function v2i64 NormV2I64(v2i64 v)                 { return ScaleV2I64(v, (i64)(1.f/(f32)MagV2I64(v))); }
 function v2i64 LerpV2I64(v2i64 a, v2i64 b, f32 t) { return (v2i64){ LerpInt(a.x, b.x, t), LerpInt(a.y, b.y, t) }; }
 
 function v3f32 V3F32(f32 x, f32 y, f32 z)         { return (v3f32){ x, y, z }; }
@@ -384,7 +384,7 @@ function v3i32 ScaleV3I32(v3i32 v, i32 s)         { return (v3i32){ v.x * s, v.y
 function i32 DotV3I32(v3i32 a, v3i32 b)           { return a.x * b.x + a.y * b.y + a.z * b.z; }
 function i32 SqrMagV3I32(v3i32 v)                 { return v.x * v.x + v.y * v.y + v.z * v.z; }
 function i32 MagV3I32(v3i32 v)                    { return (i32)Sqrt_f32((f32)(v.x * v.x + v.y * v.y + v.z * v.z)); }
-function v3i32 NormV3I32(v3i32 v)                 { return ScaleV3I32(v, (i32)(1.f/MagV3I32(v))); }
+function v3i32 NormV3I32(v3i32 v)                 { return ScaleV3I32(v, (i32)(1.f/(f32)MagV3I32(v))); }
 function v3i32 LerpV3I32(v3i32 a, v3i32 b, f32 t) { return (v3i32){ LerpInt(a.x, b.x, t), LerpInt(a.y, b.y, t), LerpInt(a.z, b.z, t) }; }
 function v3i32 CrossV3I32(v3i32 a, v3i32 b)       { return (v3i32){ a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x }; }
 
@@ -544,8 +544,8 @@ function Arena* ArenaReserve(u64 reserve, u64 alignment, b32 growing)
     Arena* result = 0;
     if (reserve >= MEM_INITIAL_COMMIT)
     {
-        void* memory = MemReserve(reserve);
-        if (memory && MemCommit(memory, MEM_INITIAL_COMMIT))
+        void* memory = OSReserve(reserve);
+        if (memory && OSCommit(memory, MEM_INITIAL_COMMIT))
         {
             result = (Arena*)memory;
             *result = (Arena)
@@ -576,7 +576,7 @@ function void ArenaRelease(Arena* arena)
     {
         Arena* prev = ptr->prev;
         AsanPoison(ptr, ptr->cap);
-        MemRelease(ptr);
+        OSRelease(ptr);
         ptr = prev;
     }
 }
@@ -598,8 +598,8 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
             u64 newSize = AlignUpPow2(size + minSize, current->alignment);
             u64 newReserveSize = Max(current->cap, newSize);
             
-            void* memory = MemReserve(newReserveSize);
-            if (MemCommit(memory, MEM_INITIAL_COMMIT))
+            void* memory = OSReserve(newReserveSize);
+            if (OSCommit(memory, MEM_INITIAL_COMMIT))
             {
                 AsanPoison(memory, newReserveSize);
                 AsanUnpoison(memory, minSize);
@@ -635,7 +635,7 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
             u64 nextCommitPos = ClampTop(AlignUpPow2(nextPos, MEM_COMMIT_BLOCK_SIZE), current->cap);
             u64 commitSize = nextCommitPos - current->commitPos;
             
-            if (MemCommit(PtrAdd(current, current->commitPos), commitSize))
+            if (OSCommit(PtrAdd(current, current->commitPos), commitSize))
                 current->commitPos = nextCommitPos;
         }
         
@@ -673,8 +673,8 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         {
             Arena* prev = current->prev;
             u64 cap = current->cap;
-            MemDecommit(current, cap); // @RECONSIDER(long): Maybe MemRelease?
-            AsanPoison (current, cap); // @RECONSIDER(long): Do I need to poison the decommitted memory?
+            OSDecommit(current, cap); // @RECONSIDER(long): Maybe OSRelease?
+            AsanPoison(current, cap); // @RECONSIDER(long): Do I need to poison the decommitted memory?
             current = prev;
         }
         
@@ -685,8 +685,8 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         {
             u8* nextPtr = PtrAdd(current, nextCommitPos);
             nextPtr[-1] = 0;
-            MemDecommit(nextPtr, current->commitPos - nextCommitPos);
-            AsanPoison (nextPtr, current->commitPos - nextCommitPos);
+            OSDecommit(nextPtr, current->commitPos - nextCommitPos);
+            AsanPoison(nextPtr, current->commitPos - nextCommitPos);
             nextPtr[-1] = 0;
             current->commitPos = nextCommitPos;
             current->pos = ClampTop(current->pos, current->commitPos);
@@ -724,8 +724,8 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         if (current->commitPos != alignedPos)
         {
             u8* commitPtr = PtrAdd(current, alignedPos);
-            MemDecommit(commitPtr, current->commitPos - alignedPos);
-            MemCommit  (commitPtr, current->commitPos - alignedPos);
+            OSDecommit(commitPtr, current->commitPos - alignedPos);
+            OSCommit  (commitPtr, current->commitPos - alignedPos);
         }
 # endif
         
@@ -752,9 +752,9 @@ internal void ArenaPoison(Arena* arena, u64 size)
     if (ALWAYS(current->pos - ArenaMinSize(current) >= size))
     {
 #if ENABLE_SANITIZER
-        AsanPoison (PtrAdd(current, current->pos - size), size);
+        AsanPoison(PtrAdd(current, current->pos - size), size);
 #else
-        MemDecommit(PtrAdd(current, current->pos - size), size);
+        OSDecommit(PtrAdd(current, current->pos - size), size);
 #endif
     }
 }
@@ -2067,7 +2067,7 @@ CHECK_PRINTF_FUNC(1) function void Outf(CHECK_PRINTF char* fmt, ...)
     i32 size = stbsp_vsnprintf(buffer, sizeof(buffer), fmt, args);
     if (ALWAYS(size >= 0))
     {
-        b32 result = PrintOut(Str(buffer, size));
+        b32 result = OSWriteConsole(OS_STD_OUT, Str(buffer, size));
         ALWAYS(result);
     }
     va_end(args);
@@ -2081,7 +2081,7 @@ CHECK_PRINTF_FUNC(1) function void Errf(CHECK_PRINTF char* fmt, ...)
     i32 size = stbsp_vsnprintf(buffer, sizeof(buffer), fmt, args);
     if (ALWAYS(size >= 0))
     {
-        b32 result = PrintErr(Str(buffer, size));
+        b32 result = OSWriteConsole(OS_STD_ERR, Str(buffer, size));
         ALWAYS(result);
     }
     va_end(args);
@@ -2312,7 +2312,6 @@ MSVC(WarnDisable(28301))
 #include <Windows.h>
 #include <Userenv.h>
 #include <dwmapi.h>
-#define function static // TODO(long): function can be something other than static
 MSVC(WarnEnable(28301))
 #pragma pop_macro("function")
 
@@ -2415,7 +2414,7 @@ BeforeMain(BaseInitRuntime)
         }
     }
     
-    Assert(success); // TODO(long)
+    Assert(success); // TODO(long): Maybe use GFXErrorBox
 }
 #endif
 
