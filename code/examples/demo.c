@@ -1,5 +1,4 @@
 #define BASE_LIB_EXPORT_SYMBOLS 1
-#define function libexport
 #include "Base.h"
 #include "Base.c"
 
@@ -190,7 +189,7 @@ int main(void)
         Outf("---FILES---\n");
         FileIterBlock(arena, iter, StrLit("code"))
         {
-            FileProperties prop = iter.prop;
+            FileProperties prop = iter.props;
             String createTime = StrFromTime(arena, OSToLocTime(TimeToDate(prop.createTime)));
             String modifyTime = StrFromTime(arena, OSToLocTime(TimeToDate(prop.modifyTime)));
             
@@ -201,9 +200,9 @@ int main(void)
             {
                 // NOTE(long): This is only one level deep
                 String folderName = StrJoin3(arena, StrLit("code\\"), iter.name);
-                FileIterBlock(arena, folder, folderName)
+                FileIterBlock(arena, folder, folderName, FileIterFlag_SkipFolders|FileIterFlag_Recursive)
                 {
-                    size += folder.prop.size;
+                    size += folder.props.size;
                     childCount++;
                 }
             }

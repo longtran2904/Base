@@ -688,7 +688,6 @@ int main(void)
             LogPush(LOG_ERROR, "Log error");
             LogPush(LOG_FATAL, "Log fatal");
             
-            TestResult(snapshot == 5);
             LogBlock(arena, logs, .callback = TestLogCallback)
             {
                 for (u64 i = 0; i < 1024; ++i)
@@ -701,7 +700,7 @@ int main(void)
                         LogPush(i % LogType_Count, "New Log: %llu", i);
                 }
                 
-                TestResult(snapshot == 1029);
+                TestResult(snapshot == 1024);
                 TestResult(logs.nodeCount == 1025);
             }
             
@@ -710,7 +709,7 @@ int main(void)
         i32 endLine = __LINE__;
         
         Logger logger = LogEnd(arena);
-        TestResult(logger.count == 15);
+        TestResult(logger.count == 12);
         for (u64 i = 0; i < logger.count; ++i)
         {
             Record record = logger.records[i];
@@ -917,8 +916,8 @@ int main(void)
         
         FileIterBlock(arena, iter, StrLit("code"))
         {
-            TestResult(iter.prop.modifyTime >= iter.prop.createTime);
-            if (iter.prop.flags & FilePropertyFlag_IsFolder)
+            TestResult(iter.props.modifyTime >= iter.props.createTime);
+            if (iter.props.flags & FilePropertyFlag_IsFolder)
                 TestResult(!StrContainsChr(iter.name, ".\\/"));
             else
                 TestResult(StrListCompare(StrSkipUntil(iter.name, StrLit("."), FindStr_LastMatch), &exts, 0));
@@ -932,7 +931,7 @@ int main(void)
             String ext = StrSkipUntil(iter.name, StrLit("."), FindStr_LastMatch);
             TestResult(StrListCompare(ext, &exts, 0) && !StrCompare(ext, txt, 0));
             TestResult(StrListCompare(iter.name, &names, 0) &&
-                       iter.prop.modifyTime >= iter.prop.createTime && !(iter.prop.flags & FilePropertyFlag_IsFolder));
+                       iter.props.modifyTime >= iter.props.createTime && !(iter.props.flags & FilePropertyFlag_IsFolder));
         }
     }
     

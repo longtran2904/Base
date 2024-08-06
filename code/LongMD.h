@@ -40,16 +40,7 @@ typedef u32 U32;
 typedef u64 U64;
 typedef b32 B32;
 
-typedef union Rng1U64 Rng1U64;
-union Rng1U64
-{
-    struct
-    {
-        U64 min;
-        U64 max;
-    };
-    U64 v[2];
-};
+typedef union r1u64 Rng1U64;
 
 #define read_only readonly
 
@@ -57,7 +48,7 @@ union Rng1U64
 typedef String String8;
 typedef StringList String8List;
 
-typedef U32 StringMatchFlags;
+typedef u32 StringMatchFlags;
 enum
 {
     StringMatchFlag_CaseInsensitive  = (1 << 0),

@@ -464,7 +464,8 @@ function u64 Hash64(u8* values, u64 count)
         u32 lo = Noise1D((u32)i, (u32)(value >> (i % 16)));
         result = hi|(((u64)lo) << 32);
     }
-    for (u8* i = values + (count / 8) * 8; i < values + count; ++i)
+    
+    for (u8* i = values + (count % 8); i < values + count; ++i)
         result += BIT_NOISE4 * (*i) + BIT_NOISE5;
     return result;
 }
@@ -684,10 +685,8 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         if (nextCommitPos < current->commitPos)
         {
             u8* nextPtr = PtrAdd(current, nextCommitPos);
-            nextPtr[-1] = 0;
             OSDecommit(nextPtr, current->commitPos - nextCommitPos);
             AsanPoison(nextPtr, current->commitPos - nextCommitPos);
-            nextPtr[-1] = 0;
             current->commitPos = nextCommitPos;
             current->pos = ClampTop(current->pos, current->commitPos);
         }
@@ -704,7 +703,6 @@ function void ArenaPopTo(Arena* arena, u64 pos)
             // 2. MEM_COMMIT_BLOCK_SIZE <= MEM_INITIAL_COMMIT
             // I never find a good use case for this, so I statically check for it here
             StaticAssert(MEM_COMMIT_BLOCK_SIZE <= MEM_INITIAL_COMMIT, checkMemDefault);
-            
             return;
         }
         
@@ -1910,18 +1908,18 @@ function f64 F64FromStr(String str, b32* error)
     return result;
 }
 
-function i32 I32FromStr(String str, u32 radix, b32* error)
+function u32 U32FromStr(String str, u32 radix, b32* error)
 {
     TempBool(error);
-    i64 result = I64FromStr(str, radix, error);
-    if (result > MAX_I32 || result < MIN_I32)
+    u64 result = U64FromStr(str, radix, error);
+    if (result > MAX_U32)
         *error = 1;
-    return (i32)result; // @UB(long): Maybe this is Implementation define?
+    return (u32)result; // @UB(long): Implementation define?
 }
 
-function i64 I64FromStr(String str, u32 radix, b32* error)
+function u64 U64FromStr(String str, u32 radix, b32* error)
 {
-    const u8 integer_symbol_reverse[256] = {
+    const u8 symbols[256] = {
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
@@ -1942,31 +1940,97 @@ function i64 I64FromStr(String str, u32 radix, b32* error)
     };
     
     TempBool(error);
-    i64 x = 0;
+    u64 x = 0;
+    
     if (str.size)
     {
-        b32 negative =  str.str[0] == '-';
-        if (negative || str.str[0] == '+')
-            str = StrSkip(str, 1);
-        
-        if (radix >= 2 && radix <= 16)
+        if (ALWAYS(radix >= 2 && radix <= 16))
         {
             for (u64 i = 0; i < str.size; i += 1)
             {
-                u8 symbol = integer_symbol_reverse[str.str[i]];
+                u8 symbol = symbols[str.str[i]];
                 if (symbol >= radix)
                     goto END;
                 x = x * radix + symbol;
             }
         }
-        
-        if (negative)
-            x = -x;
         *error = 0;
     }
     
     END:
     return *error ? 0 : x;
+}
+
+function i32 I32FromStr(String str, u32 radix, b32* error)
+{
+    TempBool(error);
+    i64 result = I64FromStr(str, radix, error);
+    if (result > MAX_I32 || result < MIN_I32)
+        *error = 1;
+    return (i32)result; // @UB(long): Implementation define?
+}
+
+function i64 I64FromStr(String str, u32 radix, b32* error)
+{
+    TempBool(error);
+    i64 result = 0;
+    
+    if (str.size)
+    {
+        b64 negative = (str.str[0] == '-') * -1;
+        if (negative || str.str[0] == '+')
+            str = StrSkip(str, 1);
+        u64 x = U64FromStr(str, radix, error);
+        if (x > MAX_I64)
+            *error = 1;
+        else
+            result = ((i64)x ^ negative) - negative;
+    }
+    
+    return result;
+}
+
+function i64 I64FromStrC(String str, b32* error)
+{
+    TempBool(error);
+    i64 result = 0;
+    
+    if (str.size)
+    {
+        b64 negative = (str.str[0] == '-') * -1;
+        if (negative || str.str[0] == '+')
+            str = StrSkip(str, 1);
+        u64 x = U64FromStrC(str, error);
+        if (x > MAX_I64)
+            *error = 1;
+        else
+            result = ((i64)x ^ negative) - negative;
+    }
+    
+    return result;
+}
+
+function u64 U64FromStrC(String str, b32* error)
+{
+    u64 result = 0;
+    String numeric = str;
+    u32 base = 10;
+    
+    if (str.size >= 2)
+    {
+        if (str.str[0] == '0')
+        {
+            switch (str.str[1])
+            {
+                case 'x': base = 16; numeric = StrSkip(str, 2); break;
+                case 'b': base =  2; numeric = StrSkip(str, 2); break;
+                default:  base =  8; numeric = StrSkip(str, 1); break;
+            }
+        }
+    }
+    
+    result = U64FromStr(str, base, error);
+    return result;
 }
 
 function String StrFromTime(Arena* arena, DateTime time)
@@ -2807,6 +2871,8 @@ function FilePropertyFlags W32FilePropertyFlagsFromAttributes(DWORD attributes)
     FilePropertyFlags result = 0;
     if (attributes & FILE_ATTRIBUTE_DIRECTORY)
         result |= FilePropertyFlag_IsFolder;
+    if (attributes & FILE_ATTRIBUTE_HIDDEN)
+        result |= FilePropertyFlag_IsHidden;
     return result;
 }
 
@@ -2858,6 +2924,7 @@ function b32 OSDeleteFile(String fileName)
 
 function b32 OSRenameFile(String oldName, String newName)
 {
+    // NOTE(long): Can't move a directory across drives
     b32 result = MoveFile(oldName.str, newName.str);
     return result;
 }
@@ -2874,68 +2941,120 @@ function b32 OSDeleteDir(String path)
     return result;
 }
 
-// long: File Iteration
+//~ long: File Iteration
 
-typedef struct W32FileIter
+typedef struct W32FileIter W32FileIter;
+struct W32FileIter
 {
+    W32FileIter* next;
+    String path;
     HANDLE handle;
     WIN32_FIND_DATAA findData; // WIN32_FIND_DATAA is 320 bytes while WIN32_FIND_DATAW is 592 bytes
-    b32 done;
-} W32FileIter;
+};
+StaticAssert(ArrayCount(Member(OSFileIter, v)) >= sizeof(W32FileIter), w32fileiter);
 
-StaticAssert(ArrayCount(((OSFileIter*)0)->v) >= sizeof(W32FileIter), w32fileiter);
+#define W32GetIter(iter) ((W32FileIter*)(iter)->v)
 
-function OSFileIter FileIterInit(String path)
+function void W32FileIterInit(W32FileIter* iter, String path)
 {
-    OSFileIter result = {0};
     ScratchBlock(scratch)
     {
+        iter->path = path;
         path = StrJoin3(scratch, path, StrLit("\\*"));
-        W32FileIter* w32Iter = (W32FileIter*)result.v;
-        w32Iter->handle = FindFirstFile(path.str, &w32Iter->findData);
+        iter->handle = FindFirstFile(path.str, &iter->findData);
+        Assert(iter->handle != INVALID_HANDLE_VALUE);
     }
+}
+
+function void W32FileIterEnd(W32FileIter* iter)
+{
+    if (iter->handle != 0 && iter->handle != INVALID_HANDLE_VALUE)
+        FindClose(iter->handle);
+}
+
+function OSFileIter FileIterInit(String path, OSFileIterFlags flags)
+{
+    OSFileIter result = { .flags = flags };
+    W32FileIterInit(W32GetIter(&result), path);
     return result;
 }
 
 function b32 FileIterNext(Arena* arena, OSFileIter* iter)
 {
     b32 result = false;
+    W32FileIter* w32Iter = W32GetIter(iter);
     
-    W32FileIter* w32Iter = (W32FileIter*)iter->v;
     if (w32Iter->handle != 0 && w32Iter->handle != INVALID_HANDLE_VALUE)
     {
-        while (!w32Iter->done)
+        while (!(iter->flags & FileIterFlag_Done))
         {
+            WIN32_FIND_DATAA* data = &w32Iter->findData;
+            DWORD attributes = data->dwFileAttributes;
+            CHAR* fileName = data->cFileName;
+            String subdir = {0};
+            
             // Check for . and ..
-            CHAR* fileName = w32Iter->findData.cFileName;
-            b32 isDot = (fileName[0] == '.' && fileName[1] == 0);
-            b32 isDotDot = (fileName[0] == '.' && fileName[1] == '.' && fileName[2] == 0);
+            b32 emit = fileName[0] != '.' || (fileName[1] != 0 && !(fileName[1] == '.' && fileName[2] == 0));
             
-            b32 emit = !isDot && !isDotDot;
-            WIN32_FIND_DATAA data = {0};
-            if (emit)
-                data = w32Iter->findData;//CopyStruct(&data, &w32Iter->findData);
-            
-            // Increment the iter
-            if (!FindNextFile(w32Iter->handle, &w32Iter->findData))
-                w32Iter->done = true;
-            
-            // Do the emit if we saved one earlier
             if (emit)
             {
-                iter->name = StrCloneCStr(arena, data.cFileName);
-                iter->prop = (FileProperties)
+                if ((attributes & FILE_ATTRIBUTE_HIDDEN) && (iter->flags & FileIterFlag_SkipHidden))
+                    emit = 0;
+                else if (attributes & FILE_ATTRIBUTE_DIRECTORY)
                 {
-                    .size = ((u64)data.nFileSizeHigh << 32) | (u64)data.nFileSizeLow,
-                    .flags = W32FilePropertyFlagsFromAttributes(data.dwFileAttributes),
-                    .access = W32AccessFromAttributes(data.dwFileAttributes),
-                    .createTime = W32DenseTimeFromFileTime(&data.ftCreationTime),
-                    .modifyTime = W32DenseTimeFromFileTime(&data.ftLastWriteTime),
-                };
-                
-                result = true;
-                break;
+                    if (iter->flags & FileIterFlag_Recursive)
+                        // NOTE(long): Must do this before FindNextFile because it will overwrite fileName
+                        subdir = StrPushf(arena, "%.*s\\%s", StrExpand(w32Iter->path), fileName);
+                    if (iter->flags & FileIterFlag_SkipFolders)
+                        emit = 0;
+                }
+                else if (iter->flags & FileIterFlag_SkipFiles)
+                    emit = 0;
             }
+            
+            // Do the emit if we saved one earlier.
+            // NOTE(long): Must do this before FindNextFile because it will overwrite data and fileName
+            if (emit)
+            {
+                result = true;
+                iter->path = w32Iter->path;
+                iter->name = StrCloneCStr(arena, fileName);
+                
+                iter->props = (FileProperties)
+                {
+                    .size = ((u64)data->nFileSizeHigh << 32) | (u64)data->nFileSizeLow,
+                    .flags = W32FilePropertyFlagsFromAttributes(attributes),
+                    .access = W32AccessFromAttributes(attributes),
+                    .createTime = W32DenseTimeFromFileTime(&data->ftCreationTime),
+                    .modifyTime = W32DenseTimeFromFileTime(&data->ftLastWriteTime),
+                };
+            }
+            
+            // Increment the iter
+            b32 done = !FindNextFile(w32Iter->handle, &w32Iter->findData);
+            
+            // Recursively iterate all the files and subfolders
+            if (subdir.size)
+            {
+                W32FileIter* next = PushStruct(arena, W32FileIter);
+                *next = *w32Iter;
+                W32FileIterInit(w32Iter, subdir);
+                w32Iter->next = next;
+            }
+            
+            // Exit
+            if (done)
+            {
+                if (w32Iter->next)
+                {
+                    W32FileIterEnd(w32Iter);
+                    *w32Iter = *w32Iter->next;
+                }
+                else iter->flags |= FileIterFlag_Done;
+            }
+            
+            if (emit)
+                break;
         }
     }
     
@@ -2944,9 +3063,7 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter)
 
 function void FileIterEnd(OSFileIter* iter)
 {
-    W32FileIter* w32Iter = (W32FileIter*)iter->v;
-    if (w32Iter->handle != 0 && w32Iter->handle != INVALID_HANDLE_VALUE)
-        FindClose(w32Iter->handle);
+    W32FileIterEnd(W32GetIter(iter));
 }
 
 //~ long: Libraries

@@ -6,6 +6,7 @@
 //~ TODO(long):
 // [ ] Custom printf format
 // [ ] Support for custom data structures
+// [ ] Command line interface
 
 //~/////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -869,7 +870,8 @@ enum
 typedef u32 FilePropertyFlags;
 enum
 {
-    FilePropertyFlag_IsFolder = (1 << 0)
+    FilePropertyFlag_IsFolder = (1 << 0),
+    FilePropertyFlag_IsHidden = (1 << 1),
 };
 
 typedef struct FileProperties FileProperties;
@@ -1467,6 +1469,11 @@ function f32 F32FromStr(String str, b32* error);
 function f64 F64FromStr(String str, b32* error);
 function i32 I32FromStr(String str, u32 radix, b32* error);
 function i64 I64FromStr(String str, u32 radix, b32* error);
+function u32 U32FromStr(String str, u32 radix, b32* error);
+function u64 U64FromStr(String str, u32 radix, b32* error);
+
+function i64 I64FromStrC(String str, b32* error);
+function u64 U64FromStrC(String str, b32* error);
 
 function String StrFromTime(Arena* arena, DateTime time);
 function String StrFromArg(char* arg, b32* isArg, String* argValue);
@@ -1614,7 +1621,7 @@ function b32   OSWriteList(String fileName, StringList* data);
                                             })
 
 function b32 OSDeleteFile(String fileName);
-function b32 OSRenameFile(String oldName, String newName);
+function b32 OSRenameFile(String oldName, String newName); // NOTE(long): Can also move files/directories
 function b32 OSCreateDir(String path);
 function b32 OSDeleteDir(String path);
 
@@ -1622,18 +1629,37 @@ function FileProperties OSFileProperties(String fileName);
 
 //~ long: File Iteration
 
+typedef u32 OSFileIterFlags;
+enum
+{
+    FileIterFlag_SkipFolders = (1 << 0),
+    FileIterFlag_SkipFiles   = (1 << 1),
+    FileIterFlag_SkipHidden  = (1 << 2),
+    FileIterFlag_Recursive   = (1 << 3), // TODO(long)
+    FileIterFlag_Done        = (1 << 31),
+};
+
 typedef struct OSFileIter
 {
+    // @CONSIDER(long): Combine name and props into a single FileInfo struct
     String name;
-    FileProperties prop;
+    String path;
+    FileProperties props;
+    
+    OSFileIterFlags flags;
     u8 v[640];
 } OSFileIter;
 
-function OSFileIter FileIterInit(String path);
+// TODO(long): Make these work with volume
+
+// NOTE(long): The path passed in must be valid for the entire duration between Init and End
+function OSFileIter FileIterInit(String path, OSFileIterFlags flags);
 function b32 FileIterNext(Arena* arena, OSFileIter* iter);
 function void FileIterEnd(OSFileIter* iter);
-#define FileIterBlock(arena, name, path) for (OSFileIter name = FileIterInit(path); \
-                                              FileIterNext(arena, &name) ? 1 : (FileIterEnd(&name), 0);)
+#define FileIterBlock(arena, iterName, path, ...) for (OSFileIter iterName = FileIterInit(path, (__VA_ARGS__ + 0)); \
+                                                       FileIterNext(arena, &iterName) ? 1 : (FileIterEnd(&iterName), 0);)
+
+//~ TODO(long): File Maps
 
 //~ long: Paths
 
