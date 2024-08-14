@@ -51,7 +51,9 @@ R_BackendHookTable:
 
 @enum MyEnum: @expand(MyEnumTable a) `$(a.name)_ur_mom`
 
-@data(`char *`) myenum_string_table:
+@enum(u32) MyEnumFlags: @expand(MyEnumTable a) `$(a.name) = (1 << $(a._it))`
+
+@data(`char*`) myenum_string_table:
 {
     @expand(MyEnumTable a) `"$(a.str)"`;
 }

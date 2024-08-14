@@ -1027,7 +1027,7 @@ function StringList StrList(Arena* arena, String* strArr, u64 count)
         result.first = PushArrayNZ(arena, StringNode, count);
         result.last = result.first + count - 1;
         for (u64 i = 0; i < count; ++i)
-            StrListPushNode(&result, strArr ? strArr[i] : (String){0}, result.first + i);
+            StrListPushNode(&result, strArr ? strArr[i] : ZeroStr, result.first + i);
     }
     return result;
 }
@@ -1152,11 +1152,14 @@ CHECK_PRINTF_FUNC(2) function String StrPushf(Arena* arena, CHECK_PRINTF char* f
 
 function String StrPad(Arena* arena, String str, char chr, u32 count, i32 dir)
 {
-    // @RECONSIDER(long): This will always alloc a new string, even if the count is zero
     u64 size = (dir == 0 ? count * 2 : count) + str.size;
-    String result = StrPush(arena, size, 1);
-    if (dir <= 0) SetMem(result.str, chr, count);
-    if (dir >= 0) SetMem(result.str + size - count, chr, count);
+    String result = str;
+    if (size > str.size)
+    {
+        result = StrPush(arena, size, 1);
+        if (dir <= 0) SetMem(result.str, chr, count);
+        if (dir >= 0) SetMem(result.str + size - count, chr, count);
+    }
     return result;
 }
 
@@ -1185,19 +1188,25 @@ function String StrRemove(Arena* arena, String str, u64 index, u64 count)
 
 function String StrRepeat(Arena* arena, String str, u64 count)
 {
+    String result = {0};
     u64 size = count * str.size;
-    // @RECONSIDER(long): This will always alloc a new string, even if the count is zero
-    String result = StrPush(arena, size, 1);
-    for (u64 i = 0; i < count; ++i)
-        CopyMem(result.str + i * str.size, str.str, str.size);
+    if (size)
+    {
+        result = StrPush(arena, size, 1);
+        for (u64 i = 0; i < count; ++i)
+            CopyMem(result.str + i * str.size, str.str, str.size);
+    }
     return result;
 }
 
 function String ChrRepeat(Arena* arena, char chr, u64 count)
 {
-    // @RECONSIDER(long): This will always alloc a new string, even if the count is zero
-    String result = StrPush(arena, count, 1);
-    SetMem(result.str, chr, count);
+    String result = {0};
+    if (count)
+    {
+        result = StrPush(arena, count, 1);
+        SetMem(result.str, chr, count);
+    }
     return result;
 }
 
@@ -1218,7 +1227,7 @@ function String StrJoinMax3(Arena* arena, StringJoin* join)
 
 function String StrListJoinArr(Arena* arena, StringList** lists, u64 count, StringJoin* join)
 {
-    TempPointer(StringJoin, join);
+    NilPtr(StringJoin, join);
     String pre = join->pre, mid = join->mid, post = join->post;
     
     u64 nodeCount = 0;
@@ -1260,7 +1269,7 @@ function String StrListJoinArr(Arena* arena, StringList** lists, u64 count, Stri
     return Str(str, size);
 }
 
-function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringFindFlags flags)
+function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringMatchFlags flags)
 {
     StringList result = {0};
     
@@ -1274,7 +1283,17 @@ function StringList StrSplitList(Arena* arena, String str, StringList* splits, S
         // NOTE(long): < rather than <= because firstWord = ptr + 1 can crash at the end of buffer
         for (; ptr < opl; ++ptr)
         {
-            StringNode* match = StrFindList(StrRange(ptr, opl), splits, flags|FindStr_RightSloppy, 0);
+            String substr = StrRange(ptr, opl);
+            StringNode* match = 0;
+            for (StringNode* node = splits->first; node; node = node->next)
+            {
+                if (StrCompare(StrPrefix(substr, node->string.size), node->string, flags))
+                {
+                    match = node;
+                    break;
+                }
+            }
+            
             if (match)
             {
                 // NOTE(long): try to emit word, <= rather than < will allow empty members
@@ -1294,7 +1313,7 @@ function StringList StrSplitList(Arena* arena, String str, StringList* splits, S
     return result;
 }
 
-function StringList StrSplitArr(Arena* arena, String str, String splits, StringFindFlags flags)
+function StringList StrSplitArr(Arena* arena, String str, String splits, StringMatchFlags flags)
 {
     StringList result = {0};
     
@@ -1326,26 +1345,26 @@ function StringList StrSplitArr(Arena* arena, String str, String splits, StringF
     return result;
 }
 
-function StringList StrSplit(Arena* arena, String str, String split, StringFindFlags flags)
+function StringList StrSplit(Arena* arena, String str, String split, StringMatchFlags flags)
 {
     StringList list = {0};
     StrListPushNode(&list, split, &(StringNode){0});
     return StrSplitList(arena, str, &list, flags);
 }
 
-function String StrReplaceList(Arena* arena, String str, StringList* oldStr, String newStr, StringFindFlags flags)
+function String StrReplaceList(Arena* arena, String str, StringList* oldStr, String newStr, StringMatchFlags flags)
 {
     StringList list = StrSplitList(arena, str, oldStr, SplitStr_KeepEmpties|flags);
     return StrJoin(arena, &list, .mid = newStr);
 }
 
-function String StrReplaceArr(Arena* arena, String str, String charArr, String newStr, StringFindFlags flags)
+function String StrReplaceArr(Arena* arena, String str, String charArr, String newStr, StringMatchFlags flags)
 {
     StringList list = StrSplitArr(arena, str, charArr, SplitStr_KeepEmpties|flags);
     return StrJoin(arena, &list, .mid = newStr);
 }
 
-function String StrReplace(Arena* arena, String str, String oldStr, String newStr, StringFindFlags flags)
+function String StrReplace(Arena* arena, String str, String oldStr, String newStr, StringMatchFlags flags)
 {
     StringNode node = {0}; StringList list = {0};
     StrListPushNode(&list, oldStr, &node);
@@ -1381,18 +1400,18 @@ function void StrToUpperIP(String str)
 }
 
 //- long: Comparision Functions
-function b32 ChrCompare(char a, char b, StringFindFlags flags)
+function b32 ChrCompare(char a, char b, StringMatchFlags flags)
 {
-    if ((flags & FindStr_IgnoreCase) && IsCharacter(a) && IsCharacter(b))
+    if ((flags & MatchStr_IgnoreCase) && IsCharacter(a) && IsCharacter(b))
         return ChrCompareNoCase(a, b);
-    if ((flags & FindStr_IgnoreSlash) && IsSlash(a))
+    if ((flags & MatchStr_IgnoreSlash) && IsSlash(a))
         return IsSlash(b);
     return a == b;
 }
 
-function b32 StrCompare(String a, String b, StringFindFlags flags)
+function b32 StrCompare(String a, String b, StringMatchFlags flags)
 {
-    if (a.size == b.size || (flags & FindStr_RightSloppy))
+    if (a.size == b.size || (flags & MatchStr_RightSloppy))
     {
         u64 size = Min(a.size, b.size);
         if (a.str != b.str)
@@ -1406,7 +1425,7 @@ function b32 StrCompare(String a, String b, StringFindFlags flags)
     return false;
 }
 
-function b32 ChrCompareArr(char chr, String arr, StringFindFlags flags)
+function b32 ChrCompareArr(char chr, String arr, StringMatchFlags flags)
 {
     for (u64 i = 0; i < arr.size; ++i)
         if (ChrCompare(chr, arr.str[i], flags))
@@ -1414,14 +1433,26 @@ function b32 ChrCompareArr(char chr, String arr, StringFindFlags flags)
     return false;
 }
 
-function b32 StrCompareList(String str, StringList* values, StringFindFlags flags)
+function b32 StrCompareListEx(String str, StringList* values, StringMatchFlags flags, StringNode** outNode, u64* outIdx)
 {
+    b32 result = 0;
+    NilPtr(StringNode*, outNode);
+    NilPtr(u64, outIdx);
+    
+    u64 idx = 0;
     StrListIter(values, node)
     {
         if (StrCompare(str, node->string, flags))
-            return true;
+        {
+            *outNode = node;
+            *outIdx  = idx;
+            result = 1;
+            break;
+        }
+        ++idx;
     }
-    return false;
+    
+    return result;
 }
 
 function b32 StrIsWhitespace(String str)
@@ -1432,53 +1463,35 @@ function b32 StrIsWhitespace(String str)
     return true;
 }
 
-function i64 StrFindStr(String str, String val, StringFindFlags flags)
+function i64 StrFindStr(String str, String val, StringMatchFlags flags)
 {
     for (i64 i = 0; i < (i64)(str.size - val.size) + 1; ++i)
     {
-        i64 index = (flags & FindStr_LastMatch) ? (str.size - i - 1) : i;
+        i64 index = (flags & MatchStr_LastMatch) ? (str.size - i - 1) : i;
         if (StrCompare(Str(str.str + index, val.size), val, flags))
             return index;
     }
     return -1;
 }
 
-function i64 StrFindArr(String str, String arr, StringFindFlags flags)
+function i64 StrFindArr(String str, String arr, StringMatchFlags flags)
 {
     for (u64 i = 0; i < str.size; ++i)
     {
-        i64 result = (flags & FindStr_LastMatch) ? (str.size - i - 1) : i;
+        i64 result = (flags & MatchStr_LastMatch) ? (str.size - i - 1) : i;
         if (ChrCompareArr(str.str[result], arr, flags))
             return result;
     }
     return -1;
 }
 
-function StringNode* StrFindList(String str, StringList* list, StringFindFlags flags, u64* out)
-{
-    TempPointer(i64, out);
-    StringNode* result = 0;
-    
-    i64 index = 0;
-    for (StringNode* node = list->first; node; node = node->next, ++index)
-    {
-        if (StrCompare(str, node->string, flags))
-        {
-            result = node;
-            *out = index;
-        }
-    }
-    
-    return result;
-}
-
-function String StrChopAfter(String str, String arr, StringFindFlags flags)
+function String StrChopAfter(String str, String arr, StringMatchFlags flags)
 {
     i64 index = StrFindArr(str, arr, flags);
     return StrPrefix(str, index < 0 ? str.size : index);
 }
 
-function String StrSkipUntil(String str, String arr, StringFindFlags flags)
+function String StrSkipUntil(String str, String arr, StringMatchFlags flags)
 {
     i64 index = StrFindArr(str, arr, flags);
     return StrSkip(str, index + 1);
@@ -1489,7 +1502,7 @@ function String StrSkipUntil(String str, String arr, StringFindFlags flags)
 function PathStyle PathStyleFromStr(String str)
 {
     PathStyle result = PathStyle_Relative;
-    if (StrCompare(str, StrLit("/"), FindStr_RightSloppy))
+    if (StrCompare(str, StrLit("/"), MatchStr_RightSloppy))
         result = PathStyle_UnixAbsolute;
     else if ((str.size >= 2 && IsCharacter(str.str[0]) && str.str[1] == ':') &&
              (str.size == 2 || IsSlash(str.str[2])))
@@ -1934,7 +1947,7 @@ function u64 UTF8Length(String str)
 function u32 UTF8GetErr(String str, u64* index)
 {
     StringDecode decode = {0};
-    TempPointer(u64, index);
+    NilPtr(u64, index);
     
     Str8Stream(str, ptr, opl)
     {
@@ -1968,7 +1981,7 @@ function f64 F64FromStr(String str, b32* error)
 
 function u32 U32FromStr(String str, u32 radix, b32* error)
 {
-    TempBool(error);
+    NilB32(error);
     u64 result = U64FromStr(str, radix, error);
     if (result > MAX_U32)
         *error = 1;
@@ -1997,7 +2010,7 @@ function u64 U64FromStr(String str, u32 radix, b32* error)
         0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
     };
     
-    TempBool(error);
+    NilB32(error);
     u64 x = 0;
     
     if (str.size)
@@ -2021,7 +2034,7 @@ function u64 U64FromStr(String str, u32 radix, b32* error)
 
 function i32 I32FromStr(String str, u32 radix, b32* error)
 {
-    TempBool(error);
+    NilB32(error);
     i64 result = I64FromStr(str, radix, error);
     if (result > MAX_I32 || result < MIN_I32)
         *error = 1;
@@ -2030,7 +2043,7 @@ function i32 I32FromStr(String str, u32 radix, b32* error)
 
 function i64 I64FromStr(String str, u32 radix, b32* error)
 {
-    TempBool(error);
+    NilB32(error);
     i64 result = 0;
     
     if (str.size)
@@ -2058,9 +2071,9 @@ function String StrFromTime(Arena* arena, DateTime time)
 function String StrFromArg(char* arg, b32* isArg, String* argValue)
 {
     String result = StrFromCStr(arg);
-    TempBool(isArg);
-    TempPointer(String, argValue);
-    *argValue = (String){0};
+    NilB32(isArg);
+    NilPtr(String, argValue);
+    *argValue = ZeroStr;
     
     if (result.size > 1)
     {
@@ -2196,7 +2209,7 @@ function String StrCEscape(Arena* arena, String str)
 
 function i64 I64FromStrC(String str, b32* error)
 {
-    TempBool(error);
+    NilB32(error);
     i64 result = 0;
     
     if (str.size)
@@ -2636,7 +2649,7 @@ BeforeMain(BaseInit)
         }
         
         if (ALWAYS(size))
-            win32BinaryPath = StrCopy(win32PermArena, StrChopAfter(Str(buffer, size), StrLit("/\\"), FindStr_LastMatch));
+            win32BinaryPath = StrCopy(win32PermArena, StrChopAfter(Str(buffer, size), StrLit("/\\"), MatchStr_LastMatch));
     }
     
     //- Setup user path

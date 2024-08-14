@@ -22,13 +22,16 @@ typedef union r1u64 Rng1U64;
 typedef String String8;
 typedef StringList String8List;
 
-typedef u32 StringMatchFlags;
 enum
 {
-    StringMatchFlag_CaseInsensitive  = (1 << 0),
-    StringMatchFlag_RightSideSloppy  = (1 << 1),
-    StringMatchFlag_SlashInsensitive = (1 << 2),
+    StringMatchFlags_CaseInsensitive  = (1 << 0),
+    StringMatchFlags_SlashInsensitive = (1 << 1),
+    StringMatchFlags_RightSideSloppy  = (1 << 2),
 };
+
+StaticAssert(StringMatchFlags_CaseInsensitive  == MatchStr_IgnoreCase , CheckStringMatchFlags);
+StaticAssert(StringMatchFlags_SlashInsensitive == MatchStr_IgnoreSlash, CheckStringMatchFlags);
+StaticAssert(StringMatchFlags_RightSideSloppy  == MatchStr_RightSloppy, CheckStringMatchFlags);
 
 #define str8_lit StrLit
 #define push_str8fv StrPushfv

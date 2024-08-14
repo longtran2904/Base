@@ -61,20 +61,19 @@ function void AdvanceChars(Lexer* lexer, u32 advance)
     Refill(lexer, str);
 }
 
-typedef u32 StringMatchFlags;
 enum
 {
-    StringMatchFlag_NoCase = 1 << 0,
-    StringMatchFlag_NotEqual = 1 << 1,
-    StringMatchFlag_Inclusive = 1 << 2,
+    StringMatchFlags_NoCase = 1 << 0,
+    StringMatchFlags_NotEqual = 1 << 1,
+    StringMatchFlags_Inclusive = 1 << 2,
 };
 
 function String SkipStrUntil(String str, String characters, StringMatchFlags flags)
 {
     b32 result = false;
-    b32 noCase = flags & StringMatchFlag_NoCase;
-    b32 equal = !!!(flags & StringMatchFlag_NotEqual);
-    b32 inclusive = flags & StringMatchFlag_Inclusive;
+    b32 noCase = flags & StringMatchFlags_NoCase;
+    b32 equal = !!!(flags & StringMatchFlags_NotEqual);
+    b32 inclusive = flags & StringMatchFlags_Inclusive;
     
     u64 size;
     for (size = 0; size < str.size; ++size)
@@ -130,7 +129,7 @@ function Token PeekToken(Lexer* lexer)
 
 function Token GetToken(Lexer* lexer)
 {
-    AdvanceUntil(lexer, StrLit(" \t\n\r\f\v"), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
+    AdvanceUntil(lexer, StrLit(" \t\n\r\f\v"), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
     
     Token result = {
         .type = MetaTokenType_Unknow,
@@ -219,7 +218,7 @@ function Token GetToken(Lexer* lexer)
             if (lexer->at[0] == '/')
             {
                 result.type = MetaTokenType_Comment;
-                AdvanceUntil(lexer, StrLit("\n"), StringMatchFlag_Inclusive);
+                AdvanceUntil(lexer, StrLit("\n"), StringMatchFlags_Inclusive);
             }
             else if (lexer->at[0] == '*')
             {
@@ -249,20 +248,20 @@ function Token GetToken(Lexer* lexer)
                     {
                         // NOTE: hexadecimal constant
                         AdvanceChars(lexer, 1);
-                        AdvanceUntil(lexer, StrLit(Stringify(HexadecimalDigits)), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
+                        AdvanceUntil(lexer, StrLit(Stringify(HexadecimalDigits)), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
 #if COMPILER_CL
                     else if (ChrCompareNoCase(lexer->at[0], 'b'))
                     {
                         // NOTE: MSVC's binary extension
                         AdvanceChars(lexer, 1);
-                        AdvanceUntil(lexer, StrLit(Stringify(Binary)), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
+                        AdvanceUntil(lexer, StrLit(Stringify(Binary)), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
 #endif
                     else
                     {
                         // NOTE: octal constant
-                        AdvanceUntil(lexer, StrLit(Stringify(OctalDigits)), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
+                        AdvanceUntil(lexer, StrLit(Stringify(OctalDigits)), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
                     goto INTEGER_SUFFIX;
                 }
@@ -270,7 +269,7 @@ function Token GetToken(Lexer* lexer)
                 else
                 {
                     // NOTE: decimal constant
-                    AdvanceUntil(lexer, StrLit(Stringify(Digits)), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
+                    AdvanceUntil(lexer, StrLit(Stringify(Digits)), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     
                     b32 isFloat = false;
                     if (ChrCompare(lexer->at[0], '.', 0))
@@ -278,7 +277,7 @@ function Token GetToken(Lexer* lexer)
                         FLOATING_CONSTANT:
                         isFloat = true;
                         AdvanceChars(lexer, 1);
-                        AdvanceUntil(lexer, StrLit(Stringify(Digits)), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
+                        AdvanceUntil(lexer, StrLit(Stringify(Digits)), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
                     
                     if (ChrCompareNoCase(lexer->at[0], 'e'))
@@ -291,12 +290,12 @@ function Token GetToken(Lexer* lexer)
                     if (isFloat)
                     {
                         result.type = MetaTokenType_Constant_Float;
-                        AdvanceUntil(lexer, StrLit(Stringify(Concat(Digits, fl))), StringMatchFlag_NoCase|StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
+                        AdvanceUntil(lexer, StrLit(Stringify(Concat(Digits, fl))), StringMatchFlags_NoCase|StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
                     else
                     {
                         INTEGER_SUFFIX:
-                        AdvanceUntil(lexer, StrLit("uli64"), StringMatchFlag_NoCase|StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
+                        AdvanceUntil(lexer, StrLit("uli64"), StringMatchFlags_NoCase|StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
                 }
                 
@@ -305,7 +304,7 @@ function Token GetToken(Lexer* lexer)
             {
                 // TODO: Handle keyword
                 result.type = ParseKeyword(lexer);
-                AdvanceUntil(lexer, StrLit(Digits Characters "_"), StringMatchFlag_NotEqual|StringMatchFlag_Inclusive);
+                AdvanceUntil(lexer, StrLit(Digits Characters "_"), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
             }
             else
             {

@@ -921,7 +921,7 @@ int main(void)
             if (iter.props.flags & FilePropertyFlag_IsFolder)
                 TestResult(!StrContainsChr(iter.name, ".\\/"));
             else
-                TestResult(StrCompareList(StrSkipUntil(iter.name, StrLit("."), FindStr_LastMatch), &exts, 0));
+                TestResult(StrCompareList(StrSkipUntil(iter.name, StrLit("."), MatchStr_LastMatch), &exts, 0));
         }
         
         String txt = StrListPop(&exts);
@@ -929,7 +929,7 @@ int main(void)
         
         FileIterBlock(arena, iter, StrLit("code\\dependencies\\md"))
         {
-            String ext = StrSkipUntil(iter.name, StrLit("."), FindStr_LastMatch);
+            String ext = StrSkipUntil(iter.name, StrLit("."), MatchStr_LastMatch);
             TestResult(StrCompareList(ext, &exts, 0) && !StrCompare(ext, txt, 0));
             TestResult(StrCompareList(iter.name, &names, 0) &&
                        iter.props.modifyTime >= iter.props.createTime && !(iter.props.flags & FilePropertyFlag_IsFolder));

@@ -441,7 +441,7 @@ function void MG_TableExpandStr(Arena* arena, MG_Expr* expr, MG_TableExpandTask*
                     {
                         // long: lookup using the member's identifier
                         if (right->flags & (MD_NodeFlag_Identifier|MD_NodeFlag_StringLiteral))
-                            StrFindList(member, &table->members, 0, &memberPos);
+                            StrCompareListEx(member, &table->members, 0, 0, &memberPos);
                         
                         if (ALWAYS(0 <= memberPos && memberPos < table->members.nodeCount))
                         {
@@ -478,7 +478,7 @@ function void MG_TableExpandStr(Arena* arena, MG_Expr* expr, MG_TableExpandTask*
                             result = StrToLower(scratch, result);
                         else
                         {
-                            StringList* matches = &(StringList){0};
+                            StringList* matches = &ZeroList;
                             for (MD_EachNode(tagArg, tag->first))
                                 StrListPush(scratch, matches, tagArg->string);
                             
@@ -509,7 +509,7 @@ function void MG_TableExpandStr(Arena* arena, MG_Expr* expr, MG_TableExpandTask*
                             result = StrToUpper(scratch, result);
                         else
                         {
-                            StringList* matches = &(StringList){0};
+                            StringList* matches = &ZeroList;
                             for (MD_EachNode(tagArg, tag->first))
                                 StrListPush(scratch, matches, tagArg->string);
                             

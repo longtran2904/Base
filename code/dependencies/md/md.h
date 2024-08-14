@@ -519,9 +519,9 @@ enum
 };
 enum
 {
-    MD_StringMatchFlag_CaseInsensitive  = (1<<4),
-    MD_StringMatchFlag_RightSideSloppy  = (1<<5),
-    MD_StringMatchFlag_SlashInsensitive = (1<<6),
+    MD_StringMatchFlags_CaseInsensitive  = (1<<4),
+    MD_StringMatchFlags_RightSideSloppy  = (1<<5),
+    MD_StringMatchFlags_SlashInsensitive = (1<<6),
 };
 enum
 {

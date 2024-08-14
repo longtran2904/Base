@@ -5,36 +5,49 @@
 #include "Metagen.h"
 #include "Metagen.c"
 
+typedef enum MG_GenType MG_GenType;
+enum MG_GenType
+{
+    MG_Gen_Null,
+    
+    MG_Gen_Enum,
+    MG_Gen_Union,
+    MG_Gen_Struct,
+    
+    MG_Gen_Text,
+    MG_Gen_Embed,
+    MG_Gen_Table,
+    
+    MG_Gen_Function,
+    MG_Gen_All,
+    
+    MG_Gen_COUNT,
+};
+
 i32 main(i32 argc, char** argv)
 {
     OSSetArgs(argc, argv);
     
-    //////////////////////////////
     //- long: set up state
-    //
     StringList messages = {0};
     Arena* arena = ArenaMake();
-    //MG_State* state = PushStruct(arena, MG_State);
-    
-    /*StringList enums = {0}, unions = {0}, structs = {0};
-    StringList h_functions = {0}, h_tables = {0}, h_catchall = {0};
-    StringList c_functions = {0}, c_tables = {0}, c_catchall = {0};*/
-    
-#define MG_ZeroList &(StringList){0}
-    
-    StringList* hLists[MG_Gen_COUNT] = { MG_ZeroList,
-        MG_ZeroList, MG_ZeroList, MG_ZeroList,
-        MG_ZeroList, MG_ZeroList, MG_ZeroList,
-        MG_ZeroList, MG_ZeroList, };
-    StringList* cLists[MG_Gen_COUNT] = { MG_ZeroList,
-        MG_ZeroList, MG_ZeroList, MG_ZeroList,
-        MG_ZeroList, MG_ZeroList, MG_ZeroList,
-        MG_ZeroList, MG_ZeroList, };
     u64 counts[MG_Gen_COUNT] = {0};
     
-    //////////////////////////////
+    StringList* hLists[MG_Gen_COUNT] =
+    {
+        &ZeroList, &ZeroList, &ZeroList,
+        &ZeroList, &ZeroList, &ZeroList,
+        &ZeroList, &ZeroList, &ZeroList,
+    };
+    
+    StringList* cLists[MG_Gen_COUNT] =
+    {
+        &ZeroList, &ZeroList, &ZeroList,
+        &ZeroList, &ZeroList, &ZeroList,
+        &ZeroList, &ZeroList, &ZeroList,
+    };
+    
     //- long: search and parse metadesk files
-    //
     MG_NodeList parses = {0};
     String projectDir = StrChopLastSlash(OSGetExeDir());
     String codeDir    = StrPushf(arena, "%.*s\\code", StrExpand(projectDir));
@@ -75,9 +88,7 @@ i32 main(i32 argc, char** argv)
         }
     }
     
-    //////////////////////////////
     //- long: gather tables
-    //
     MG_Map tableMap = MG_PushMap(arena, 1024);
     u64 tableCount = 0;
     DeferBlock(Outf("gathering tables..."), Outf(" %llu table(s) found\n", tableCount))
@@ -113,6 +124,38 @@ i32 main(i32 argc, char** argv)
                 MG_GenType type = 0;
                 StringList* out = 0;
                 
+                local const char* genFmt[MG_Gen_COUNT] =
+                {
+                    0,
+                    0, "%.*s;\n", "%.*s;\n", // enum, union, and struct
+                    0,         0, "%.*s,\n", // text, embed, and table
+                    0,             "%.*s\n", // function and catch-all
+                };
+                
+                local const String genFooter[MG_Gen_COUNT] =
+                {
+                    StrConst(""),
+                    StrConst("};\n\n"), StrConst("};\n\n"), StrConst("};\n\n"), // enum, union, and struct
+                    StrConst(      ""), StrConst(      ""), StrConst("};\n\n"), // text, embed, and table
+                    StrConst(""),                           StrConst(    "\n"), // function and catch-all
+                };
+                
+                local const String mg_tagNames[] =
+                {
+                    StrConst(""),
+                    StrConst("enum"), StrConst("union"), StrConst("struct"),
+                    StrConst("text"), StrConst("embed"), StrConst("data"),
+                    StrConst(    ""), StrConst("gen"),
+                };
+                
+                local const String mg_genArg[] =
+                {
+                    StrConst(""),
+                    StrConst("enums"), StrConst("unions"), StrConst("structs"),
+                    StrConst(     ""), StrConst(      ""), StrConst("tables"),
+                    StrConst("functions"), StrConst(""),
+                };
+                
                 for (; type < MG_Gen_COUNT; ++type)
                 {
                     if (StrCompare(mg_tagNames[type], tag->string, 0))
@@ -140,14 +183,13 @@ i32 main(i32 argc, char** argv)
                 
                 if (!out) continue;
                 
-#define MG_StrExpand3(str) StrExpand(str), StrExpand(str), StrExpand(str)
-#define MG_StrListPushTypedef(arena, list, base, name) \
-    StrListPushf(arena, list, "typedef " base " %.*s %.*s\n" base " %.*s\n{\n", MG_StrExpand3(name))
+#define StrExpand3(str) StrExpand(str), StrExpand(str), StrExpand(str)
+#define CGlobalStr "readonly global "
+#define CTypedefStr(base) "typedef " base "%.*s %.*s;\n"
+#define StrListPushTypedef(base) StrListPushf(arena, out, CTypedefStr(base " ") base " %.*s\n{\n", StrExpand3(name))
                 
                 switch (type)
                 {
-                    default: break;
-                    
                     case MG_Gen_Enum:
                     {
                         String prefix = name;
@@ -155,54 +197,21 @@ i32 main(i32 argc, char** argv)
                             prefix = StrChop(name, 1);
                         
                         if (tagArg.size == 0)
-                            MG_StrListPushTypedef(arena, out, "enum", name);
+                            StrListPushTypedef("enum");
                         else
-                            StrListPushf(arena, out, "typedef %.*s %.*s;\nenum\n{\n",
-                                         StrExpand(tagArg), StrExpand(name));
+                            StrListPushf(arena, out, CTypedefStr("") "enum\n{\n", StrExpand(tagArg), StrExpand(name));
                         
                         for (StringNode* genNode = genList.first; genNode != 0; genNode = genNode->next)
                         {
                             String escaped = StrCEscape(arena, genNode->string);
                             StrListPushf(arena, out, "%.*s_%.*s,\n", StrExpand(prefix), StrExpand(escaped));
                         }
-                        StrListPush(arena, out, StrLit("};\n\n"));
                     } break;
                     
-                    case MG_Gen_Union:
-                    {
-                        MG_StrListPushTypedef(arena, out, "union", name);
-                        for (StringNode* genNode = genList.first; genNode != 0; genNode = genNode->next)
-                        {
-                            String escaped = StrCEscape(arena, genNode->string);
-                            StrListPushf(arena, out, "%.*s;\n", StrExpand(escaped));
-                        }
-                        StrListPush(arena, out, StrLit("};\n\n"));
-                    } break;
-                    
-                    case MG_Gen_Struct:
-                    {
-                        MG_StrListPushTypedef(arena, out, "struct", name);
-                        for (StringNode* genNode = genList.first; genNode != 0; genNode = genNode->next)
-                        {
-                            String escaped = StrCEscape(arena, genNode->string);
-                            StrListPushf(arena, out, "%.*s;\n", StrExpand(escaped));
-                        }
-                        StrListPush(arena, out, StrLit("};\n\n"));
-                    } break;
-                    
-                    case MG_Gen_Table:
-                    {
-                        StrListPushf(arena, out, "%.*s %.*s[%I64u] =\n{\n",
-                                     StrExpand(tagArg), StrExpand(node->string), genList.nodeCount);
-                        
-                        for (StringNode* genNode = genList.first; genNode != 0; genNode = genNode->next)
-                        {
-                            String escaped = StrCEscape(arena, genNode->string);
-                            StrListPushf(arena, out, "%.*s,\n", StrExpand(escaped));
-                        }
-                        
-                        StrListPush(arena, out, StrLit("};\n\n"));
-                    } break;
+                    case MG_Gen_Union:  StrListPushTypedef( "union"); break;
+                    case MG_Gen_Struct: StrListPushTypedef("struct"); break;
+                    case MG_Gen_Table:  StrListPushf(arena, out, CGlobalStr "%.*s %.*s[] =\n{\n",
+                                                     StrExpand(tagArg), StrExpand(name)); break;
                     
                     case MG_Gen_Text:
                     {
@@ -216,158 +225,41 @@ i32 main(i32 argc, char** argv)
                         String data = OSReadFile(arena, node->first->string, 1);
                         String embed = MG_ArrCFromData(arena, data);
                         StrListPushf(arena, out,
-                                     "readonly global u8 %.*s__data[] =\n{\n%.*s};\n\n"
-                                     "readonly global String %.*s = {%.*s__data, sizeof(%.*s__data)};\n",
-                                     StrExpand(name), StrExpand(embed), MG_StrExpand3(name));
+                                     CGlobalStr "u8 %.*s__data[] =\n{\n%.*s};\n\n"
+                                     CGlobalStr "String %.*s = {%.*s__data, sizeof(%.*s__data)};\n\n",
+                                     StrExpand(name), StrExpand(embed), StrExpand3(name));
                     } break;
                     
-                    case MG_Gen_Function:
-                    {
-                        PANIC("Not Implemented");
-                    } break;
-                    
-                    case MG_Gen_All:
-                    {
-                        for (StringNode* genNode = genList.first; genNode != 0; genNode = genNode->next)
-                        {
-                            String trimmed = StrTrimWspace(genNode->string);
-                            String escaped = StrCEscape(arena, trimmed);
-                            StrListPushf(arena, out, "%.*s\n", StrExpand(escaped));
-                        }
-                        
-                        StrListPush(arena, out, StrLit("\n"));
-                    } break;
+                    case MG_Gen_Function: PANIC("Not Implemented"); break;
+                    case MG_Gen_All: break;
+                    default: PANIC("Unreachable"); break;
                 }
                 
-#if 0
-                //- long: generate enums
-                if (StrCompare(tag->string, StrLit("enum"), 0))
+                if (genFmt[type])
                 {
-                    String prefix = name;
-                    if (StrCompare(StrPostfix(name, 5), StrLit("Flags"), 0))
-                        prefix = StrChop(name, 1);
-                    
-                    String baseType = tag->first->string;
-                    if (baseType.size == 0)
-                        StrListPushf(arena, &state->enums, "typedef enum %.*s %.*s\nenum %.*s\n{\n",
-                                     StrExpand(name), StrExpand(name), StrExpand(name));
-                    else
-                        StrListPushf(arena, &state->enums, "typedef %.*s %.*s;\nenum\n{\n",
-                                     StrExpand(baseType), StrExpand(name));
-                    
-                    for (StringNode* genNode = genList.first; genNode != 0; genNode = genNode->next)
-                    {
-                        String escaped = StrCEscape(arena, genNode->string);
-                        StrListPushf(arena, footer, "%.*s_%.*s,\n", StrExpand(prefix), StrExpand(escaped));
-                    }
-                    
-                    StrListPush(arena, footer, StrLit("};\n\n"));
-                }
-                
-                //- long: generate structs
-                else if (StrCompare(tag->string, StrLit("struct"), 0))
-                {
-                    footer = &state->structs;
-                    StrListPushf(arena, &state->structs, "typedef struct %.*s %.*s;\nstruct %.*s\n{\n",
-                                 StrExpand(node->string), StrExpand(node->string), StrExpand(node->string));
-                    
-                    for (StringNode* genNode = genList.first; genNode != 0; genNode = genNode->next)
-                    {
-                        String escaped = StrCEscape(arena, genNode->string);
-                        StrListPushf(arena, footer, "%.*s;\n", StrExpand(escaped));
-                    }
-                    
-                    StrListPush(arena, footer, StrLit("};\n\n"));
-                }
-                
-                //- long: generate unions
-                else if (StrCompare(tag->string, StrLit("union"), 0))
-                {
-                    footer = &state->structs;
-                    StrListPushf(arena, &state->structs, "typedef union %.*s %.*s;\nunion %.*s\n{\n",
-                                 StrExpand(node->string), StrExpand(node->string), StrExpand(node->string));
-                    
-                    for (StringNode* genNode = genList.first; genNode != 0; genNode = genNode->next)
-                    {
-                        String escaped = StrCEscape(arena, genNode->string);
-                        StrListPushf(arena, footer, "%.*s;\n", StrExpand(escaped));
-                    }
-                    
-                    StrListPush(arena, footer, StrLit("};\n\n"));
-                }
-                
-                //- long: generate data tables
-                else if (StrCompare(tag->string, StrLit("data"), 0))
-                {
-                    footer = &state->c_tables;
-                    String baseType = tag->first->string;
-                    if (!md_node_has_tag(node, StrLit("c_file"), 0))
-                        StrListPushf(arena, &state->h_tables, "extern %.*s %.*s[%I64u];\n",
-                                     StrExpand(baseType), StrExpand(node->string), genList.nodeCount);
-                    
-                    StrListPushf(arena, &state->c_tables, "%.*s %.*s[%I64u] =\n{\n",
-                                 StrExpand(baseType), StrExpand(node->string), genList.nodeCount);
-                    
-                    for (StringNode* genNode = genList.first; genNode != 0; genNode = genNode->next)
-                    {
-                        String escaped = StrCEscape(arena, genNode->string);
-                        StrListPushf(arena, footer, "%.*s,\n", StrExpand(escaped));
-                    }
-                    
-                    StrListPush(arena, footer, StrLit("};\n\n"));
-                }
-                
-                //- long: generate catch-all generations
-                else if (StrCompare(tag->string, StrLit("gen"), 0))
-                {
-                    b32 fileC = md_node_has_tag(node, StrLit("c_file"), 0);
-                    StringList* out = fileC ? &state->c_catchall : &state->h_catchall;
-                    
-                    if (tag->first->string.size == 0) { }
-                    else if (StrCompare(tag->first->string, StrLit(    "enums"), 0)) out = &state->enums;
-                    else if (StrCompare(tag->first->string, StrLit(  "structs"), 0)) out = &state->structs;
-                    else if (StrCompare(tag->first->string, StrLit(   "tables"), 0)) out = fileC ? &state->   c_tables : &state->   h_tables;
-                    else if (StrCompare(tag->first->string, StrLit("functions"), 0)) out = fileC ? &state->c_functions : &state->h_functions;
-                    
                     for (StringNode* genNode = genList.first; genNode != 0; genNode = genNode->next)
                     {
                         String trimmed = StrTrimWspace(genNode->string);
                         String escaped = StrCEscape(arena, trimmed);
-                        StrListPushf(arena, out, "%.*s\n", StrExpand(escaped));
+                        StrListPushf(arena, out, genFmt[type], StrExpand(escaped));
                     }
-                    
-                    StrListPush(arena, out, StrLit("\n\n"));
                 }
                 
-                //- long: generate text embeds
-                else if (md_node_has_tag(node, StrLit("text"), 0))
-                {
-                    String embed = MG_StrCFromMultiLine(arena, node->first->string);
-                    StrListPushf(arena, &state->h_tables, "readonly global String %.*s = StrConst\n(%.*s);\n\n",
-                                 StrExpand(node->string), StrExpand(embed));
-                }
+                if (genFooter[type].size)
+                    StrListPush(arena, out, genFooter[type]);
                 
-                //- long: generate file embeds
-                else if (md_node_has_tag(node, StrLit("embed"), 0))
-                {
-                    String data = OSReadFile(arena, node->first->string, 1);
-                    String embed = MG_ArrCFromData(arena, data);
-                    StrListPushf(arena, &state->h_tables,
-                                 "readonly global u8 %.*s__data[] =\n{\n%.*s};\n\n"
-                                 "readonly global String %.*s = {%.*s__data, sizeof(%.*s__data)};\n",
-                                 StrExpand(node->string), StrExpand(embed),
-                                 StrExpand(node->string), StrExpand(node->string), StrExpand(node->string));
-                }
-#endif
+#undef StrExpand3
+#undef CGlobalStr
+#undef CTypedefStr
+#undef StrListPushTypedef
             }
         }
     }
-    /*Outf("[%llu enums, %llu structs, %llu tables] generated\n",
-    state->enums.nodeCount, state->structs.nodeCount, state->h_tables.nodeCount + state->c_tables.nodeCount);*/
-    Outf("[%llu enums, %llu types, %llu globals, %llu functions, %llu generators] generated\n",
-         counts[MG_Gen_Enum], counts[MG_Gen_Union] + counts[MG_Gen_Struct],
+    
+    Outf("[%llu types, %llu arrays, %llu generators] generated\n",
+         counts[MG_Gen_Enum] + counts[MG_Gen_Union] + counts[MG_Gen_Struct],
          counts[MG_Gen_Text] + counts[MG_Gen_Embed] + counts[MG_Gen_Table],
-         counts[MG_Gen_Function] + counts[MG_Gen_Text]);
+         counts[MG_Gen_Function] + counts[MG_Gen_All]);
     
     //- long: write code to files
     b32 success = 0;
@@ -391,11 +283,9 @@ i32 main(i32 argc, char** argv)
                 cData = StrListJoin(arena, cLists, ArrayCount(cLists), .pre = "//- GENERATED C CODE\n\n");
             }
             
-            if (hData.size)
-                success  = OSWriteFile(hPath, hData);
-            
-            if (cData.size)
-                success &= OSWriteFile(cPath, cData);
+            success = 1;
+            if (hData.size) success &= OSWriteFile(hPath, hData);
+            if (cData.size) success &= OSWriteFile(cPath, cData);
         }
     }
     

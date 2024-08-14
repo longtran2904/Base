@@ -963,17 +963,17 @@ MD_FUNCTION MD_b32
 MD_S8Match(MD_String8 a, MD_String8 b, MD_MatchFlags flags)
 {
     int result = 0;
-    if(a.size == b.size || flags & MD_StringMatchFlag_RightSideSloppy)
+    if(a.size == b.size || flags & MD_StringMatchFlags_RightSideSloppy)
     {
         result = 1;
         for(MD_u64 i = 0; i < a.size && i < b.size; i += 1)
         {
             MD_b32 match = (a.str[i] == b.str[i]);
-            if(flags & MD_StringMatchFlag_CaseInsensitive)
+            if(flags & MD_StringMatchFlags_CaseInsensitive)
             {
                 match |= (MD_CharToLower(a.str[i]) == MD_CharToLower(b.str[i]));
             }
-            if(flags & MD_StringMatchFlag_SlashInsensitive)
+            if(flags & MD_StringMatchFlags_SlashInsensitive)
             {
                 match |= (MD_CharToForwardSlash(a.str[i]) == MD_CharToForwardSlash(b.str[i]));
             }
@@ -1581,7 +1581,7 @@ MD_FUNCTION MD_String8
 MD_PathSkipLastSlash(MD_String8 string)
 {
     MD_u64 slash_pos = MD_S8FindSubstring(string, MD_S8Lit("/"), 0,
-                                          MD_StringMatchFlag_SlashInsensitive|
+                                          MD_StringMatchFlags_SlashInsensitive|
                                           MD_MatchFlag_FindLast);
     if(slash_pos < string.size)
     {
@@ -1607,7 +1607,7 @@ MD_FUNCTION MD_String8
 MD_PathChopLastSlash(MD_String8 string)
 {
     MD_u64 slash_pos = MD_S8FindSubstring(string, MD_S8Lit("/"), 0,
-                                          MD_StringMatchFlag_SlashInsensitive|
+                                          MD_StringMatchFlags_SlashInsensitive|
                                           MD_MatchFlag_FindLast);
     if(slash_pos < string.size)
     {

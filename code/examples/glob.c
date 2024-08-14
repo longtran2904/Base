@@ -85,7 +85,7 @@ function Flags32 GetGlobError(String pattern)
 function b32 glob(String pattern, String text, Flags32* error)
 {
     b32 result = 0;
-    TempPointer(Flags32, error);
+    NilPtr(Flags32, error);
     
     u64 textIndex = 0, patternIndex = 0;
     while (patternIndex < pattern.size && textIndex < text.size)
@@ -284,7 +284,7 @@ void main(i32 argc, char** argv)
                     arg = StrChop(arg, 1);
                 
                 if (StrCompare(arg, StrLit(".."), 0))
-                    arg = StrChopAfter(OSGetCurrDir(scratch), StrLit("\\"), FindStr_LastMatch);
+                    arg = StrChopAfter(OSGetCurrDir(scratch), StrLit("\\"), MatchStr_LastMatch);
                 if (!arg.size || StrIsChr(arg, '.'))
                     arg = OSGetCurrDir(scratch);
                 

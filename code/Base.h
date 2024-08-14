@@ -7,7 +7,7 @@
 // [ ] Custom printf format
 // [ ] Support for custom data structures
 // [ ] Command line interface
-// [ ] Property testing
+// [ ] Property-based testing
 
 //~/////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -108,17 +108,25 @@
 #if COMPILER_CL
 #if defined(_M_AMD64)
 #define ARCH_X64 1
-#elif defined(_M_I68)
+#elif defined(_M_IX86)
+// NOTE(long): _M_I86 is for 16-bit, while _M_IX86 is for 32-bit (some source said it is for _both_ 16 and 32 bits)
 #define ARCH_X86 1
 #elif defined(_M_ARM)
 #define ARCH_ARM 1
-#else // TODO(long): ARM64
+#elif defined(_M_ARM64) || defined(_M_ARM64EC)
+#define ARCH_ARM64 1
+#else
 #error Missing ARCH detection
+#endif
+
+#if (defined(_M_AMD64) != defined(_M_X64))
+// https://stackoverflow.com/a/42591836
+#error But the docs said _M_AMD64 and _M_X64 are equivalent
 #endif
 
 // NOTE(long): While GCC and Clang have predefined macros for SSE, MSVC doesn't
 // https://stackoverflow.com/questions/18563978/detect-the-availability-of-sse-sse2-instruction-set-in-visual-studio
-#if (defined(_M_AMD64) || defined(_M_X64))
+#if ARCH_X64
 #define __SSE2__ //SSE2 x64
 #elif _M_IX86_FP == 2
 #define __SSE2__ //SSE2 x32
@@ -337,6 +345,8 @@
 #define DEBUG(x, ...) Stmnt(__VA_ARGS__; UNUSED(x))
 #define DebugReturn() Stmnt(if (0) return)
 
+// TODO(long): Redesign DEBUG and DebugReturn. Add NotImplemented and Unreachable
+
 #ifndef ENABLE_ASSERT
 #define ENABLE_ASSERT 1
 #endif
@@ -361,8 +371,8 @@
 #define Concat(a, b) Concat_(a, b)
 #define UNIQUE(name) Concat(name, __LINE__)
 
-#define TempPointer(type, ptr) type UNIQUE(ptr) = {0}; if (!(ptr)) (ptr) = &UNIQUE(ptr);
-#define TempBool(ptr) TempPointer(b32, ptr)
+#define NilPtr(type, ptr) type UNIQUE(ptr) = {0}; if (!(ptr)) (ptr) = &UNIQUE(ptr);
+#define NilB32(ptr) NilPtr(b32, ptr)
 
 #define EnumCount(type) Concat(type, _Count)
 #define ArrayCount(a) (sizeof(a)/sizeof(*(a)))
@@ -1011,13 +1021,13 @@ struct StringJoin
     String post;
 };
 
-typedef u32 StringFindFlags;
+typedef u32 StringMatchFlags;
 enum
 {
-    FindStr_IgnoreCase  = 1 << 0,
-    FindStr_IgnoreSlash = 1 << 1,
-    FindStr_RightSloppy = 1 << 2,
-    FindStr_LastMatch   = 1 << 3,
+    MatchStr_IgnoreCase  = 1 << 0,
+    MatchStr_IgnoreSlash = 1 << 1,
+    MatchStr_RightSloppy = 1 << 2,
+    MatchStr_LastMatch   = 1 << 3,
     SplitStr_KeepEmpties = 1 << 4
 };
 
@@ -1055,8 +1065,8 @@ struct StringDecode
     u32 error;
 };
 
-#define StrListFirst(list) ((list)->first ? (list)->first->string : (String){0})
-#define  StrListLast(list) ((list)-> last ? (list)-> last->string : (String){0})
+#define StrListFirst(list) ((list)->first ? (list)->first->string : ZeroStr)
+#define  StrListLast(list) ((list)-> last ? (list)-> last->string : ZeroStr)
 
 #define StrListIter(list, name   ) for (StringNode* name = (list)->first; name; name = name->next)
 #define  Str8Stream(str, ptr, opl) for (u8  *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
@@ -1304,6 +1314,7 @@ function void      TempEnd(TempArena temp);
 //~ long: String Functions
 
 //- long: Constructor Functions
+#define ZeroStr ((String){0})
 #define Str(...) ((String){ __VA_ARGS__ })
 #define StrRange(first, opl) (String){ (first), (opl) - (first) }
 #define StrConst(s) { (u8*)(s), sizeof(s) - 1 }
@@ -1340,6 +1351,7 @@ function String StrFromFlags(Arena* arena, String* names, u64 nameCount, u64 fla
 #define GetFlagStr(arena, type, flags) StrFromFlags((arena), Concat(type, _names), ArrayCount(Concat(type, _names)), (flags))
 #define GetFlagName(arena, type, flags) GetFlagStr(arena, type, flags).str
 
+#define ZeroList ((StringList){0})
 function StringList StrList(Arena* arena, String* strArr, u64 count);
 
 // NOTE(long): IP stands for in place, which means the function will modify the passed-in pointer
@@ -1375,13 +1387,13 @@ function String StrJoinMax3(Arena* arena, StringJoin* join);
 function String StrListJoinArr(Arena* arena, StringList** lists, u64 count, StringJoin* join);
 #define StrListJoin(arena, lists, count, ...) StrListJoinArr(arena, lists, count, &(StringJoin){ .pre = {0}, __VA_ARGS__ })
 
-function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringFindFlags flags);
-function StringList StrSplitArr (Arena* arena, String str, String      splits, StringFindFlags flags);
-function StringList StrSplit    (Arena* arena, String str, String      split , StringFindFlags flags);
+function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringMatchFlags flags);
+function StringList StrSplitArr (Arena* arena, String str, String      splits, StringMatchFlags flags);
+function StringList StrSplit    (Arena* arena, String str, String      split , StringMatchFlags flags);
 
-function String StrReplaceList(Arena* arena, String str, StringList* oldStr, String newStr, StringFindFlags flags);
-function String StrReplaceArr (Arena* arena, String str, String      oldArr, String newStr, StringFindFlags flags);
-function String StrReplace    (Arena* arena, String str, String      oldStr, String newStr, StringFindFlags flags);
+function String StrReplaceList(Arena* arena, String str, StringList* oldStr, String newStr, StringMatchFlags flags);
+function String StrReplaceArr (Arena* arena, String str, String      oldArr, String newStr, StringMatchFlags flags);
+function String StrReplace    (Arena* arena, String str, String      oldStr, String newStr, StringMatchFlags flags);
 
 function String StrToLower(Arena* arena, String str);
 function String StrToUpper(Arena* arena, String str);
@@ -1390,18 +1402,18 @@ function void StrToLowerIP(String str);
 function void StrToUpperIP(String str);
 
 //- long: Comparision Functions
-function b32 ChrCompare(char a, char b, StringFindFlags flags); // IgnoreCase/Slash
-function b32 StrCompare(String a, String b, StringFindFlags flags); // RightSloppy
-function b32 ChrCompareArr(char chr, String arr, StringFindFlags flags);
-function b32 StrCompareList(String str, StringList* values, StringFindFlags falgs);
+function b32 ChrCompare(char a, char b, StringMatchFlags flags); // IgnoreCase/Slash
+function b32 StrCompare(String a, String b, StringMatchFlags flags); // RightSloppy
+function b32 ChrCompareArr(char chr, String arr, StringMatchFlags flags);
 function b32 StrIsWhitespace(String str); // Empty strings will return true
+function b32 StrCompareListEx(String str, StringList* values, StringMatchFlags flags, StringNode** outNode, u64* outIdx);
+#define StrCompareList(str, list, flags) StrCompareListEx(str, list, flags, 0, 0)
 
-function i64 StrFindStr(String str, String val, StringFindFlags flags);
-function i64 StrFindArr(String str, String arr, StringFindFlags flags);
-function StringNode* StrFindList(String str, StringList* list, StringFindFlags flags, u64* out);
+function i64 StrFindStr(String str, String val, StringMatchFlags flags);
+function i64 StrFindArr(String str, String arr, StringMatchFlags flags);
 
-function String StrChopAfter(String str, String arr, StringFindFlags flags);
-function String StrSkipUntil(String str, String arr, StringFindFlags flags);
+function String StrChopAfter(String str, String arr, StringMatchFlags flags);
+function String StrSkipUntil(String str, String arr, StringMatchFlags flags);
 
 #define ChrIsUpper(c) ((c) >= 'A' && (c) <= 'Z')
 #define ChrIsLower(c) ((c) >= 'a' && (c) <= 'z')
@@ -1427,19 +1439,19 @@ function String StrSkipUntil(String str, String arr, StringFindFlags flags);
 //- long: Path Helpers
 
 #if OS_WIN
-#define OSPathMatchFlags FindStr_IgnoreSlash|FindStr_IgnoreCase
+#define OSPathMatchFlags MatchStr_IgnoreSlash|MatchStr_IgnoreCase
 #else
-#define OSPathMatchFlags FindStr_IgnoreSlash
+#define OSPathMatchFlags MatchStr_IgnoreSlash
 #endif
 
-#define StrChopLastSlash(str) StrChopAfter((str), StrLit("/"), FindStr_LastMatch|FindStr_IgnoreSlash)
-#define StrSkipLastSlash(str) StrSkipUntil((str), StrLit("/"), FindStr_LastMatch|FindStr_IgnoreSlash)
-#define   StrChopLastDot(str) StrChopAfter((str), StrLit("."), FindStr_LastMatch)
-#define   StrSkipLastDot(str) StrSkipUntil((str), StrLit("."), FindStr_LastMatch)
+#define StrChopLastSlash(str) StrChopAfter((str), StrLit("/"), MatchStr_LastMatch|MatchStr_IgnoreSlash)
+#define StrSkipLastSlash(str) StrSkipUntil((str), StrLit("/"), MatchStr_LastMatch|MatchStr_IgnoreSlash)
+#define   StrChopLastDot(str) StrChopAfter((str), StrLit("."), MatchStr_LastMatch)
+#define   StrSkipLastDot(str) StrSkipUntil((str), StrLit("."), MatchStr_LastMatch)
 
 #define StrSplitPath(arena, str) StrSplitArr(arena, str, StrLit(SlashStr), 0)
 #define StrJoinPaths(arena, path, style) StrJoinList(arena, path, &(StringJoin){ .mid = StrLit("/"), \
-                                                         .pre = (style) == PathStyle_UnixAbsolute ? StrLit("/") : (String){0} })
+                                                         .pre = (style) == PathStyle_UnixAbsolute ? StrLit("/") : ZeroStr })
 
 function PathStyle PathStyleFromStr(String str);
 
