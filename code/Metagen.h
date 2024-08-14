@@ -46,7 +46,8 @@ struct MG_Map
 
 #define MG_PushMap(arena, cnt) ((MG_Map){ .slots = PushArray((arena), MG_MapSlot, (cnt)), .count = (cnt) })
 
-function void MG_MapInsert(Arena* arena, MG_Map* map, String string, void* val);
+function void* MG_MapPtrFromStr(MG_Map map, String str);
+function void  MG_MapInsert(Arena* arena, MG_Map map, String str, void* val);
 
 //~ long: Expression Types
 
@@ -95,22 +96,25 @@ typedef enum MG_ExprOpKind
 typedef struct MG_Expr MG_Expr;
 struct MG_Expr
 {
-    MG_Expr *parent;
-    MG_Expr *left;
-    MG_Expr *right;
+    MG_Expr* parent;
+    MG_Expr* left;
+    MG_Expr* right;
     MG_ExprOpKind op;
-    MD_Node *node;
+    MD_Node* node;
 };
 
 typedef struct MG_ExprResult MG_ExprResult;
 struct MG_ExprResult
 {
-    MG_Expr *root;
+    MG_Expr* root;
     MD_MsgList msgs;
-    MD_Node *next_node;
+    MD_Node* next;
 };
 
-readonly global MG_Expr mg_str_expr_nil = {&mg_str_expr_nil, &mg_str_expr_nil, &mg_str_expr_nil};
+function MG_Expr* MG_PushExpr(Arena* arena, MG_ExprOpKind op, MD_Node* node);
+function MG_ExprOpKind MG_ExprLookupOp(MD_Node* expr, MG_ExprKind lookup, i8 minPrec);
+function MG_ExprResult MG_ParseExpr(Arena* arena, MD_Node* first, MD_Node* opl, i8 minPrec);
+function MG_ExprResult MG_ParseExprFromRoot(Arena* arena, MD_Node* root);
 
 //~ long: Table Generation Types
 
@@ -121,53 +125,105 @@ struct MG_NodeArray
     u64 count;
 };
 
-typedef struct MG_NodeGrid MG_NodeGrid;
-struct MG_NodeGrid
+typedef struct MG_Table MG_Table;
+struct MG_Table
 {
-    MG_NodeArray cells, row_parents;
+    MG_NodeArray cells, rowParents;
+    StringList members;
 };
 
 typedef struct MG_TableExpandTask MG_TableExpandTask;
 struct MG_TableExpandTask
 {
     MG_TableExpandTask* next;
-    String expansion_label;
-    MG_NodeGrid* grid;
-    StringList column_descs;
+    String label;
+    MG_Table* table;
     u64 count;
     u64 idx;
 };
 
-typedef struct MG_TableExpandInfo MG_TableExpandInfo;
-struct MG_TableExpandInfo
-{
-    MG_TableExpandTask* first_expand_task;
-};
+#define MG_TableRowCount(table) ((table).rowParents.count)
+#define MG_TableColCount(table) ((table).cells.count / MG_TableRowCount(table))
 
-#define MG_GridRowCount(grid) ((grid).row_parents.count)
-#define MG_GridColCount(grid) ((grid).cells.count / MG_GridRowCount(grid))
+function MG_NodeArray MG_PushNodeArray(Arena* arena, u64 count);
+function MG_Table*        MG_PushTable(Arena* arena, MD_Node* node, MD_Node* tag);
 
-function StringList MG_StrListFromTable(Arena* arena, MG_Map grid_name_map, MG_Map grid_column_desc_map, MD_Node* gen);
-function StringList   MG_ColDescFromTag(Arena* arena, MD_Node* tag);
-function MG_NodeGrid    MG_GridFromNode(Arena* arena, MD_Node* node);
+function void         MG_TableExpandStr(Arena* arena, MG_Expr* expr, MG_TableExpandTask* task, StringList* out);
+function String     MG_StrFromExpansion(Arena* arena, MG_Expr* expr, MG_TableExpandTask* task);
+function i64      MG_TableExpandNumeric(MG_Expr* expr, MG_TableExpandTask* task);
+function void     MG_TableLoopExpansion(Arena* arena, String strexpr, MG_TableExpandTask* task, StringList* out);
+function StringList MG_StrListFromTable(Arena* arena, MG_Map tableMap, MD_Node* gen, String expandTag);
 
 //~ long: C-String Functions
 
-function String MG_StrCEscape(Arena* arena, String string);
-function String MG_StrCFromMultiLine(Arena* arena, String string);
+function String MG_StrCFromMultiLine(Arena* arena, String str);
 function String MG_ArrCFromData(Arena* arena, String data);
 
 //~ long: Main Output Path Types
+
+typedef enum MG_GenType MG_GenType;
+enum MG_GenType
+{
+    MG_Gen_Null,
+    
+    MG_Gen_Enum,
+    MG_Gen_Union,
+    MG_Gen_Struct,
+    
+    MG_Gen_Text,
+    MG_Gen_Embed,
+    MG_Gen_Table,
+    
+    MG_Gen_Function,
+    MG_Gen_All,
+    
+    MG_Gen_COUNT,
+};
+
+global String mg_tagNames[] =
+{
+    StrConst(""),
+    
+    StrConst("enum"),
+    StrConst("union"),
+    StrConst("struct"),
+    
+    StrConst("text"),
+    StrConst("embed"),
+    StrConst("data"),
+    
+    StrConst(""),
+    StrConst("gen"),
+};
+
+global String mg_genArg[] =
+{
+    StrConst(""),
+    
+    StrConst("enums"),
+    StrConst("unions"),
+    StrConst("structs"),
+    
+    StrConst(""),
+    StrConst(""),
+    StrConst("tables"),
+    
+    StrConst("functions"),
+    StrConst(""),
+};
 
 typedef struct MG_State MG_State;
 struct MG_State
 {
     StringList enums;
+    StringList unions;
     StringList structs;
     StringList h_functions;
     StringList h_tables;
+    StringList h_catchall;
     StringList c_functions;
     StringList c_tables;
+    StringList c_catchall;
 };
 
 #endif //_METAGEN_H

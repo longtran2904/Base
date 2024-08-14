@@ -96,7 +96,7 @@ del *.dll > NUL 2> NUL
 %compile% %opts% %warns% %code%\code\examples\test_base.c %out%test_base.exe %linker% %links%
 %compile% %opts% %warns% %code%\code\examples\demo_gfx.c  %out%demo_gfx.exe  %linker% %links%
 %compile% %opts% %warns% %code%\code\examples\demo.c      %out%demo.exe      %linker% %links%
-%compile% %opts% %warns% %code%\code\Metamain.c           %out%Metamain.exe  %linker% %links%
+%compile% %opts% %warns% %code%\code\Metamain.c           %out%metagen.exe  %linker% %links%
 %compile% %opts% %warns% %code%\code\examples\TestDLL.c   %out%TestDLL.dll %dll% %linker% %links%
 
 :: %compile% %opts% %warns% %code%\code\examples\glob.c      %linker% %link%

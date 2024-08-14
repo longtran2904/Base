@@ -494,8 +494,8 @@ int main(void)
             TestResult(list.nodeCount == 4 && list.totalSize == 4);
             TestResult(StrCompare(list.first->string, StrLit("A"), 0));
             TestResult(StrCompare(list.last ->string, StrLit("D"), 0));
-            TestResult(StrListCompare(StrLit("A"), &list, 0));
-            TestResult(StrListCompare(StrLit("D"), &list, 0));
+            TestResult(StrCompareList(StrLit("A"), &list, 0));
+            TestResult(StrCompareList(StrLit("D"), &list, 0));
             
             String last = StrListPop(&list);
             TestResult(list.nodeCount == 3 && list.totalSize == 3);
@@ -507,8 +507,8 @@ int main(void)
             TestResult(StrCompare(list.first->string, StrLit("B"), 0) && StrCompare(list.last->string, StrLit("C"), 0));
             TestResult(StrCompare(first, StrLit("A"), 0));
             
-            TestResult(!StrListCompare(StrLit("A"), &list, 0));
-            TestResult(!StrListCompare(StrLit("D"), &list, 0));
+            TestResult(!StrCompareList(StrLit("A"), &list, 0));
+            TestResult(!StrCompareList(StrLit("D"), &list, 0));
             
             list = StrList(arena, ArrayExpand(String, StrLit("Long"), StrLit("Minh"), StrLit("Lan")));
             TestResult(list.nodeCount == 3 && list.totalSize == StrLit("LongMinhLan").size);
@@ -538,14 +538,14 @@ int main(void)
         TestResult(I64FromStr(StrLit("4444000000000000002"), 8, 0) == 04444000000000000002);
         TestResult(I64FromStr(StrLit("4444000000000000004"), 8, 0) == 04444000000000000004);
         
-        TestResult(I64FromStr(StrLit(              "2a"), 16, 0) == 42);
-        TestResult(I64FromStr(StrLit(        "A0000024"), 16, 0) == 2684354596);
-        TestResult(I64FromStr(StrLit(        "20000022"), 16, 0) == 536870946);
-        TestResult(I64FromStr(StrLit(        "A0000021"), 16, 0) == 2684354593);
-        TestResult(I64FromStr(StrLit(  "8a000000000000"), 16, 0) == 38843546786070528);
-        TestResult(I64FromStr(StrLit("8A40000000000010"), 16, 0) == -8484781697966014448);
-        TestResult(I64FromStr(StrLit("4a44000000000020"), 16, 0) == 5351402257222991904);
-        TestResult(I64FromStr(StrLit("8a44000000000040"), 16, 0) == -8483655798059171776);
+        TestResult(I64FromStr(StrLit(               "2a"), 16, 0) == 42);
+        TestResult(I64FromStr(StrLit(         "A0000024"), 16, 0) == 2684354596);
+        TestResult(I64FromStr(StrLit(         "20000022"), 16, 0) == 536870946);
+        TestResult(I64FromStr(StrLit(         "A0000021"), 16, 0) == 2684354593);
+        TestResult(I64FromStr(StrLit(  "+8a000000000000"), 16, 0) == 38843546786070528);
+        TestResult(I64FromStr(StrLit("-75BFFFFFFFFFFFF0"), 16, 0) == -8484781697966014448);
+        TestResult(I64FromStr(StrLit("+4a44000000000020"), 16, 0) == 5351402257222991904);
+        TestResult(I64FromStr(StrLit("-75BBFFFFFFFFFFC0"), 16, 0) == -8483655798059171776);
         
         TestResult(I64FromStr(StrLit(       "10"), 2, 0) == 2);
         TestResult(I64FromStr(StrLit( "10000011"), 2, 0) == 131);
@@ -913,6 +913,7 @@ int main(void)
         StrListPush(arena, &exts, StrLit("c"));
         StrListPush(arena, &exts, StrLit("h"));
         StrListPush(arena, &exts, StrLit("txt"));
+        StrListPush(arena, &exts, StrLit("mdesk"));
         
         FileIterBlock(arena, iter, StrLit("code"))
         {
@@ -920,7 +921,7 @@ int main(void)
             if (iter.props.flags & FilePropertyFlag_IsFolder)
                 TestResult(!StrContainsChr(iter.name, ".\\/"));
             else
-                TestResult(StrListCompare(StrSkipUntil(iter.name, StrLit("."), FindStr_LastMatch), &exts, 0));
+                TestResult(StrCompareList(StrSkipUntil(iter.name, StrLit("."), FindStr_LastMatch), &exts, 0));
         }
         
         String txt = StrListPop(&exts);
@@ -929,8 +930,8 @@ int main(void)
         FileIterBlock(arena, iter, StrLit("code\\dependencies\\md"))
         {
             String ext = StrSkipUntil(iter.name, StrLit("."), FindStr_LastMatch);
-            TestResult(StrListCompare(ext, &exts, 0) && !StrCompare(ext, txt, 0));
-            TestResult(StrListCompare(iter.name, &names, 0) &&
+            TestResult(StrCompareList(ext, &exts, 0) && !StrCompare(ext, txt, 0));
+            TestResult(StrCompareList(iter.name, &names, 0) &&
                        iter.props.modifyTime >= iter.props.createTime && !(iter.props.flags & FilePropertyFlag_IsFolder));
         }
     }

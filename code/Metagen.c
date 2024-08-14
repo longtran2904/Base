@@ -1,15 +1,15 @@
 
 //~ long: Map Types
 
-internal void* MG_MapPtrFromStr(MG_Map* map, String string)
+function void* MG_MapPtrFromStr(MG_Map map, String str)
 {
     void* result = 0;
-    u64 hash = Hash64(string.str, string.size);
-    MG_MapSlot* slot = &map->slots[hash % map->count];
+    u64 hash = Hash64(str.str, str.size);
+    MG_MapSlot* slot = &map.slots[hash % map.count];
     
-    for (MG_MapNode* n = slot->first; n != 0; n = n->next)
+    for (MG_MapNode* n = slot->first; n; n = n->next)
     {
-        if (StrCompare(n->key, string, 0))
+        if (StrCompare(n->key, str, 0))
         {
             result = n->val;
             break;
@@ -19,69 +19,71 @@ internal void* MG_MapPtrFromStr(MG_Map* map, String string)
     return result;
 }
 
-function void MG_MapInsert(Arena* arena, MG_Map* map, String string, void* val)
+function void MG_MapInsert(Arena* arena, MG_Map map, String str, void* val)
 {
-    u64 hash = Hash64(string.str, string.size);
-    MG_MapSlot* slot = &map->slots[hash % map->count];
+    u64 hash = Hash64(str.str, str.size);
+    MG_MapSlot* slot = &map.slots[hash % map.count];
     MG_MapNode* node = PushStruct(arena, MG_MapNode);
-    node->key = StrCopy(arena, string);
+    node->key = StrCopy(arena, str);
     node->val = val;
     SLLQueuePush(slot->first, slot->last,node);
 }
 
-//~ long: Table Generation Types
+//~ long: Expression Parsing Functions
 
-readonly global String mg_str_expr_op_symbol_string_table[MG_ExprOpKind_COUNT] =
+readonly global MG_Expr mg_exprNil = {&mg_exprNil, &mg_exprNil, &mg_exprNil};
+
+readonly global String mg_exprSymbolTable[MG_ExprOpKind_COUNT] =
 {
     StrConst(  ""),
-    StrConst( "."), // MG_StrExprOp_Dot
-    StrConst("->"), // MG_StrExprOp_ExpandIfTrue
-    StrConst(".."), // MG_StrExprOp_Concat
-    StrConst("=>"), // MG_StrExprOp_BumpToColumn
-    StrConst( "+"), // MG_StrExprOp_Add
-    StrConst( "-"), // MG_StrExprOp_Subtract
-    StrConst( "*"), // MG_StrExprOp_Multiply
-    StrConst( "/"), // MG_StrExprOp_Divide
-    StrConst( "%"), // MG_StrExprOp_Modulo
-    StrConst("<<"), // MG_StrExprOp_LeftShift
-    StrConst(">>"), // MG_StrExprOp_RightShift
-    StrConst( "&"), // MG_StrExprOp_BitwiseAnd
-    StrConst( "|"), // MG_StrExprOp_BitwiseOr
-    StrConst( "^"), // MG_StrExprOp_BitwiseXor
-    StrConst( "~"), // MG_StrExprOp_BitwiseNegate
-    StrConst("&&"), // MG_StrExprOp_BooleanAnd
-    StrConst("||"), // MG_StrExprOp_BooleanOr
-    StrConst( "!"), // MG_StrExprOp_BooleanNot
-    StrConst("=="), // MG_StrExprOp_Equals
-    StrConst("!="), // MG_StrExprOp_DoesNotEqual
+    StrConst( "."), // MG_ExprOpKind_Dot
+    StrConst("->"), // MG_ExprOpKind_ExpandIfTrue
+    StrConst(".."), // MG_ExprOpKind_Concat
+    StrConst("=>"), // MG_ExprOpKind_BumpToColumn
+    StrConst( "+"), // MG_ExprOpKind_Add
+    StrConst( "-"), // MG_ExprOpKind_Subtract
+    StrConst( "*"), // MG_ExprOpKind_Multiply
+    StrConst( "/"), // MG_ExprOpKind_Divide
+    StrConst( "%"), // MG_ExprOpKind_Modulo
+    StrConst("<<"), // MG_ExprOpKind_LeftShift
+    StrConst(">>"), // MG_ExprOpKind_RightShift
+    StrConst( "&"), // MG_ExprOpKind_BitwiseAnd
+    StrConst( "|"), // MG_ExprOpKind_BitwiseOr
+    StrConst( "^"), // MG_ExprOpKind_BitwiseXor
+    StrConst( "~"), // MG_ExprOpKind_BitwiseNegate
+    StrConst("&&"), // MG_ExprOpKind_BooleanAnd
+    StrConst("||"), // MG_ExprOpKind_BooleanOr
+    StrConst( "!"), // MG_ExprOpKind_BooleanNot
+    StrConst("=="), // MG_ExprOpKind_Equals
+    StrConst("!="), // MG_ExprOpKind_DoesNotEqual
 };
 
-readonly global i8 mg_str_expr_op_precedence_table[MG_ExprOpKind_COUNT] =
+readonly global i8 mg_exprPrecedenceTable[MG_ExprOpKind_COUNT] =
 {
     0,
-    20, // MG_StrExprOp_Dot
-    1,  // MG_StrExprOp_ExpandIfTrue
-    2,  // MG_StrExprOp_Concat
-    12, // MG_StrExprOp_BumpToColumn
-    5,  // MG_StrExprOp_Add
-    5,  // MG_StrExprOp_Subtract
-    6,  // MG_StrExprOp_Multiply
-    6,  // MG_StrExprOp_Divide
-    6,  // MG_StrExprOp_Modulo
-    7,  // MG_StrExprOp_LeftShift
-    7,  // MG_StrExprOp_RightShift
-    8,  // MG_StrExprOp_BitwiseAnd
-    10, // MG_StrExprOp_BitwiseOr
-    9,  // MG_StrExprOp_BitwiseXor
-    11, // MG_StrExprOp_BitwiseNegate
-    3,  // MG_StrExprOp_BooleanAnd
-    3,  // MG_StrExprOp_BooleanOr
-    11, // MG_StrExprOp_BooleanNot
-    4,  // MG_StrExprOp_Equals
-    4,  // MG_StrExprOp_DoesNotEqual
+    20, // MG_ExprOpKind_Dot
+    1,  // MG_ExprOpKind_ExpandIfTrue
+    2,  // MG_ExprOpKind_Concat
+    12, // MG_ExprOpKind_BumpToColumn
+    5,  // MG_ExprOpKind_Add
+    5,  // MG_ExprOpKind_Subtract
+    6,  // MG_ExprOpKind_Multiply
+    6,  // MG_ExprOpKind_Divide
+    6,  // MG_ExprOpKind_Modulo
+    7,  // MG_ExprOpKind_LeftShift
+    7,  // MG_ExprOpKind_RightShift
+    8,  // MG_ExprOpKind_BitwiseAnd
+    10, // MG_ExprOpKind_BitwiseOr
+    9,  // MG_ExprOpKind_BitwiseXor
+    11, // MG_ExprOpKind_BitwiseNegate
+    3,  // MG_ExprOpKind_BooleanAnd
+    3,  // MG_ExprOpKind_BooleanOr
+    11, // MG_ExprOpKind_BooleanNot
+    4,  // MG_ExprOpKind_Equals
+    4,  // MG_ExprOpKind_DoesNotEqual
 };
 
-readonly global MG_ExprKind mg_str_expr_op_kind_table[MG_ExprOpKind_COUNT] =
+readonly global MG_ExprKind mg_exprOpKindTable[MG_ExprOpKind_COUNT] =
 {
     MG_ExprKind_Null,
     MG_ExprKind_Binary, // MG_ExprOpKind_Dot
@@ -108,114 +110,63 @@ readonly global MG_ExprKind mg_str_expr_op_kind_table[MG_ExprOpKind_COUNT] =
 
 function MG_Expr* MG_PushExpr(Arena* arena, MG_ExprOpKind op, MD_Node* node)
 {
-    MG_Expr* expr = push_array(arena, MG_Expr, 1);
-    CopyStruct(expr, &mg_str_expr_nil);
+    MG_Expr* expr = PushStruct(arena, MG_Expr);
+    CopyStruct(expr, &mg_exprNil);
     expr->op = op;
     expr->node = node;
     return expr;
 }
 
-function MG_NodeArray MG_PushNodeArray(Arena* arena, u64 count)
+function MG_ExprOpKind MG_ExprLookupOp(MD_Node* expr, MG_ExprKind lookup, i8 minPrec)
 {
-    MG_NodeArray result = { .count = count, .nodes = PushArray(arena, MD_Node*, count) };
-    for (u64 idx = 0; idx < result.count; idx += 1)
-        result.nodes[idx] = &md_nil_node;
-    return result;
-}
-
-function StringList MG_ColDescFromTag(Arena* arena, MD_Node* tag)
-{
-    StringList result = {0};
-    u64 count = md_child_count_from_node(tag);
-    for (MD_EachNode(cell, tag->first))
-        StrListPush(arena, &result, cell->string); // TODO(long): optimize this because the size is known upfront
-    Assert(count == result.nodeCount);
-    return result;
-}
-
-function MG_NodeGrid MG_GridFromNode(Arena* arena, MD_Node* node)
-{
-    MG_NodeGrid grid = {0};
-    
-    // rjf: determine dimensions
-    u64 row_count = md_child_count_from_node(node);
-    u64 column_count = 0;
-    for (MD_EachNode(row, node->first))
+    MG_ExprOpKind result = MG_ExprOpKind_Null;
+    for (MG_ExprOpKind op = MG_ExprOpKind_Null + 1; op < MG_ExprOpKind_COUNT; ++op)
     {
-        u64 cell_count_this_row = md_child_count_from_node(row);
-        column_count = Max(column_count, cell_count_this_row);
-    }
-    
-    // rjf: fill grid
-    grid.cells = MG_PushNodeArray(arena, row_count * column_count);
-    grid.row_parents = MG_PushNodeArray(arena, row_count);
-    
-    // rjf: fill nodes
-    u64 y = 0, x_stride = 1, y_stride = column_count;
-    for (MD_EachNode(row, node->first))
-    {
-        u64 x = 0;
-        grid.row_parents.nodes[y] = row;
-        for (MD_EachNode(cell, row->first))
+        if (mg_exprOpKindTable[op] == lookup &&
+            StrCompare(expr->string, mg_exprSymbolTable[op], 0) &&
+            mg_exprPrecedenceTable[op] >= minPrec)
         {
-            grid.cells.nodes[x*x_stride + y*y_stride] = cell;
-            ++x;
+            result = op;
+            break;
         }
-        ++y;
     }
-    
-    return grid;
+    return result;
 }
 
-function MG_ExprResult MG_ParseExpr(Arena* arena, MD_Node* first, MD_Node* opl, i8 min_prec)
+function MG_ExprResult MG_ParseExpr(Arena* arena, MD_Node* first, MD_Node* opl, i8 minPrec)
 {
-    MG_ExprResult parse = {&mg_str_expr_nil};
+    MG_ExprResult parse = {&mg_exprNil};
     {
         MD_Node* it = first;
         
         //- rjf: consume prefix operators
-        MG_Expr* leafmost_op = &mg_str_expr_nil;
-        for (;it != opl && !md_node_is_nil(it);)
+        MG_Expr* leafmostOp = &mg_exprNil;
+        while (it != opl && !md_node_is_nil(it))
         {
-            MG_ExprOpKind found_op = MG_ExprOpKind_Null;
-            for (MG_ExprOpKind op = (MG_ExprOpKind)(MG_ExprOpKind_Null+1);
-                 op < MG_ExprOpKind_COUNT;
-                 op = (MG_ExprOpKind)(op+1))
+            MG_ExprOpKind op = MG_ExprLookupOp(it, MG_ExprKind_Prefix, minPrec);
+            if (op)
             {
-                if (mg_str_expr_op_kind_table[op] == MG_ExprKind_Prefix &&
-                    StrCompare(it->string, mg_str_expr_op_symbol_string_table[op], 0) &&
-                    mg_str_expr_op_precedence_table[op] >= min_prec)
-                {
-                    found_op = op;
-                    break;
-                }
-            }
-            if (found_op != MG_ExprOpKind_Null)
-            {
-                MG_Expr* op_expr = MG_PushExpr(arena, found_op, it);
-                if (leafmost_op == &mg_str_expr_nil)
-                {
-                    leafmost_op = op_expr;
-                }
-                op_expr->left = parse.root;
-                parse.root = op_expr;
+                MG_Expr* expr = MG_PushExpr(arena, op, it);
+                if (leafmostOp == &mg_exprNil)
+                    leafmostOp = expr;
+                
+                expr->left = parse.root;
+                parse.root = expr;
                 it = it->next;
             }
-            else
-            {
-                break;
-            }
+            else break;
         }
         
         //- rjf: parse atom
         {
-            MG_Expr* atom = &mg_str_expr_nil;
-            if (it->flags & (MD_NodeFlag_Identifier|MD_NodeFlag_Numeric|MD_NodeFlag_StringLiteral) &&
-                md_node_is_nil(it->first))
+            MG_Expr* atom = &mg_exprNil;
+            MD_NodeFlags flags = MD_NodeFlag_Identifier|MD_NodeFlag_Numeric|MD_NodeFlag_StringLiteral;
+            if ((it->flags & flags) && md_node_is_nil(it->first))
             {
                 atom = MG_PushExpr(arena, MG_ExprOpKind_Null, it);
                 it = it->next;
             }
+            
             else if (!md_node_is_nil(it->first))
             {
                 MG_ExprResult subparse = MG_ParseExpr(arena, it->first, &md_nil_node, 0);
@@ -223,65 +174,42 @@ function MG_ExprResult MG_ParseExpr(Arena* arena, MD_Node* first, MD_Node* opl, 
                 md_msg_list_concat_in_place(&parse.msgs, &subparse.msgs);
                 it = it->next;
             }
-            if (leafmost_op != &mg_str_expr_nil)
-            {
-                leafmost_op->left = atom;
-            }
+            
+            if (leafmostOp != &mg_exprNil)
+                leafmostOp->left = atom;
             else
-            {
                 parse.root = atom;
-            }
         }
         
         //- rjf: parse binary operator extensions at this precedence level
-        for (;it != opl && !md_node_is_nil(it);)
+        while (it != opl && !md_node_is_nil(it))
         {
-            // rjf: find binary op kind of `it`
-            MG_ExprOpKind found_op = MG_ExprOpKind_Null;
-            for (MG_ExprOpKind op = (MG_ExprOpKind)(MG_ExprOpKind_Null+1);
-                 op < MG_ExprOpKind_COUNT;
-                 op = (MG_ExprOpKind)(op+1))
+            MG_ExprOpKind op = MG_ExprLookupOp(it, MG_ExprKind_Binary, minPrec);
+            if (op)
             {
-                if (mg_str_expr_op_kind_table[op] == MG_ExprKind_Binary &&
-                    StrCompare(it->string, mg_str_expr_op_symbol_string_table[op], 0) &&
-                    mg_str_expr_op_precedence_table[op] >= min_prec)
-                {
-                    found_op = op;
-                    break;
-                }
-            }
-            
-            // rjf: good found_op -> build binary expr
-            if (found_op != MG_ExprOpKind_Null)
-            {
-                MG_Expr* op_expr = MG_PushExpr(arena, found_op, it);
-                if (leafmost_op == &mg_str_expr_nil)
-                {
-                    leafmost_op = op_expr;
-                }
-                op_expr->left = parse.root;
-                parse.root = op_expr;
+                MG_Expr* expr = MG_PushExpr(arena, op, it);
+                if (leafmostOp == &mg_exprNil)
+                    leafmostOp = expr;
+                
+                expr->left = parse.root;
+                parse.root = expr;
                 it = it->next;
             }
-            else
-            {
-                break;
-            }
+            else break;
             
             // rjf: parse right hand side of binary operator
-            MG_ExprResult subparse = MG_ParseExpr(arena, it, opl, mg_str_expr_op_precedence_table[found_op]+1);
+            MG_ExprResult subparse = MG_ParseExpr(arena, it, opl, mg_exprPrecedenceTable[op]+1);
             parse.root->right = subparse.root;
             md_msg_list_concat_in_place(&parse.msgs, &subparse.msgs);
-            if (subparse.root == &mg_str_expr_nil)
-            {
-                md_msg_list_pushf(arena, &parse.msgs, it, MD_MsgKind_Error, "Missing right-hand-side of '%S'.", mg_str_expr_op_symbol_string_table[found_op]);
-            }
-            it = subparse.next_node;
+            if (subparse.root == &mg_exprNil)
+                md_msg_list_pushf(arena, &parse.msgs, it, MD_MsgKind_Error, "Missing right-hand-side of '%S'.", mg_exprSymbolTable[op]);
+            it = subparse.next;
         }
         
         // rjf: store next node for more caller-side parsing
-        parse.next_node = it;
+        parse.next = it;
     }
+    
     return parse;
 }
 
@@ -291,54 +219,95 @@ function MG_ExprResult MG_ParseExprFromRoot(Arena* arena, MD_Node* root)
     return parse;
 }
 
-internal String MG_StrFromCol(MD_Node* row_parent, StringList descs, U64 idx)
+//~ long: Table Generation Types
+
+function MG_NodeArray MG_PushNodeArray(Arena* arena, u64 count)
 {
-    String result = {0};
+    MG_NodeArray result = { .count = count, .nodes = PushArray(arena, MD_Node*, count) };
+    for (u64 idx = 0; idx < result.count; ++idx)
+        result.nodes[idx] = &md_nil_node;
+    return result;
+}
+
+function MG_Table* MG_PushTable(Arena* arena, MD_Node* node, MD_Node* tag)
+{
+    MG_Table* result = PushStruct(arena, MG_Table);
     
-    if (ALWAYS(0 <= idx && idx < descs.nodeCount))
+    // long: setup the table's grid
     {
-        MD_Node* node = md_child_from_index(row_parent, idx);
-        result = node->string;
+        // rjf: determine dimensions
+        u64 rowCount = md_child_count_from_node(node);
+        u64 colCount = 0;
+        for (MD_EachNode(row, node->first))
+        {
+            u64 cellCount = md_child_count_from_node(row);
+            colCount = Max(colCount, cellCount);
+        }
+        
+        // rjf: fill grid
+        result->cells = MG_PushNodeArray(arena, rowCount * colCount);
+        result->rowParents = MG_PushNodeArray(arena, rowCount);
+        
+        // rjf: fill nodes
+        u64 y = 0, xStride = 1, yStride = colCount;
+        for (MD_EachNode(row, node->first))
+        {
+            u64 x = 0;
+            result->rowParents.nodes[y] = row;
+            for (MD_EachNode(cell, row->first))
+            {
+                result->cells.nodes[x*xStride + y*yStride] = cell;
+                ++x;
+            }
+            ++y;
+        }
+        
+    }
+    
+    // long: setup the table's description
+    {
+        u64 count = md_child_count_from_node(tag);
+        result->members = StrList(arena, 0, count);
+        StringNode* strNode = result->members.first;
+        for (MD_EachNode(member, tag->first), strNode = strNode->next)
+            strNode->string = member->string;
+        Assert(count == result->members.nodeCount);
     }
     
     return result;
 }
 
-internal u64 mg_column_index_from_name(StringList descs, String8 name)
+function String MG_StrFromExpansion(Arena* arena, MG_Expr* expr, MG_TableExpandTask* task)
 {
-    u64 result = 0;
-    for (StringNode* node = descs.first; node; node = node->next, ++result)
-        if (StrCompare(node->string, name, 0))
-            return result;
-    return 0;
+    StringList list = {0};
+    MG_TableExpandStr(arena, expr, task, &list);
+    String result = StrJoin(arena, &list);
+    return result;
 }
 
-function void mg_eval_table_expand_expr__string(Arena* arena, MG_Expr* expr, MG_TableExpandTask* first_task, String8List* out);
-
-internal S64 mg_eval_table_expand_expr__numeric(MG_Expr *expr, MG_TableExpandTask* task)
+function i64 MG_TableExpandNumeric(MG_Expr* expr, MG_TableExpandTask* task)
 {
-    S64 result = 0;
+    i64 result = 0;
     MG_ExprOpKind op = expr->op;
     
-    switch(op)
+    switch (op)
     {
         default:
         {
-            if(MG_ExprOpKind_FirstString <= op && op <= MG_ExprOpKind_LastString)
+            if (MG_ExprOpKind_FirstString <= op && op <= MG_ExprOpKind_LastString)
             {
-                ScratchBegin(scratch);
-                String8List result_strs = {0};
-                mg_eval_table_expand_expr__string(scratch, expr, task, &result_strs);
-                String8 result_str = StrJoin(scratch, &result_strs);
-                result = I64FromStrC(result_str, 0);
-                ScratchEnd(scratch);
+                ScratchBlock(scratch)
+                {
+                    String str = MG_StrFromExpansion(scratch, expr, task);
+                    result = I64FromStrC(str, 0);
+                }
             }
-        }break;
+        } break;
         
         case MG_ExprOpKind_Null:
         {
             result = I64FromStrC(expr->node->string, 0);
-        }break;
+        } break;
         
         //- rjf: numeric arithmetic binary ops
         case MG_ExprOpKind_Add:
@@ -354,60 +323,57 @@ internal S64 mg_eval_table_expand_expr__numeric(MG_Expr *expr, MG_TableExpandTas
         case MG_ExprOpKind_BooleanAnd:
         case MG_ExprOpKind_BooleanOr:
         {
-            S64 left_val = mg_eval_table_expand_expr__numeric(expr->left, task);
-            S64 right_val = mg_eval_table_expand_expr__numeric(expr->right, task);
-            switch(op)
+            i64 left = MG_TableExpandNumeric(expr->left, task);
+            i64 right = MG_TableExpandNumeric(expr->right, task);
+            switch (op)
             {
-                default:break;
-                case MG_ExprOpKind_Add:        result = left_val + right_val;  break;
-                case MG_ExprOpKind_Subtract:   result = left_val - right_val;  break;
-                case MG_ExprOpKind_Multiply:   result = left_val * right_val;  break;
-                case MG_ExprOpKind_Divide:     result = left_val / right_val;  break;
-                case MG_ExprOpKind_Modulo:     result = left_val % right_val;  break;
-                case MG_ExprOpKind_LeftShift:  result = left_val <<right_val; break;
-                case MG_ExprOpKind_RightShift: result = left_val >>right_val; break;
-                case MG_ExprOpKind_BitwiseAnd: result = left_val & right_val;  break;
-                case MG_ExprOpKind_BitwiseOr:  result = left_val | right_val;  break;
-                case MG_ExprOpKind_BitwiseXor: result = left_val ^ right_val;  break;
-                case MG_ExprOpKind_BooleanAnd: result = left_val &&right_val; break;
-                case MG_ExprOpKind_BooleanOr:  result = left_val ||right_val; break;
+                default: break;
+                case MG_ExprOpKind_Add:        result = left + right;  break;
+                case MG_ExprOpKind_Subtract:   result = left - right;  break;
+                case MG_ExprOpKind_Multiply:   result = left * right;  break;
+                case MG_ExprOpKind_Divide:     result = left / right;  break;
+                case MG_ExprOpKind_Modulo:     result = left % right;  break;
+                case MG_ExprOpKind_LeftShift:  result = left <<right; break;
+                case MG_ExprOpKind_RightShift: result = left >>right; break;
+                case MG_ExprOpKind_BitwiseAnd: result = left & right;  break;
+                case MG_ExprOpKind_BitwiseOr:  result = left | right;  break;
+                case MG_ExprOpKind_BitwiseXor: result = left ^ right;  break;
+                case MG_ExprOpKind_BooleanAnd: result = left &&right; break;
+                case MG_ExprOpKind_BooleanOr:  result = left ||right; break;
             }
-        }break;
+        } break;
         
         //- rjf: prefix unary ops
         case MG_ExprOpKind_BitwiseNegate:
         case MG_ExprOpKind_BooleanNot:
         {
-            S64 right_val = mg_eval_table_expand_expr__numeric(expr->left, task);
-            switch(op)
+            i64 right = MG_TableExpandNumeric(expr->left, task);
+            switch (op)
             {
-                default:break;
-                case MG_ExprOpKind_BitwiseNegate: result = (S64)(~((U64)right_val)); break;
-                case MG_ExprOpKind_BooleanNot:    result = !right_val;
+                default: break;
+                case MG_ExprOpKind_BitwiseNegate: result = (i64)(~((u64)right)); break;
+                case MG_ExprOpKind_BooleanNot:    result = !right;
             }
-        }break;
+        } break;
         
         //- rjf: comparisons
         case MG_ExprOpKind_Equals:
         case MG_ExprOpKind_DoesNotEqual:
         {
-            ScratchBegin(scratch);
-            String8List left_strs = {0};
-            String8List right_strs = {0};
-            mg_eval_table_expand_expr__string(scratch, expr->left, task, &left_strs);
-            mg_eval_table_expand_expr__string(scratch, expr->right, task, &right_strs);
-            String8 left_str = StrJoin(scratch, &left_strs);
-            String8 right_str = StrJoin(scratch, &right_strs);
-            B32 match = StrCompare(left_str, right_str, 0);
-            result = (op == MG_ExprOpKind_Equals ? match : !match);
-            ScratchEnd(scratch);
-        }break;
+            ScratchBlock(scratch)
+            {
+                String left  = MG_StrFromExpansion(scratch, expr-> left, task);
+                String right = MG_StrFromExpansion(scratch, expr->right, task);
+                b32 match = StrCompare(left, right, 0);
+                result = (op == MG_ExprOpKind_Equals) == match;
+            }
+        } break;
     }
     
     return result;
 }
 
-function void mg_eval_table_expand_expr__string(Arena* arena, MG_Expr* expr, MG_TableExpandTask* first_task, String8List* out)
+function void MG_TableExpandStr(Arena* arena, MG_Expr* expr, MG_TableExpandTask* task, StringList* out)
 {
     MG_ExprOpKind op = expr->op;
     
@@ -417,368 +383,368 @@ function void mg_eval_table_expand_expr__string(Arena* arena, MG_Expr* expr, MG_
         {
             if (MG_ExprOpKind_FirstNumeric <= op && op <= MG_ExprOpKind_LastNumeric)
             {
-                i64 numeric_eval = mg_eval_table_expand_expr__numeric(expr, first_task);
-                String8 numeric_eval_stringized = {0};
-                if (md_node_has_tag(md_root_from_node(expr->node), str8_lit("hex"), 0))
-                    numeric_eval_stringized = StrPushf(arena, "0x%I64x", numeric_eval);
-                else
-                    numeric_eval_stringized = StrPushf(arena, "%I64d", numeric_eval);
-                StrListPush(arena, out, numeric_eval_stringized);
+                i64 numeric = MG_TableExpandNumeric(expr, task);
+                String numericStr = {0};
+                b32 hex = md_node_has_tag(md_root_from_node(expr->node), StrLit("hex"), 0);
+                numericStr = StrPushf(arena, hex ? "0x%I64x" : "%I64d", numeric);
+                StrListPush(arena, out, numericStr);
             }
         } break;
         
         case MG_ExprOpKind_Null:
         {
-            StrListPush(arena, out, expr->node->string);
+            if (expr->node)
+                StrListPush(arena, out, expr->node->string);
         } break;
         
         case MG_ExprOpKind_Dot:
         {
             // rjf: grab left/right
-            MG_Expr* left_expr = expr->left;
-            MD_Node* left_node = left_expr->node;
-            MG_Expr* right_expr = expr->right;
-            MD_Node* right_node = right_expr->node;
+            MD_Node* left = expr->left->node;
+            MD_Node* right = expr->right->node;
             
-            // rjf: grab table name (LHS of .) and column lookup string (RHS of .)
-            String8 expand_label = left_node->string;
-            String8 column_lookup = right_node->string;
+            // long: grab the table name/label (LHS of .) and the lookup member (RHS of .)
+            // e.g expand(Foo foo) foo.bar
+            // foo is the label of the table Foo while bar is a member of the table Foo
+            String label = left->string;
+            String member = right->string;
             
             // rjf: find which task corresponds to this table
-            u64 row_idx = 0;
-            MG_NodeGrid* grid = 0;
-            StringList column_descs = {0};
+            u64 row = 0;
+            MG_Table* table = 0;
             {
-                for (MG_TableExpandTask* task = first_task; task != 0; task = task->next)
+                for (MG_TableExpandTask* t = task; t; t = t->next)
                 {
-                    if (StrCompare(expand_label, task->expansion_label, 0))
+                    if (StrCompare(label, t->label, 0))
                     {
-                        row_idx = task->idx;
-                        grid = task->grid;
-                        column_descs = task->column_descs;
+                        row = t->idx;
+                        table = t->table;
                         break;
                     }
                 }
             }
             
-            // rjf: grab row parent
-            MD_Node* row_parent = &md_nil_node;
-            if (grid && (0 <= row_idx && row_idx < grid->row_parents.count))
-            {
-                row_parent = grid->row_parents.nodes[row_idx];
-            }
-            
             // rjf: get string for this table lookup
-            String8 lookup_string = {0};
+            String result = {0};
             {
-                u64 column_idx = 0;
-                
-                if (StrCompare(column_lookup, str8_lit("_it"), 0))
-                    lookup_string = StrPushf(arena, "%I64u", row_idx);
+                u64 memberPos = 0;
+                if (StrCompare(member, StrLit("_it"), 0))
+                    result = StrPushf(arena, "%I64u", row);
                 else
                 {
-                    // NOTE(rjf): numeric column lookup (column index)
-                    if (right_node->flags & MD_NodeFlag_Numeric)
-                    {
-                        column_idx = U64FromStrC(column_lookup, 0);
-                    }
+                    // long: From what I can tell, this is for lookup using the member's index
+                    // But MG_ParseExpr would never parse `$(a.5)` properly, and RADDBG also never uses it
+                    if (NEVER(right->flags & MD_NodeFlag_Numeric))
+                        memberPos = U64FromStrC(member, 0);
                     
-                    // NOTE(rjf): string column lookup (column name)
-                    if (right_node->flags & (MD_NodeFlag_Identifier|MD_NodeFlag_StringLiteral))
+                    if (table)
                     {
-                        column_idx = mg_column_index_from_name(column_descs, column_lookup);
+                        // long: lookup using the member's identifier
+                        if (right->flags & (MD_NodeFlag_Identifier|MD_NodeFlag_StringLiteral))
+                            StrFindList(member, &table->members, 0, &memberPos);
+                        
+                        if (ALWAYS(0 <= memberPos && memberPos < table->members.nodeCount))
+                        {
+                            // rjf: grab row parent
+                            MD_Node* rowParent = &md_nil_node;
+                            if (0 <= row && row < table->rowParents.count)
+                                rowParent = table->rowParents.nodes[row];
+                            result = md_child_from_index(rowParent, memberPos)->string;
+                            
+                            // NOTE(long): I don't know what this is for but Ryan was checking for this
+                            // After a quick search, it doesn't seem like RADDBG uses this or hits this check
+                            // So I'm just gonna assert this for now.
+                            NEVER(StrCompare(result, StrLit("--"), 0));
+                        }
                     }
-                    
-                    lookup_string = MG_StrFromCol(row_parent, column_descs, column_idx);
-                    Assert(StrCompare(lookup_string, str8_lit("--"), 0));
                 }
             }
             
             // rjf: push lookup string
+            ScratchBlock(scratch, arena)
             {
-                StrListPush(arena, out, lookup_string);
+                for (MD_EachNode(tag, left->first_tag))
+                {
+                    if (StrCompare(tag->string, StrLit("replace"), 0))
+                    {
+                        String oldStr = StrCEscape(scratch, md_child_from_index(tag, 0)->string);
+                        String newStr = StrCEscape(scratch, md_child_from_index(tag, 1)->string);
+                        result = StrReplace(scratch, result, oldStr, newStr, 0);
+                    }
+                    
+                    else if (StrCompare(tag->string, StrLit("lower"), 0))
+                    {
+                        if (md_node_is_nil(tag->first))
+                            result = StrToLower(scratch, result);
+                        else
+                        {
+                            StringList* matches = &(StringList){0};
+                            for (MD_EachNode(tagArg, tag->first))
+                                StrListPush(scratch, matches, tagArg->string);
+                            
+                            u8* mem = (u8*)scratch;
+                            if (!InRange(result.str, mem, mem + scratch->pos))
+                                result = StrCopy(scratch, result);
+                            
+                            for (u64 i = 0; i < result.size; ++i)
+                            {
+                                StrListIter(matches, node)
+                                {
+                                    String match  = node->string;
+                                    String substr = SubstrRange(result, i, match.size);
+                                    if (StrCompare(substr, match, 0))
+                                    {
+                                        StrToLowerIP(substr);
+                                        i += match.size;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    else if (StrCompare(tag->string, StrLit("upper"), 0))
+                    {
+                        if (md_node_is_nil(tag->first))
+                            result = StrToUpper(scratch, result);
+                        else
+                        {
+                            StringList* matches = &(StringList){0};
+                            for (MD_EachNode(tagArg, tag->first))
+                                StrListPush(scratch, matches, tagArg->string);
+                            
+                            u8* mem = (u8*)scratch;
+                            if (!InRange(result.str, mem, mem + scratch->pos))
+                                result = StrCopy(scratch, result);
+                            
+                            for (u64 i = 0; i < result.size; ++i)
+                            {
+                                StrListIter(matches, node)
+                                {
+                                    String match  = node->string;
+                                    String substr = SubstrRange(result, i, match.size);
+                                    if (StrCompare(substr, match, 0))
+                                    {
+                                        StrToUpperIP(substr);
+                                        i += match.size;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (md_node_is_nil(tag->next))
+                        result = StrCopy(arena, result);
+                }
             }
+            
+            StrListPush(arena, out, result);
         } break;
         
         case MG_ExprOpKind_ExpandIfTrue:
         {
-            i64 bool_value = mg_eval_table_expand_expr__numeric(expr->left, first_task);
-            if (bool_value)
-            {
-                mg_eval_table_expand_expr__string(arena, expr->right, first_task, out);
-            }
+            b64 val = MG_TableExpandNumeric(expr->left, task);
+            if (val)
+                MG_TableExpandStr(arena, expr->right, task, out);
         } break;
         
         case MG_ExprOpKind_Concat:
         {
-            mg_eval_table_expand_expr__string(arena, expr->left, first_task, out);
-            mg_eval_table_expand_expr__string(arena, expr->right, first_task, out);
+            MG_TableExpandStr(arena, expr-> left, task, out);
+            MG_TableExpandStr(arena, expr->right, task, out);
         } break;
         
         case MG_ExprOpKind_BumpToColumn:
         {
-            i64 column = mg_eval_table_expand_expr__numeric(expr->left, first_task);
-            i64 current_column = out->totalSize;
-            i64 spaces_to_push = column - current_column;
-            if (spaces_to_push > 0)
+            i64 col = MG_TableExpandNumeric(expr->left, task);
+            i64 spaces = col - out->totalSize; // totalSize represents the current column count
+            if (spaces > 0)
             {
-                String8 str = {0};
-                str.size = spaces_to_push;
-                str.str = push_array(arena, U8, spaces_to_push);
-                for (i64 idx = 0; idx < spaces_to_push; idx += 1)
-                {
-                    str.str[idx] = ' ';
-                }
-                StrListPush(arena, out, str);
+                String result = ChrRepeat(arena, ' ' , spaces);
+                StrListPush(arena, out, result);
             }
         } break;
     }
 }
 
-function void MG_TableColLoopExpansion(Arena* arena, String strexpr, MG_TableExpandTask* task, StringList* out)
+function void MG_TableLoopExpansion(Arena* arena, String strexpr, MG_TableExpandTask* task, StringList* out)
 {
     ScratchBegin(scratch, arena);
-    for (u64 it_idx = 0; it_idx < task->count; it_idx += 1)
+    for (u64 taskIndex = 0; taskIndex < task->count; ++taskIndex)
     {
-        task->idx = it_idx;
+        task->idx = taskIndex;
         
         //- rjf: iterate all further dimensions, if there's left in the chain
         if (task->next)
-            MG_TableColLoopExpansion(arena, strexpr, task->next, out);
+            MG_TableLoopExpansion(arena, strexpr, task->next, out);
         
         //- rjf: if this is the last task in the chain, perform expansion
         else
         {
-            StringList expansion_strs = {0};
+            StringList list = {0};
             u64 start = 0;
-            for (u64 char_idx = 0; char_idx <= strexpr.size;)
+            for (u64 strIndex = 0; strIndex <= strexpr.size; )
             {
                 // rjf: push plain text parts of strexpr
-                if (char_idx == strexpr.size || strexpr.str[char_idx] == '$')
+                if (strIndex == strexpr.size || strexpr.str[strIndex] == '$')
                 {
-                    String plain_text_substr = Substr(strexpr, start, char_idx);
-                    start = char_idx;
-                    if (plain_text_substr.size)
-                        StrListPush(arena, &expansion_strs, plain_text_substr);
+                    String plainText = Substr(strexpr, start, strIndex);
+                    start = strIndex;
+                    if (plainText.size)
+                        StrListPush(arena, &list, plainText);
                 }
                 
                 // rjf: handle expansion expression
-                if (strexpr.str[char_idx] == '$')
+                if (strexpr.str[strIndex] == '$')
                 {
-                    String string = StrSkip(strexpr, char_idx+1);
-                    r1u64 expr_range = {0};
-                    i64 paren_nest = 0;
-                    for (u64 idx = 0; idx < string.size; idx += 1)
+                    String str = StrSkip(strexpr, strIndex + 1);
+                    r1u64 range = {0};
+                    for (i64 i = 0, nest = 0; i < (i64)str.size; ++i)
                     {
-                        if (string.str[idx] == '(')
+                        if (str.str[i] == '(')
                         {
-                            paren_nest += 1;
-                            if (paren_nest == 1)
-                            {
-                                expr_range.min = idx;
-                            }
+                            ++nest;
+                            if (nest == 1)
+                                range.min = i;
                         }
-                        if (string.str[idx] == ')')
+                        
+                        if (str.str[i] == ')')
                         {
-                            paren_nest -= 1;
-                            if (paren_nest == 0)
+                            --nest;
+                            if (nest == 0)
                             {
-                                expr_range.max = idx+1;
+                                range.max = i+1;
                                 break;
                             }
                         }
                     }
-                    String expr_string = Substr(string, expr_range.min, expr_range.max);
-                    MD_TokenizeResult expr_tokenize = md_tokenize_from_text(scratch, expr_string);
-                    MD_ParseResult expr_base_parse = md_parse_from_text_tokens(scratch, StrLit(""), expr_string, expr_tokenize.tokens);
-                    MG_ExprResult expr_parse = MG_ParseExprFromRoot(scratch, expr_base_parse.root->first);
-                    mg_eval_table_expand_expr__string(arena, expr_parse.root, task, &expansion_strs);
-                    char_idx = start = char_idx + 1 + expr_range.max;
+                    
+                    String expr = Substr(str, range.min, range.max);
+                    MD_ParseResult parse = MD_ParseText(scratch, StrLit(""), expr);
+                    MG_ExprResult exprResult = MG_ParseExprFromRoot(scratch, parse.root->first);
+                    MG_TableExpandStr(arena, exprResult.root, task, &list);
+                    strIndex = start = strIndex + 1 + range.max;
                 }
                 else
-                {
-                    char_idx += 1;
-                }
+                    strIndex++;
             }
-            String expansion_str = StrJoin(arena, &expansion_strs);
-            if (expansion_str.size != 0)
-            {
-                StrListPush(arena, out, expansion_str);
-            }
+            
+            String result = StrJoin(arena, &list);
+            if (result.size)
+                StrListPush(arena, out, result);
         }
     }
     ScratchEnd(scratch);
 }
 
-function StringList MG_StrListFromTable(Arena* arena, MG_Map grid_name_map, MG_Map grid_column_desc_map, MD_Node* gen)
+function StringList MG_StrListFromTable(Arena* arena, MG_Map tableMap, MD_Node* gen, String expandTag)
 {
     StringList result = {0};
-    ScratchBegin(scratch, arena);
     
-    if (md_node_is_nil(gen->first) && gen->string.size != 0)
+    ScratchBlock(scratch, arena)
     {
-        StrListPush(arena, &result, gen->string);
-        StrListPush(arena, &result, StrLit("\n"));
-    }
-    else for (MD_EachNode(strexpr_node, gen->first))
-    {
-        // rjf: build task list
-        MG_TableExpandTask* first_task = 0;
-        MG_TableExpandTask* last_task = 0;
-        for (MD_EachNode(tag, strexpr_node->first_tag))
+        if (md_node_is_nil(gen->first) && gen->string.size)
         {
-            if (StrCompare(tag->string, StrLit("expand"), 0))
-            {
-                // rjf: grab args for this expansion
-                String table_name = md_child_from_index(tag, 0)->string;
-                String expand_label = md_child_from_index(tag, 1)->string;
-                
-                // rjf: lookup table / column descriptions
-                MG_NodeGrid* grid = MG_MapPtrFromStr(&grid_name_map, table_name);
-                StringList* column_descs = MG_MapPtrFromStr(&grid_column_desc_map, table_name);
-                
-                // rjf: push task for this expansion
-                if (grid)
-                {
-                    MG_TableExpandTask* task = PushStruct(scratch, MG_TableExpandTask);
-                    task->expansion_label = expand_label;
-                    task->grid = grid;
-                    task->column_descs = *column_descs;
-                    task->count = MG_GridRowCount(*grid);
-                    task->idx = 0;
-                    SLLQueuePush(first_task, last_task, task);
-                }
-            }
+            StrListPush(arena, &result, gen->string);
+            StrListPush(arena, &result, StrLit("\n"));
         }
         
-        // rjf: do expansion generation, OR just push this string if we have no expansions
+        else for (MD_EachNode(strexpr_node, gen->first))
         {
-            if (first_task)
-                MG_TableColLoopExpansion(arena, strexpr_node->string, first_task, &result);
-            else
-                StrListPush(arena, &result, strexpr_node->string);
+            // rjf: build task list
+            MG_TableExpandTask* first = 0;
+            MG_TableExpandTask* last = 0;
+            
+            for (MD_EachNode(tag, strexpr_node->first_tag))
+            {
+                if (StrCompare(tag->string, expandTag, 0))
+                {
+                    // long: grab args and lookup table for this expansion
+                    String name  = md_child_from_index(tag, 0)->string;
+                    String label = md_child_from_index(tag, 1)->string;
+                    MG_Table* table = MG_MapPtrFromStr(tableMap, name);
+                    
+                    // rjf: push task for this expansion
+                    if (table)
+                    {
+                        MG_TableExpandTask* task = PushStruct(scratch, MG_TableExpandTask);
+                        task->label = label;
+                        task->table = table;
+                        task->count = MG_TableRowCount(*table);
+                        task->idx = 0;
+                        SLLQueuePush(first, last, task);
+                    }
+                }
+            }
+            
+            // rjf: do expansion generation, OR just push this string if we have no expansions
+            {
+                if (first)
+                    MG_TableLoopExpansion(arena, strexpr_node->string, first, &result);
+                else
+                    StrListPush(arena, &result, strexpr_node->string);
+            }
         }
     }
     
-    ScratchEnd(scratch);
     return result;
 }
 
 //~ long: C-String Functions
 
-function String MG_StrCEscape(Arena* arena, String string)
+function String MG_StrCFromMultiLine(Arena* arena, String str)
 {
-    // NOTE(rjf): This doesn't handle hex/octal/unicode escape sequences right now, just the simple stuff
-    StringList strs = {0};
-    u64 start = 0;
+    StringList list = {0};
     
-    ScratchBlock(scratch, arena)
+    for (u64 off = 0, lineOff = 0; off <= str.size; ++off)
     {
-        for (u64 idx = 0; idx <= string.size; idx += 1)
+        b32 newline = (off < str.size && (str.str[off] == '\n' || str.str[off] == '\r'));
+        
+        if (off >= str.size || newline)
         {
-            // NOTE(long): what about `\n`
-            if (idx == string.size || string.str[idx] == '\\' || string.str[idx] == '\r')
-            {
-                String str = Substr(string, start, idx);
-                if (str.size)
-                    StrListPush(arena, &strs, str);
-                start = idx+1;
-            }
-            
-            if (idx < string.size && string.str[idx] == '\\')
-            {
-                u8 next_char = string.str[idx+1];
-                u8 replace_byte = 0;
-                
-                switch (next_char)
-                {
-                    default: break;
-                    case 'a': replace_byte = 0x07; break;
-                    case 'b': replace_byte = 0x08; break;
-                    case 'e': replace_byte = 0x1b; break;
-                    case 'f': replace_byte = 0x0c; break;
-                    case 'n': replace_byte = 0x0a; break;
-                    case 'r': replace_byte = 0x0d; break;
-                    case 't': replace_byte = 0x09; break;
-                    case 'v': replace_byte = 0x0b; break;
-                    case '\\':replace_byte = '\\'; break;
-                    case '\'':replace_byte = '\''; break;
-                    case '"': replace_byte = '"';  break;
-                    case '?': replace_byte = '?';  break;
-                }
-                
-                String replace_string = StrCopy(scratch, Str(&replace_byte, 1));
-                StrListPush(scratch, &strs, replace_string);
-                
-                if (replace_byte == '\\' || replace_byte == '"' || replace_byte == '\'')
-                {
-                    idx += 1;
-                    start += 1;
-                }
-            }
+            String line = Substr(str, lineOff, off);
+            StrListPush(arena, &list, StrLit("\""));
+            StrListPush(arena, &list, line);
+            StrListPush(arena, &list, newline ? StrLit("\\n\"\n") : StrLit("\""));
+            lineOff = off+1;
+        }
+        
+        if (newline && str.str[off] == '\r')
+        {
+            ++lineOff;
+            ++off;
         }
     }
     
-    String result = StrJoin(arena, &strs);
-    return result;
-}
-
-function String MG_StrCFromMultiLine(Arena* arena, String string)
-{
-    StringList strings = {0};
-    StrListPush(arena, &strings, StrLit("\"\"\n"));
-    
-    for (u64 off = 0, active_line_start_off = 0; off <= string.size; off += 1)
-    {
-        b32 is_newline = (off < string.size && (string.str[off] == '\n' || string.str[off] == '\r'));
-        b32 is_ender = (off >= string.size || is_newline);
-        
-        if (is_ender)
-        {
-            String line = Substr(string, active_line_start_off, off);
-            StrListPush(arena, &strings, StrLit("\""));
-            StrListPush(arena, &strings, line);
-            StrListPush(arena, &strings, is_newline ? StrLit("\\n\"\n") : StrLit("\"\n"));
-            active_line_start_off = off+1;
-        }
-        
-        if (is_newline && string.str[off] == '\r')
-        {
-            active_line_start_off += 1;
-            off += 1;
-        }
-    }
-    
-    String result = StrJoin(arena, &strings);
+    String result = StrJoin(arena, &list);
     return result;
 }
 
 function String MG_ArrCFromData(Arena* arena, String data)
 {
-    StringList strings = {0};
+    StringList list = {0};
     ScratchBlock(scratch, arena)
     {
-        for (u64 off = 0; off < data.size;)
+        for (u64 off = 0; off < data.size; )
         {
-            u64 chunk_size  = Min(data.size-off, 64);
-            u8* chunk_bytes = data.str+off;
+            u64 chunkSize  = Min(data.size - off, 64);
+            u8* chunkBytes = data.str + off;
             
-            String chunk_text_string = {0};
-            chunk_text_string.size = chunk_size*5;
-            chunk_text_string.str = PushArray(arena, u8, chunk_text_string.size);
+            String str = StrPush(arena, chunkSize * 5, 0);
             
-            for (u64 byte_idx = 0; byte_idx < chunk_size; byte_idx += 1)
+            for (u64 i = 0; i < chunkSize; ++i)
             {
-                String byte_str = StrPushf(scratch, "0x%02x,", chunk_bytes[byte_idx]);
-                CopyMem(chunk_text_string.str+byte_idx*5, byte_str.str, byte_str.size);
+                String bytes = StrPushf(scratch, "0x%02x,", chunkBytes[i]);
+                CopyMem(str.str + i * 5, bytes.str, bytes.size);
             }
-            off += chunk_size;
+            off += chunkSize;
             
-            StrListPush(arena, &strings, chunk_text_string);
-            StrListPush(arena, &strings, StrLit("\n"));
+            StrListPush(arena, &list, str);
+            StrListPush(arena, &list, StrLit("\n"));
         }
     }
     
-    String result = StrJoin(arena, &strings);
+    String result = StrJoin(arena, &list);
     return result;
 }

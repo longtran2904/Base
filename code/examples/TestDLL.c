@@ -19,11 +19,21 @@ libexport i32 DLLCallback(VoidFunc* func, b32 log)
     HMODULE c = GetModuleHandle(0);
     HMODULE d = GetModuleHandle("demo.exe");
     
+    DEBUG(a);
+    DEBUG(b);
+    DEBUG(c);
+    DEBUG(d);
+    
     // 0 will search in the current process
     VoidFunc* aPtr = (VoidFunc*)GetProcAddress(0, "LogPushf");
     void* bPtr = (void*)GetProcAddress(b, "LogPushf");
     void* cPtr = (void*)GetProcAddress(c, "LogPushf");
     void* dPtr = (void*)GetProcAddress(d, "LogPushf");
+    
+    DEBUG(aPtr);
+    DEBUG(bPtr);
+    DEBUG(cPtr);
+    DEBUG(dPtr);
     
     LogPush(0, "DLL Initialize #1");
     ScratchBlock(scratch)

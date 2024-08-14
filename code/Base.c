@@ -439,6 +439,47 @@ function r2f32 UnionR2F32(r2f32 a, r2f32 b)     { return (r2f32){ Min(a.x0, b.x0
 function r2f32 IntersectR2F32(r2f32 a, r2f32 b) { return (r2f32){ Max(a.x0, b.x0), Max(a.y0, b.y0), Min(a.x1, b.x1), Min(a.y1, b.y1) }; }
 function v2f32 ClampR2F32(r2f32 r, v2f32 v)     { return (v2f32){ Clamp(v.x, r.min.x, r.max.x), Clamp(v.y, r.min.y, r.max.y) }; }
 
+//- long: Text Functions
+function TextLoc TextLocFromOff(String str, u64 off)
+{
+    TextLoc result = {1, 1};
+    for (u64 i = 0; i < str.size && i < off; ++i)
+    {
+        result.col++;
+        if (str.str[i] == '\n')
+        {
+            result.line++;
+            result.col = 1;
+        }
+    }
+    return result;
+}
+
+function u64 OffFromTextLoc(String str, TextLoc loc)
+{
+    u64 result = 0;
+    for (u64 i = 0, line = 1, col = 0; i < str.size; i++)
+    {
+        col++;
+        
+        if (line == loc.line && col == loc.col)
+        {
+            result = i;
+            break;
+        }
+        
+        if (str.str[i] == '\n')
+        {
+            if (line == loc.line)
+                break;
+            
+            line++;
+            col = 1;
+        }
+    }
+    return result;
+}
+
 //~ long: PRNG Functions
 
 function u32 Noise1D(u32 pos, u32 seed)
@@ -949,8 +990,16 @@ function String StrTrim(String str, String arr, i32 dir)
 //- long: Allocation Functions
 function String StrCopy(Arena* arena, String str)
 {
-    String result = { PushArray(arena, u8, str.size + 1), str.size };
+    String result = StrPush(arena, str.size, 1);
     CopyMem(result.str, str.str, str.size);
+    return result;
+}
+
+function String StrPush(Arena* arena, u64 size, b32 terminate)
+{
+    String result = { PushArrayNZ(arena, u8, size + !!terminate), size };
+    if (terminate)
+        result.str[size] = 0;
     return result;
 }
 
@@ -973,25 +1022,12 @@ function String StrFromFlags(Arena* arena, String* names, u64 nameCount, u64 fla
 function StringList StrList(Arena* arena, String* strArr, u64 count)
 {
     StringList result = {0};
-    if (strArr && count)
+    if (count)
     {
         result.first = PushArrayNZ(arena, StringNode, count);
         result.last = result.first + count - 1;
         for (u64 i = 0; i < count; ++i)
-            StrListPushNode(&result, strArr[i], &result.first[i]);
-    }
-    return result;
-}
-
-function StringList StrListExplicit(StringNode* nodes, String* strs, u64 count)
-{
-    StringList result = {0};
-    if (strs && nodes && count)
-    {
-        result.first = nodes;
-        result.last = nodes + count - 1;
-        for (u64 i = 0; i < count; ++i)
-            StrListPushNode(&result, strs[i], nodes + i);
+            StrListPushNode(&result, strArr ? strArr[i] : (String){0}, result.first + i);
     }
     return result;
 }
@@ -1073,7 +1109,7 @@ function String StrPushfv(Arena* arena, char* fmt, va_list args)
     
     // try to build the string in 1024 bytes
     u32 bufferSize = 1024;
-    u8* buffer = PushArray(arena, u8, bufferSize);
+    u8* buffer = PushArrayNZ(arena, u8, bufferSize);
     // NOTE(long): vsnprintf doens't count the null terminator
     i32 size = stbsp_vsnprintf((char*)buffer, bufferSize, fmt, args);
     u32 allocSize = size + 1;
@@ -1091,11 +1127,14 @@ function String StrPushfv(Arena* arena, char* fmt, va_list args)
         {
             // if first try failed, reset and try again with the correct size
             ArenaPop(arena, bufferSize);
-            u8* newBuffer = PushArray(arena, u8, allocSize);
+            u8* newBuffer = PushArrayNZ(arena, u8, allocSize);
             size = stbsp_vsnprintf((char*)newBuffer, allocSize, fmt, args2);
             if (ALWAYS(size >= 0))
                 result = Str(newBuffer, size);
         }
+        
+        if (result.str)
+            result.str[result.size+1] = 0;
     }
     
     va_end(args2);
@@ -1115,7 +1154,7 @@ function String StrPad(Arena* arena, String str, char chr, u32 count, i32 dir)
 {
     // @RECONSIDER(long): This will always alloc a new string, even if the count is zero
     u64 size = (dir == 0 ? count * 2 : count) + str.size;
-    String result = { PushArray(arena, u8, size + 1), size };
+    String result = StrPush(arena, size, 1);
     if (dir <= 0) SetMem(result.str, chr, count);
     if (dir >= 0) SetMem(result.str + size - count, chr, count);
     return result;
@@ -1124,8 +1163,7 @@ function String StrPad(Arena* arena, String str, char chr, u32 count, i32 dir)
 function String StrInsert(Arena* arena, String str, u64 index, String value)
 {
     index = ClampTop(index, str.size - 1);
-    String result = { 0, str.size + value.size };
-    result.str = PushArray(arena, u8, result.size + 1);
+    String result = StrPush(arena, str.size + value.size, 1);
     CopyMem(result.str, str.str, index);
     CopyMem(result.str + index, value.str, value.size);
     CopyMem(result.str + index + value.size, str.str + index, value.size - index);
@@ -1139,8 +1177,7 @@ function String StrRemove(Arena* arena, String str, u64 index, u64 count)
     if (index + count == str.size)
         return StrChop(str, count); // @RECONSIDER(long): Maybe just alloc a new null-terminated string
     
-    String result = { 0, count };
-    result.str = PushArray(arena, u8, count + 1);
+    String result = StrPush(arena, count, 1);
     CopyMem(result.str, str.str, index);
     CopyMem(result.str + index, str.str + index + count, count);
     return result;
@@ -1150,56 +1187,23 @@ function String StrRepeat(Arena* arena, String str, u64 count)
 {
     u64 size = count * str.size;
     // @RECONSIDER(long): This will always alloc a new string, even if the count is zero
-    String result = { PushArrayNZ(arena, u8, size + 1), size };
+    String result = StrPush(arena, size, 1);
     for (u64 i = 0; i < count; ++i)
         CopyMem(result.str + i * str.size, str.str, str.size);
-    result.str[size] = 0;
     return result;
 }
 
 function String ChrRepeat(Arena* arena, char chr, u64 count)
 {
     // @RECONSIDER(long): This will always alloc a new string, even if the count is zero
-    String result = { PushArrayNZ(arena, u8, count + 1), count };
+    String result = StrPush(arena, count, 1);
     SetMem(result.str, chr, count);
-    result.str[count] = 0;
     return result;
 }
 
 function String StrJoinList(Arena* arena, StringList* list, StringJoin* join)
 {
-    TempPointer(StringJoin, join);
-    
-    String pre = join->pre, mid = join->mid, post = join->post;
-    
-    u64 size = (pre.size + post.size + mid.size * (ClampBot(list->nodeCount , 1) - 1) + list->totalSize);
-    u8* str = PushArray(arena, u8, size + 1);
-    u8* ptr = str;
-    
-    CopyMem(ptr, pre.str, pre.size);
-    ptr += pre.size;
-    
-    b32 isMid = false;
-    StrListIter(list, node)
-    {
-        if (isMid)
-        {
-            CopyMem(ptr, mid.str, mid.size);
-            ptr += mid.size;
-        }
-        
-        CopyMem(ptr, node->string.str, node->string.size);
-        ptr += node->string.size;
-        
-        isMid = true;
-    }
-    
-    CopyMem(ptr, post.str, post.size);
-    ptr += post.size;
-    
-    Assert(ptr == (str + size));
-    
-    return Str(str, size);
+    return StrListJoinArr(arena, &list, 1, join);
 }
 
 function String StrJoinMax3(Arena* arena, StringJoin* join)
@@ -1210,6 +1214,50 @@ function String StrJoinMax3(Arena* arena, StringJoin* join)
     StrListPushNode(&list, join->mid, &mid);
     StrListPushNode(&list, join->post, &post);
     return StrJoin(arena, &list);
+}
+
+function String StrListJoinArr(Arena* arena, StringList** lists, u64 count, StringJoin* join)
+{
+    TempPointer(StringJoin, join);
+    String pre = join->pre, mid = join->mid, post = join->post;
+    
+    u64 nodeCount = 0;
+    u64 totalSize = 0;
+    for (u64 i = 0; i < count; ++i)
+    {
+        nodeCount += lists[i]->nodeCount;
+        totalSize += lists[i]->totalSize;
+    }
+    
+    u64 size = pre.size + post.size + mid.size * (ClampBot(nodeCount , 1) - 1) + totalSize;
+    u8* str = PushArray(arena, u8, size + 1);
+    u8* ptr = str;
+    
+    CopyMem(ptr, pre.str, pre.size);
+    ptr += pre.size;
+    
+    b32 isMid = false;
+    for (u64 i = 0; i < count; ++i)
+    {
+        StrListIter(lists[i], node)
+        {
+            if (isMid)
+            {
+                CopyMem(ptr, mid.str, mid.size);
+                ptr += mid.size;
+            }
+            
+            CopyMem(ptr, node->string.str, node->string.size);
+            ptr += node->string.size;
+            isMid = true;
+        }
+    }
+    
+    CopyMem(ptr, post.str, post.size);
+    ptr += post.size;
+    
+    Assert(ptr == (str + size));
+    return Str(str, size);
 }
 
 function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringFindFlags flags)
@@ -1224,9 +1272,9 @@ function StringList StrSplitList(Arena* arena, String str, StringList* splits, S
         u8* opl = str.str + str.size;
         
         // NOTE(long): < rather than <= because firstWord = ptr + 1 can crash at the end of buffer
-        for (;ptr < opl; ++ptr)
+        for (; ptr < opl; ++ptr)
         {
-            StringNode* match = StrFindList(StrRange(ptr, opl), splits, flags);
+            StringNode* match = StrFindList(StrRange(ptr, opl), splits, flags|FindStr_RightSloppy, 0);
             if (match)
             {
                 // NOTE(long): try to emit word, <= rather than < will allow empty members
@@ -1258,7 +1306,7 @@ function StringList StrSplitArr(Arena* arena, String str, String splits, StringF
         u8* opl = str.str + str.size;
         
         // NOTE(long): < rather than <= because firstWord = ptr + 1 can crash at the end of buffer
-        for (;ptr < opl; ++ptr)
+        for (; ptr < opl; ++ptr)
         {
             if (ChrCompareArr(*ptr, splits, flags))
             {
@@ -1306,20 +1354,30 @@ function String StrReplace(Arena* arena, String str, String oldStr, String newSt
 
 function String StrToLower(Arena* arena, String str)
 {
-    String result = { PushArrayNZ(arena, u8, str.size + 1), str.size };
+    String result = StrPush(arena, str.size, 1);
     for (u64 i = 0; i < str.size; ++i)
         result.str[i] = IsCharacter(str.str[i]) ? ChrToLower(str.str[i]) : str.str[i];
-    result.str[str.size] = 0;
     return result;
 }
 
 function String StrToUpper(Arena* arena, String str)
 {
-    String result = { PushArrayNZ(arena, u8, str.size + 1), str.size };
+    String result = StrPush(arena, str.size, 1);
     for (u64 i = 0; i < str.size; ++i)
         result.str[i] = IsCharacter(str.str[i]) ? ChrToUpper(str.str[i]) : str.str[i];
-    result.str[str.size] = 0;
     return result;
+}
+
+function void StrToLowerIP(String str)
+{
+    for (u64 i = 0; i < str.size; ++i)
+        str.str[i] = IsCharacter(str.str[i]) ? ChrToLower(str.str[i]) : str.str[i];
+}
+
+function void StrToUpperIP(String str)
+{
+    for (u64 i = 0; i < str.size; ++i)
+        str.str[i] = IsCharacter(str.str[i]) ? ChrToUpper(str.str[i]) : str.str[i];
 }
 
 //- long: Comparision Functions
@@ -1356,7 +1414,7 @@ function b32 ChrCompareArr(char chr, String arr, StringFindFlags flags)
     return false;
 }
 
-function b32 StrListCompare(String str, StringList* values, StringFindFlags flags)
+function b32 StrCompareList(String str, StringList* values, StringFindFlags flags)
 {
     StrListIter(values, node)
     {
@@ -1376,20 +1434,12 @@ function b32 StrIsWhitespace(String str)
 
 function i64 StrFindStr(String str, String val, StringFindFlags flags)
 {
-    if (str.size == 0 || val.size == 0)
-        return -1;
-    
-    b32 lastMatch = flags & FindStr_LastMatch;
-    String compare = lastMatch ? StrPostfix(str, val.size) : StrPrefix(str, val.size);
-    
-    while (compare.size >= val.size)
+    for (i64 i = 0; i < (i64)(str.size - val.size) + 1; ++i)
     {
-        if (StrCompare(compare, val, flags))
-            return compare.str - str.str;
-        StringJoin sub = SubstrSplit(str, compare);
-        compare = lastMatch ? StrPrefix(sub.post, val.size) : StrPostfix(sub.pre, val.size);
+        i64 index = (flags & FindStr_LastMatch) ? (str.size - i - 1) : i;
+        if (StrCompare(Str(str.str + index, val.size), val, flags))
+            return index;
     }
-    
     return -1;
 }
 
@@ -1397,21 +1447,29 @@ function i64 StrFindArr(String str, String arr, StringFindFlags flags)
 {
     for (u64 i = 0; i < str.size; ++i)
     {
-        u64 result = (flags & FindStr_LastMatch) ? (str.size - i - 1) : i;
+        i64 result = (flags & FindStr_LastMatch) ? (str.size - i - 1) : i;
         if (ChrCompareArr(str.str[result], arr, flags))
             return result;
     }
     return -1;
 }
 
-function StringNode* StrFindList(String str, StringList* list, StringFindFlags flags)
+function StringNode* StrFindList(String str, StringList* list, StringFindFlags flags, u64* out)
 {
-    StrListIter(list, node)
+    TempPointer(i64, out);
+    StringNode* result = 0;
+    
+    i64 index = 0;
+    for (StringNode* node = list->first; node; node = node->next, ++index)
     {
-        if (StrFindStr(str, node->string, flags) > -1)
-            return node;
+        if (StrCompare(str, node->string, flags))
+        {
+            result = node;
+            *out = index;
+        }
     }
-    return 0;
+    
+    return result;
 }
 
 function String StrChopAfter(String str, String arr, StringFindFlags flags)
@@ -1482,7 +1540,7 @@ function String PathAbsFromRel(Arena* arena, String dst, String src)
 {
     String result = dst;
     PathStyle style = PathStyleFromStr(dst);
-    if(style == PathStyle_Relative)
+    if (style == PathStyle_Relative)
     {
         ScratchBegin(scratch, arena);
         result = StrPushf(scratch, "%.*s/%.*s", StrExpand(src), StrExpand(dst));
@@ -1774,7 +1832,7 @@ function String32 StrToStr32(Arena* arena, String str)
         
         *dptr = decode.codepoint;
         ptr += decode.size;
-        dptr += 1;
+        dptr++;
     }
     *dptr = 0;
     
@@ -1815,7 +1873,7 @@ function String StrFromStr32(Arena* arena, String32 str)
     Str32Stream(str, ptr, opl)
     {
         u32 encSize = StrEncodeUTF8(dptr, *ptr);
-        ptr += 1;
+        ptr++;
         dptr += encSize;
     }
     *dptr = 0;
@@ -1835,7 +1893,7 @@ function String StrFromStr16(Arena* arena, String16 str)
     {
         StringDecode decode = StrDecodeWide(ptr, (u64)(opl - ptr));
         u32 encSize = StrEncodeUTF8(dptr, decode.codepoint);
-        ptr += 1;
+        ptr++;
         dptr += encSize;
     }
     *dptr = 0;
@@ -1868,7 +1926,7 @@ function u64 UTF8Length(String str)
             return 0;
         
         ptr += decode.size;
-        result += 1;
+        result++;
     }
     return result;
 }
@@ -1946,7 +2004,7 @@ function u64 U64FromStr(String str, u32 radix, b32* error)
     {
         if (ALWAYS(radix >= 2 && radix <= 16))
         {
-            for (u64 i = 0; i < str.size; i += 1)
+            for (u64 i = 0; i < str.size; ++i)
             {
                 u8 symbol = symbols[str.str[i]];
                 if (symbol >= radix)
@@ -1987,49 +2045,6 @@ function i64 I64FromStr(String str, u32 radix, b32* error)
             result = ((i64)x ^ negative) - negative;
     }
     
-    return result;
-}
-
-function i64 I64FromStrC(String str, b32* error)
-{
-    TempBool(error);
-    i64 result = 0;
-    
-    if (str.size)
-    {
-        b64 negative = (str.str[0] == '-') * -1;
-        if (negative || str.str[0] == '+')
-            str = StrSkip(str, 1);
-        u64 x = U64FromStrC(str, error);
-        if (x > MAX_I64)
-            *error = 1;
-        else
-            result = ((i64)x ^ negative) - negative;
-    }
-    
-    return result;
-}
-
-function u64 U64FromStrC(String str, b32* error)
-{
-    u64 result = 0;
-    String numeric = str;
-    u32 base = 10;
-    
-    if (str.size >= 2)
-    {
-        if (str.str[0] == '0')
-        {
-            switch (str.str[1])
-            {
-                case 'x': base = 16; numeric = StrSkip(str, 2); break;
-                case 'b': base =  2; numeric = StrSkip(str, 2); break;
-                default:  base =  8; numeric = StrSkip(str, 1); break;
-            }
-        }
-    }
-    
-    result = U64FromStr(str, base, error);
     return result;
 }
 
@@ -2105,10 +2120,10 @@ function String StrFromI64(Arena* arena, i64 x, u32 radix)
                 space[offset++] = '-';
             }
             
-            for (u64 i = x; i > 0; i /= radix, length += 1)
+            for (u64 i = x; i > 0; i /= radix, ++length)
                 space[length+offset] = symbols[i%radix];
             
-            for (u64 j = 0, i = length - 1; j < i; j += 1, i -= 1)
+            for (u64 j = 0, i = length - 1; j < i; ++j, i -= 1)
                 Swap(u8, space[i+offset], space[j+offset]);
             
             result = StrCopy(arena, Str(space, length + offset));
@@ -2116,6 +2131,109 @@ function String StrFromI64(Arena* arena, i64 x, u32 radix)
         else
             result = StrCopy(arena, StrLit("0"));
     }
+    return result;
+}
+
+//- long: C-Syntax Functions
+function String StrCEscape(Arena* arena, String str)
+{
+    // NOTE(rjf): This doesn't handle hex/octal/unicode escape sequences right now, just the simple stuff
+    StringList strs = {0};
+    String result = {0};
+    u64 start = 0;
+    
+    ScratchBlock(scratch, arena)
+    {
+        for (u64 i = 0; i <= str.size; ++i)
+        {
+            // NOTE(long): what about `\n`
+            if (i == str.size || str.str[i] == '\\' || str.str[i] == '\r')
+            {
+                String substr = Substr(str, start, i);
+                if (substr.size)
+                    StrListPush(arena, &strs, substr);
+                start = i+1;
+            }
+            
+            if (i < str.size && str.str[i] == '\\')
+            {
+                u8 next_char = str.str[i+1];
+                u8 replace_byte = 0;
+                
+                switch (next_char)
+                {
+                    default: break;
+                    case 'a': replace_byte = 0x07; break;
+                    case 'b': replace_byte = 0x08; break;
+                    case 'e': replace_byte = 0x1b; break;
+                    case 'f': replace_byte = 0x0c; break;
+                    case 'n': replace_byte = 0x0a; break;
+                    case 'r': replace_byte = 0x0d; break;
+                    case 't': replace_byte = 0x09; break;
+                    case 'v': replace_byte = 0x0b; break;
+                    case '\\':replace_byte = '\\'; break;
+                    case '\'':replace_byte = '\''; break;
+                    case '"': replace_byte = '"';  break;
+                    case '?': replace_byte = '?';  break; // @RECONSIDER(long): Bruh, fuck di/trigraphs
+                }
+                
+                String replace_string = StrCopy(scratch, Str(&replace_byte, 1));
+                StrListPush(scratch, &strs, replace_string);
+                
+                if (replace_byte != '\\' && replace_byte != '"' && replace_byte != '\'')
+                {
+                    i++;
+                    start++;
+                }
+            }
+        }
+        
+        result = StrJoin(arena, &strs);
+    }
+    
+    return result;
+}
+
+function i64 I64FromStrC(String str, b32* error)
+{
+    TempBool(error);
+    i64 result = 0;
+    
+    if (str.size)
+    {
+        b64 negative = (str.str[0] == '-') * -1;
+        if (negative || str.str[0] == '+')
+            str = StrSkip(str, 1);
+        u64 x = U64FromStrC(str, error);
+        if (x > MAX_I64)
+            *error = 1;
+        else
+            result = ((i64)x ^ negative) - negative;
+    }
+    
+    return result;
+}
+
+function u64 U64FromStrC(String str, b32* error)
+{
+    u64 result = 0;
+    String numeric = str;
+    u32 base = 10;
+    
+    if (str.size >= 2)
+    {
+        if (str.str[0] == '0')
+        {
+            switch (str.str[1])
+            {
+                case 'x': base = 16; numeric = StrSkip(str, 2); break;
+                case 'b': base =  2; numeric = StrSkip(str, 2); break;
+                default:  base =  8; numeric = StrSkip(str, 1); break;
+            }
+        }
+    }
+    
+    result = U64FromStr(numeric, base, error);
     return result;
 }
 
@@ -2131,6 +2249,9 @@ CHECK_PRINTF_FUNC(1) function void Outf(CHECK_PRINTF char* fmt, ...)
     i32 size = stbsp_vsnprintf(buffer, sizeof(buffer), fmt, args);
     if (ALWAYS(size >= 0))
     {
+        if (NEVER(size > PRINT_INTERNAL_BUFFER_SIZE))
+            size = PRINT_INTERNAL_BUFFER_SIZE;
+        
         b32 result = OSWriteConsole(OS_STD_OUT, Str(buffer, size));
         ALWAYS(result);
     }
@@ -2145,6 +2266,9 @@ CHECK_PRINTF_FUNC(1) function void Errf(CHECK_PRINTF char* fmt, ...)
     i32 size = stbsp_vsnprintf(buffer, sizeof(buffer), fmt, args);
     if (ALWAYS(size >= 0))
     {
+        if (NEVER(size > PRINT_INTERNAL_BUFFER_SIZE))
+            size = PRINT_INTERNAL_BUFFER_SIZE;
+        
         b32 result = OSWriteConsole(OS_STD_ERR, Str(buffer, size));
         ALWAYS(result);
     }
@@ -2314,9 +2438,7 @@ BufferInterleave(Arena *arena, void **in,
     // TODO(allen): look at disassembly for real speed work
     
     // setup buffer
-    String result = {0};
-    result.size = laneCount*elementSize*elementCount;
-    result.str = PushArrayNZ(arena, u8, result.size);
+    String result = StrPush(arena, laneCount*elementSize*elementCount, 0);
     
     // fill loop
     u8 *out_ptr = result.str;
@@ -2342,10 +2464,8 @@ BufferUninterleave(Arena *arena, void *in,
     
     // allocate outs
     String *result = PushArrayNZ(arena, String, laneCount);
-    for (u64 i = 0; i < laneCount; i += 1){
-        result[i].str = PushArrayNZ(arena, u8, bytes_per_lane);
-        result[i].size = bytes_per_lane;
-    }
+    for (u64 i = 0; i < laneCount; i += 1)
+        result[i] = StrPush(arena, bytes_per_lane, 0);
     
     // fill loop
     u8 *in_ptr = (u8*)in;
@@ -2818,9 +2938,12 @@ function b32 OSWriteConsole(i32 handle, String data)
 function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
 {
     String result = {0};
+    ScratchBegin(scratch); // It's ok for this to collide with arena
+    fileName = StrCopy(scratch, fileName);
     HANDLE file = CreateFileA(fileName.str,
                               GENERIC_READ, FILE_SHARE_READ, 0,
                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    ScratchEnd(scratch);
     
     if (file != INVALID_HANDLE_VALUE)
     {
@@ -2931,7 +3054,15 @@ function b32 OSRenameFile(String oldName, String newName)
 
 function b32 OSCreateDir(String path)
 {
-    b32 result = CreateDirectory(path.str, 0);
+    WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
+    GetFileAttributesEx(path.str, GetFileExInfoStandard, &attributes);
+    
+    b32 result = 0;
+    if (attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+        result = 1;
+    else
+        result = CreateDirectory(path.str, 0);
+    
     return result;
 }
 
@@ -3127,7 +3258,7 @@ function String OSGetClipboard(Arena *arena)
         if (handle)
         {
             u8* buffer = (u8*)GlobalLock(handle);
-            if(buffer)
+            if (buffer)
             {
                 result = StrCloneCStr(arena, buffer);
                 GlobalUnlock(handle);

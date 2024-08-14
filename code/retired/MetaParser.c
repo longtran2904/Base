@@ -323,7 +323,7 @@ function Token RequireToken(Lexer* lexer, MetaTokenType desiredType)
 {
     Token token = GetToken(lexer);
     if (token.type != desiredType)
-        ErrorToken(lexer, token, "Unexpected token type, required type is %s", GetEnumName(MetaTokenType, desiredType));
+        ErrorToken(lexer, token, "Unexpected token type, required type is %s", GetEnumCStr(MetaTokenType, desiredType));
     return token;
 }
 

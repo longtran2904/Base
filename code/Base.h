@@ -7,6 +7,7 @@
 // [ ] Custom printf format
 // [ ] Support for custom data structures
 // [ ] Command line interface
+// [ ] Property testing
 
 //~/////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -440,7 +441,7 @@
 #define SlashStr "/\\"
 #define SpaceStr " \t\f\v"
 #define NlineStr "\n\r"
-#define WspaceStr Concat(SpaceStr, NlineStr)
+#define WspaceStr SpaceStr NlineStr
 
 #include <string.h> // TODO(long): Replace memset, memcpy, and memcmp
 #define SetMem(ptr, val, size) memset((ptr), (val), (size))
@@ -634,7 +635,6 @@ typedef void VoidFuncVoid(void*);
 //~ long: Compound Types
 
 //- long: 2D Vectors
-
 typedef union v2f32 v2f32;
 union v2f32
 {
@@ -664,7 +664,6 @@ union v2i16
 };
 
 //- long: 3D Vectors
-
 typedef union v3f32 v3f32;
 union v3f32
 {
@@ -704,7 +703,6 @@ union v3i32
 //- TODO(long): 2x2/3x3/4x4 Matrix
 
 //- long: 1D Range
-
 typedef union r1i32 r1i32;
 union r1i32
 {
@@ -727,7 +725,6 @@ union r1f32
 };
 
 //- long: 2D Range (rectangles)
-
 typedef union r2i32 r2i32;
 union r2i32
 {
@@ -744,6 +741,14 @@ union r2f32
     struct { v2f32 p0, p1; };
     struct { f32 x0, y0, x1, y1; };
     v2f32 v[2];
+};
+
+//- long: Text Location/Range
+typedef struct TextLoc TextLoc;
+struct TextLoc
+{
+    u32 line;
+    u32 col;
 };
 
 //~ long: Symbolic Types
@@ -1227,6 +1232,12 @@ function r2f32 UnionR2F32(r2f32 a, r2f32 b);
 function r2f32 IntersectR2F32(r2f32 a, r2f32 b);
 function v2f32 ClampR2F32(r2f32 r, v2f32 v);
 
+//- long: Text Functions
+#define TextLocP(line, col) ((TextLoc){(line), (col)})
+function TextLoc TextLocFromOff(String str, u64 off);
+function u64 OffFromTextLoc(String str, TextLoc loc);
+#define StrMaxLoc(str) TextLocFromOff((str), (str).size)
+
 //~ long: Arena Functions
 
 function Arena* ArenaBuffer(u8* buffer, u64 size, u64 alignment);
@@ -1319,17 +1330,17 @@ function String StrTrim(String str, String arr, i32 dir);
 
 //- long: Allocation Functions
 function String StrCopy(Arena* arena, String str);
+function String StrPush(Arena* arena, u64 size, b32 terminate);
 #define StrCloneCStr(arena, cstr) StrCopy((arena), StrFromCStr(cstr))
 #define StrToCStr(a, s) StrCopy((a), (s)).str
 
 function String StrFromFlags(Arena* arena, String* names, u64 nameCount, u64 flags);
 #define GetEnumStr(type, e) (InRange(e, 0, EnumCount(type) - 1) ? (Concat(type, _names)[(i32)(e)]) : StrLit("Invalid"))
-#define GetEnumName(type, e) GetEnumStr(type, e).str
+#define GetEnumCStr(type, e) GetEnumStr(type, e).str
 #define GetFlagStr(arena, type, flags) StrFromFlags((arena), Concat(type, _names), ArrayCount(Concat(type, _names)), (flags))
 #define GetFlagName(arena, type, flags) GetFlagStr(arena, type, flags).str
 
 function StringList StrList(Arena* arena, String* strArr, u64 count);
-function StringList StrListExplicit(StringNode* nodes, String* strs, u64 count);
 
 // NOTE(long): IP stands for in place, which means the function will modify the passed-in pointer
 // In this case, the function will mutate the `list` argument
@@ -1358,8 +1369,11 @@ function String ChrRepeat(Arena* arena, char   chr, u64 count);
 
 function String StrJoinList(Arena* arena, StringList* list, StringJoin* join);
 function String StrJoinMax3(Arena* arena, StringJoin* join);
-#define StrJoin(arena, list, ...) StrJoinList((arena), (list), &(StringJoin){ .pre = {0}, .mid = {0}, .post = {0}, __VA_ARGS__ })
+#define StrJoin(arena, list, ...) StrJoinList((arena), (list), &(StringJoin){ .pre = {0}, __VA_ARGS__ })
 #define StrJoin3(arena, ...) StrJoinMax3((arena), &(StringJoin){ __VA_ARGS__ })
+
+function String StrListJoinArr(Arena* arena, StringList** lists, u64 count, StringJoin* join);
+#define StrListJoin(arena, lists, count, ...) StrListJoinArr(arena, lists, count, &(StringJoin){ .pre = {0}, __VA_ARGS__ })
 
 function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringFindFlags flags);
 function StringList StrSplitArr (Arena* arena, String str, String      splits, StringFindFlags flags);
@@ -1372,16 +1386,19 @@ function String StrReplace    (Arena* arena, String str, String      oldStr, Str
 function String StrToLower(Arena* arena, String str);
 function String StrToUpper(Arena* arena, String str);
 
+function void StrToLowerIP(String str);
+function void StrToUpperIP(String str);
+
 //- long: Comparision Functions
 function b32 ChrCompare(char a, char b, StringFindFlags flags); // IgnoreCase/Slash
 function b32 StrCompare(String a, String b, StringFindFlags flags); // RightSloppy
 function b32 ChrCompareArr(char chr, String arr, StringFindFlags flags);
-function b32 StrListCompare(String str, StringList* values, StringFindFlags falgs);
+function b32 StrCompareList(String str, StringList* values, StringFindFlags falgs);
 function b32 StrIsWhitespace(String str); // Empty strings will return true
 
 function i64 StrFindStr(String str, String val, StringFindFlags flags);
 function i64 StrFindArr(String str, String arr, StringFindFlags flags);
-function StringNode* StrFindList(String str, StringList* list, StringFindFlags flags);
+function StringNode* StrFindList(String str, StringList* list, StringFindFlags flags, u64* out);
 
 function String StrChopAfter(String str, String arr, StringFindFlags flags);
 function String StrSkipUntil(String str, String arr, StringFindFlags flags);
@@ -1398,8 +1415,8 @@ function String StrSkipUntil(String str, String arr, StringFindFlags flags);
 #define StrIsPostfix(s, postfix) (((s).str + (s).size == (postfix).str + (postfix).size) && (s).str <= (postfix).str)
 #define StrIsChr(s, chr) ((s).size == 1 && (s).str[0] == (chr))
 
-#define StrStartsWith(str, val, noCase) (StrCompare(StrPrefix ((str), (val).size), (val), noCase))
-#define   StrEndsWith(str, val, noCase) (StrCompare(StrPostfix((str), (val).size), (val), noCase))
+#define StrStartsWith(str, val, flags) (StrCompare( StrPrefix((str), (val).size), (val), (flags)))
+#define   StrEndsWith(str, val, flags) (StrCompare(StrPostfix((str), (val).size), (val), (flags)))
 
 #define StrFindChr(str, chr, flags) StrFindArr((str), StrLit(chr), (flags))
 #define StrContainsChr(str, chr) (StrFindArr((str), StrLit(chr), 0) > -1)
@@ -1433,7 +1450,7 @@ function String PathNormString(Arena* arena, String path);
 function void PathListResolveDotsIP(StringList* path, PathStyle style);
 function StringList PathListNormString(Arena* arena, String path, PathStyle* out);
 
-//- long: Serialize Functions
+//- long: Serializing Functions
 function String StrWriteToStr(String src, u64 srcOffset, String dst, u64 dstOffset);
 #define StrWriteToMem(data, offset, dst, size) StrWriteToStr((data), (offset), Str(dst, size), 0)
 
@@ -1472,11 +1489,14 @@ function i64 I64FromStr(String str, u32 radix, b32* error);
 function u32 U32FromStr(String str, u32 radix, b32* error);
 function u64 U64FromStr(String str, u32 radix, b32* error);
 
-function i64 I64FromStrC(String str, b32* error);
-function u64 U64FromStrC(String str, b32* error);
-
 function String StrFromTime(Arena* arena, DateTime time);
 function String StrFromArg(char* arg, b32* isArg, String* argValue);
+
+//- long: C-Syntax Functions
+function String StrCEscape(Arena* arena, String str);
+
+function i64 I64FromStrC(String str, b32* error);
+function u64 U64FromStrC(String str, b32* error);
 
 //~ long: Logs/Errors
 
@@ -1635,7 +1655,7 @@ enum
     FileIterFlag_SkipFolders = (1 << 0),
     FileIterFlag_SkipFiles   = (1 << 1),
     FileIterFlag_SkipHidden  = (1 << 2),
-    FileIterFlag_Recursive   = (1 << 3), // TODO(long)
+    FileIterFlag_Recursive   = (1 << 3),
     FileIterFlag_Done        = (1 << 31),
 };
 

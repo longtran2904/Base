@@ -1,0 +1,223 @@
+@table(name, str) MyEnumTable:
+{
+    { A "A" 2 }
+    { B "B" 3 }
+    { C "C" 5 }
+}
+
+@table(name, ret, params)
+R_BackendHookTable:
+{
+    { EquipOS                   R_Handle `void`                                                             }
+    { EquipWindow               R_Handle `R_Handle os_eqp, OS_Handle window`                                }
+    { UnequipWindowFunction     void     `R_Handle os_eqp, R_Handle window_eqp`                             }
+    { ReserveTexture2DFunction  R_Handle `R_Handle os_eqp, Vec2S64 size, R_Texture2DFormat fmt`             }
+    { ReleaseTexture2DFunction  void     `R_Handle os_eqp, R_Handle texture`                                }
+    { FillTexture2DFunction     void     `R_Handle os_eqp, R_Handle texture, Rng2S64 subrect, String8 data` }
+    { SizeFromTexture2DFunction Vec2F32  `R_Handle texture`                                                 }
+    { StartFunction             void     `R_Handle os_eqp, R_Handle window_eqp, Vec2S64 resolution`         }
+    { Submit2DFunction          void     `R_Handle os_eqp, R_Handle window_eqp, R2_CmdList commands`        }
+    { FinishFunction            void     `R_Handle os_eqp, R_Handle window_eqp`                             }
+}
+
+@gen(structs)
+{
+    @expand(R_BackendHookTable a)
+        ```
+        typedef struct $(a.name)Struct $(a.name)Struct;
+        struct $(a.name)Struct
+        {
+        R_$(a.name)Function* $(a.name); $(a.params != void -> '\n'..(@replace(',', ';\n') @upper @lower(R_HANDLE OS_EQP) a.params)..';')
+        }$(`\n`)
+        ```
+}
+
+@gen
+{
+    @expand(R_BackendHookTable a) `typedef $(a.ret .. =>16) $(R_..a.name..Function)($(a.params));`
+}
+
+@union  L_Backend: @expand(R_BackendHookTable a) `L_$(a.name)Function* $(a.name)`
+
+@struct R_Backend: @expand(R_BackendHookTable a) `$(R_..a.name..Function)* $(a.name);`
+
+@gen(functions)
+{
+    `void      R_SelectBackend(R_Backend backend)`
+        @expand(R_BackendHookTable a) `$(a.ret .. =>9) $(R_..a.name)($(a.params));`
+        ``
+        @expand(R_BackendHookTable a) `$(a.ret .. =>9) $(R_..a.name..Stub)($(a.params));`
+}
+
+@enum MyEnum: @expand(MyEnumTable a) `$(a.name)_ur_mom`
+
+@data(`char *`) myenum_string_table:
+{
+    @expand(MyEnumTable a) `"$(a.str)"`;
+}
+
+@text myText:
+"""cbuffer Globals : register(b0)
+{
+float2 viewport_size_px;
+float opacity;
+row_major float4x4 texture_sample_channel_map;
+float2 texture_t2d_size_px;
+row_major float3x3 xform;
+float2 xform_scale;
+}
+
+struct CPU2Vertex
+{
+float4 dst_rect_px     : POS;
+float4 src_rect_px     : TEX;
+float4 color00         : COL0;
+float4 color01         : COL1;
+float4 color10         : COL2;
+float4 color11         : COL3;
+float4 corner_radii_px : CRAD;
+float4 style_params    : STY; // x: border_thickness_px, y: softness_px, z: omit_texture, w: unused
+uint vertex_id         : SV_VertexID;
+};
+
+struct Vertex2Pixel
+{
+float4 position           : SV_POSITION;
+nointerpolation float2 rect_half_size_px  : PSIZE;
+float2 texcoord_pct       : TEX;
+float2 sdf_sample_pos     : SDF;
+float4 tint               : TINT;
+float corner_radius_px    : CRAD;
+nointerpolation float border_thickness_px : BTHC;
+nointerpolation float softness_px         : SFT;
+nointerpolation float omit_texture        : OTX;
+};
+
+Texture2D    main_t2d     : register(t0);
+SamplerState main_sampler : register(s0);
+
+float rect_sdf(float2 sample_pos, float2 rect_half_size, float r)
+{
+return length(max(abs(sample_pos) - rect_half_size + r, 0.0)) - r;
+}
+
+//- rjf: vertex shader
+
+Vertex2Pixel
+vs_main(CPU2Vertex cpu2vertex)
+{
+//- rjf: unpack & xform rectangle src/dst vertices
+float2 dst_p0_px  = cpu2vertex.dst_rect_px.xy;
+float2 dst_p1_px  = cpu2vertex.dst_rect_px.zw;
+float2 src_p0_px  = cpu2vertex.src_rect_px.xy;
+float2 src_p1_px  = cpu2vertex.src_rect_px.zw;
+float2 dst_size_px = abs(dst_p1_px - dst_p0_px);
+
+//- rjf: unpack style params
+float border_thickness_px = cpu2vertex.style_params.x;
+float softness_px         = cpu2vertex.style_params.y;
+float omit_texture        = cpu2vertex.style_params.z;
+
+//- rjf: prep per-vertex arrays to sample from (p: position, t: texcoord, c: colorcoord, r: cornerradius)
+float2 dst_p_verts_px[] =
+{
+float2(dst_p0_px.x, dst_p1_px.y),
+float2(dst_p0_px.x, dst_p0_px.y),
+float2(dst_p1_px.x, dst_p1_px.y),
+float2(dst_p1_px.x, dst_p0_px.y),
+};
+float2 src_p_verts_px[] =
+{
+float2(src_p0_px.x, src_p1_px.y),
+float2(src_p0_px.x, src_p0_px.y),
+float2(src_p1_px.x, src_p1_px.y),
+float2(src_p1_px.x, src_p0_px.y),
+};
+float dst_r_verts_px[] =
+{
+cpu2vertex.corner_radii_px.y,
+cpu2vertex.corner_radii_px.x,
+cpu2vertex.corner_radii_px.w,
+cpu2vertex.corner_radii_px.z,
+};
+float4 src_color[] = {
+cpu2vertex.color01,
+cpu2vertex.color00,
+cpu2vertex.color11,
+cpu2vertex.color10,
+};
+float2 dst_verts_pct = float2((cpu2vertex.vertex_id >> 1) ? 1.f : 0.f,
+(cpu2vertex.vertex_id & 1)  ? 0.f : 1.f);
+
+// rjf: fill vertex -> pixel data
+Vertex2Pixel vertex2pixel;
+{
+float2 xformed_pos = mul(xform, float3(dst_p_verts_px[cpu2vertex.vertex_id], 1.f)).xy;
+xformed_pos.y = viewport_size_px.y - xformed_pos.y;
+vertex2pixel.position.xy          = 2.f * xformed_pos/viewport_size_px - 1.f;
+vertex2pixel.position.z           = 0.f;
+vertex2pixel.position.w           = 1.f;
+vertex2pixel.rect_half_size_px    = dst_size_px / 2.f * xform_scale;
+vertex2pixel.texcoord_pct         = src_p_verts_px[cpu2vertex.vertex_id] / texture_t2d_size_px;
+vertex2pixel.sdf_sample_pos       = (2.f * dst_verts_pct - 1.f) * vertex2pixel.rect_half_size_px;
+vertex2pixel.tint                 = src_color[cpu2vertex.vertex_id];
+vertex2pixel.corner_radius_px     = dst_r_verts_px[cpu2vertex.vertex_id];
+vertex2pixel.border_thickness_px  = border_thickness_px;
+vertex2pixel.softness_px          = softness_px;
+vertex2pixel.omit_texture         = omit_texture;
+}
+return vertex2pixel;
+}
+
+//- rjf: pixel shader
+
+float4
+ps_main(Vertex2Pixel vertex2pixel) : SV_TARGET
+{
+// rjf: blend corner colors to produce final tint
+float4 tint = vertex2pixel.tint;
+
+// rjf: sample texture
+float4 albedo_sample = float4(1, 1, 1, 1);
+if(vertex2pixel.omit_texture < 1)
+{
+albedo_sample = mul(main_t2d.Sample(main_sampler, vertex2pixel.texcoord_pct), texture_sample_channel_map);
+}
+
+// rjf: determine SDF sample position
+float2 sdf_sample_pos = vertex2pixel.sdf_sample_pos;
+
+// rjf: sample for borders
+float border_sdf_t = 1;
+if(vertex2pixel.border_thickness_px > 0)
+{
+float border_sdf_s = rect_sdf(sdf_sample_pos,
+vertex2pixel.rect_half_size_px - float2(vertex2pixel.softness_px*2.f, vertex2pixel.softness_px*2.f) - vertex2pixel.border_thickness_px,
+max(vertex2pixel.corner_radius_px-vertex2pixel.border_thickness_px, 0));
+border_sdf_t = smoothstep(0, 2*vertex2pixel.softness_px, border_sdf_s);
+}
+if(border_sdf_t < 0.001f)
+{
+discard;
+}
+
+// rjf: sample for corners
+float corner_sdf_t = 1;
+if(vertex2pixel.corner_radius_px > 0 || vertex2pixel.softness_px > 0.75f)
+{
+float corner_sdf_s = rect_sdf(sdf_sample_pos,
+vertex2pixel.rect_half_size_px - float2(vertex2pixel.softness_px*2.f, vertex2pixel.softness_px*2.f),
+vertex2pixel.corner_radius_px);
+corner_sdf_t = 1-smoothstep(0, 2*vertex2pixel.softness_px, corner_sdf_s);
+}
+
+// rjf: form+return final color
+float4 final_color = albedo_sample;
+final_color *= tint;
+final_color.a *= opacity;
+final_color.a *= corner_sdf_t;
+final_color.a *= border_sdf_t;
+return final_color;
+}"""
+
+@embed metagen_exe: "code\test.mdesk"

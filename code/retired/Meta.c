@@ -38,7 +38,7 @@ function void PrintType(Arena* arena, MetaInfo* type, u32 padding, StringList* i
         StrListPushf(arena, result, "%*.s[%.*s]\n", padding, "", StrExpand(type->name));
     
     padding += 4;
-    StrListPushf(arena, result, "%*.sType:  %s\n", padding, "", GetEnumName(MetaInfoKind, type->kind));
+    StrListPushf(arena, result, "%*.sType:  %s\n", padding, "", GetEnumCStr(MetaInfoKind, type->kind));
     StrListPushf(arena, result, "%*.sFlags: %s\n", padding, "",
                  GetFlagName(arena, MetaInfoFlag, type->flags));
     StrListPushf(arena, result, "%*.sIndex: %u\n", padding, "", type->indexWithinTypeTable);
@@ -48,14 +48,14 @@ function void PrintType(Arena* arena, MetaInfo* type, u32 padding, StringList* i
     u32 pd = 0;
     for (MetaInfo* ref = type->first; ref; ref = ref->next)
     {
-        if (ref->first != type && ref->first && !StrListCompare(ref->first->name, ignoreTypes, 0))
+        if (ref->first != type && ref->first && !StrCompareList(ref->first->name, ignoreTypes, 0))
         {
             if (ref == type->first)
                 StrListPushf(arena, result, "%llu\n", type->count);
             PrintType(arena, ref, padding + 7, ignoreTypes, result);
         }
         else
-            StrListPushf(arena, result, "%*.s[%.*s: %s]\n", pd, "", StrExpand(ref->name), GetEnumName(MetaInfoKind, ref->kind));
+            StrListPushf(arena, result, "%*.s[%.*s: %s]\n", pd, "", StrExpand(ref->name), GetEnumCStr(MetaInfoKind, ref->kind));
         
         if (IsRef(type->kind))
             break;
@@ -126,7 +126,7 @@ int main(void)
             ParseDeclaration(&parser, Declaration_Type, 0);
         
         printf("Token(%u, %u)\n                 str  = %.*s\n                 type = %s\n", token.lineNumber, token.colNumber,
-               StrExpand(token.str), GetEnumName(MetaTokenType, token.type));
+               StrExpand(token.str), GetEnumCStr(MetaTokenType, token.type));
     }
     
     StringList list = {0};
@@ -139,7 +139,7 @@ int main(void)
     OSWriteFile(StrLit("code/retired/generated/Types.txt"), typeData);
     
     for (MetaInfo* type = parser.table->first; type; type = type->next)
-        printf("[%.*s: %s],\n", StrExpand(type->name), GetEnumName(MetaInfoKind, type->kind));
+        printf("[%.*s: %s],\n", StrExpand(type->name), GetEnumCStr(MetaInfoKind, type->kind));
     
     StrListIter(parser.lexer->errorList, node)
         printf("%.*s", StrExpand(node->string));

@@ -3,33 +3,7 @@
 #ifndef _LONG_M_D_H
 #define _LONG_M_D_H
 
-#if 0
-#define MD_DEFAULT_ARENA 0
-#define MD_IMPL_Arena Arena
-#define MD_IMPL_ArenaMinPos 64
-#define MD_IMPL_ArenaAlloc     ArenaMake
-#define MD_IMPL_ArenaRelease   ArenaRelease
-#define MD_IMPL_ArenaGetPos    ArenaCurrPos
-#define MD_IMPL_ArenaPush      ArenaPush
-#define MD_IMPL_ArenaPopTo     ArenaPopTo
-#define MD_IMPL_ArenaSetAutoAlign ArenaAlign
-
-#define MD_DEFAULT_SCRATCH 0
-function Arena* Long_GetMDScratch(Arena** conflicts, u64 count) { return GetScratch(conflicts, count).arena; }
-#define MD_IMPL_GetScratch Long_GetMDScratch
-
-#define MD_DEFAULT_SPRINTF 0
-#define MD_IMPL_Vsnprintf stbsp_vsnprintf
-
-#define MD_STR(string) (MD_String8){ .str = (string).str, .size = (string).size }
-
-MSVC(WarnDisable(6250 28182))
-#include "md\md.h"
-#include "md\md.c"
-MSVC(WarnEnable(6250 28182))
-#else
-
-//- Base Types
+//- long: Base Types
 typedef i8 S8;
 typedef i16 S16;
 typedef i32 S32;
@@ -44,7 +18,7 @@ typedef union r1u64 Rng1U64;
 
 #define read_only readonly
 
-//- String Types
+//- long: String Types
 typedef String String8;
 typedef StringList String8List;
 
@@ -71,7 +45,7 @@ read_only global U8 utf8_class[32] = {
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,2,2,2,2,3,3,4,5,
 };
 
-//- Arena Types
+//- long: Arena Types
 typedef TempArena Temp;
 
 #define MemoryCopy CopyMem
@@ -90,6 +64,13 @@ WarnDisable("-Wextra")
 #include "mdesk\mdesk.h"
 #include "mdesk\mdesk.c"
 WarnPop()
-#endif
+
+//- long: Helper Functions
+function MD_ParseResult MD_ParseText(Arena* arena, String filename, String text)
+{
+    MD_TokenizeResult tokenize = md_tokenize_from_text(arena, text);
+    MD_ParseResult result = md_parse_from_text_tokens(arena, filename, text, tokenize.tokens);
+    return result;
+}
 
 #endif //_LONG_M_D_H
