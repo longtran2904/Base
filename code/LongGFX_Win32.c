@@ -1,6 +1,8 @@
 
 //~ NOTE(long): Internal Win32 APIs
 
+#define W32_GET_PROC_ADDR(f, m, n) (*(PROC*)(&(f))) = GetProcAddress((m), (n))
+
 typedef struct W32Window W32Window;
 struct W32Window
 {

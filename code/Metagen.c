@@ -26,7 +26,7 @@ function void MG_MapInsert(Arena* arena, MG_Map map, String str, void* val)
     MG_MapNode* node = PushStruct(arena, MG_MapNode);
     node->key = StrCopy(arena, str);
     node->val = val;
-    SLLQueuePush(slot->first, slot->last,node);
+    SLLQueuePush(slot->first, slot->last, node);
 }
 
 //~ long: Expression Parsing Functions
@@ -731,7 +731,7 @@ function String MG_ArrCFromData(Arena* arena, String data)
             u64 chunkSize  = Min(data.size - off, 64);
             u8* chunkBytes = data.str + off;
             
-            String str = StrPush(arena, chunkSize * 5, 0);
+            String str = PushBuffer(arena, chunkSize * 5);
             
             for (u64 i = 0; i < chunkSize; ++i)
             {

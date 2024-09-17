@@ -199,20 +199,28 @@ function b32 glob(String pattern, String text, Flags32* error)
 }
 
 #if !GLOB_STATIC_LIB
-void main(i32 argc, char** argv)
+enum
+{
+    Glob_CLI_Help  = 1 << 0,
+    Glob_CLI_File  = 1 << 1,
+    Glob_CLI_Ext   = 1 << 2,
+    Glob_CLI_Debug = 1 << 3,
+};
+
+int main(i32 argc, char** argv)
 {
     char* helpMessage =
         "[SYNTAX]\n\n"
         "    glob [options...] \"pattern\" [paths...]\n\n"
         "[OPTIONS]\n\n"
-        "    /e[-] Turns on all the extensions. By default, /e is on. /e- disables all the extensions.\n\n"
-        "    /f    Rather than match the file's name, match the file's content instead.\n\n"
-        "    /d    Displays the internal memory usage. This is for debugging only.\n\n"
+        "    /e[-] Turns on all the extensions. By default, /e is on. /e- disables all the extensions.\n"
+        "    /f    Rather than match the file's name, match the file's content instead.\n"
+        "    /d    Displays the internal memory usage. This is for debugging only.\n"
         "    /?    Displays this help message.\n\n"
         "[DESCRIPTION]\n\n"
         "    Globbing is the operation that expands a wildcard pattern into the list of pathnames\n"
-        "    matching the pattern. Matching is defined by:\n\n"
-        "    A '?' (not between brackets) matches any single character.\n\n"
+        "    matching the pattern. Matching is defined by:\n"
+        "    A '?' (not between brackets) matches any single character.\n"
         "    A '*' (not between brackets) matches any string, including the empty string.\n\n"
         "  Character classes\n\n"
         "    An expression \"[...]\" where the first character after the leading '[' is not an '!'\n"
@@ -236,8 +244,8 @@ void main(i32 argc, char** argv)
         "    Between brackets these characters stand for themselves. Thus, \"[[?*\\]\" matches the\n"
         "    four characters '[', '?', '*', and '\\'.\n\n"
         "  Extensions\n\n"
-        "    1. As mentioned above, the character '/' will be matched just fine.\n\n"
-        "    2. An expression \"[a-c-e]\" is equal to \"[a-e]\".\n\n"
+        "    1. As mentioned above, the character '/' will be matched just fine.\n"
+        "    2. An expression \"[a-c-e]\" is equal to \"[a-e]\".\n"
         "    3. A '-' between the brackets can be its literal meaning without being the first or\n"
         "    last character. It just needs to be inside a Range denotation. (Thus, \"[a*--B]\"\n"
         "    matches the six characters 'a', 'b', '*', '+', ',', '-').\n\n"
@@ -248,34 +256,42 @@ void main(i32 argc, char** argv)
         String pattern = {0};
         StringList paths = {0};
         StringList errors = {0};
-        b32 displayMemoryUsage = 0;
-        b32 displayHelp = argc == 1;
-        b32 enableExtension = 1;
-        b32 matchFileContent = 0;
+        Flags32 flags = (argc == 1 ? Glob_CLI_Help : 0) | Glob_CLI_Ext;
         
-        for (i32 i = 1; i < argc; ++i)
+        StringList args = OSSetArgs(argc, argv);
+        CmdLine cmd = CmdLineFromStrList(scratch, &args);
+        for (CmdLineOpt* opt = cmd.opts.first; opt; opt = opt->next)
         {
-            b32 isArg = 0;
-            String value = {0};
-            String arg = StrFromArg(argv[i], &isArg, &value);
-            
-            if (isArg)
+            StringList nameList = StrList(scratch, ArrayExpand(String, StrLit("?"), StrLit("f"), StrLit("e"), StrLit("d")));
+            u64 optType = 0;
+            if (StrCompareListEx(opt->name, &nameList, 0, 0, &optType))
             {
-                if (StrIsChr(arg, '?'))
-                    displayHelp = 1;
-                else if (StrIsChr(arg, 'f'))
-                    matchFileContent = 1;
-                else if (StrIsChr(arg, 'e'))
-                    enableExtension = StrIsChr(value, '-') ? 0 : 1;
-                else if (StrIsChr(arg, 'd'))
-                    displayMemoryUsage = 1;
-                else
-                    StrListPushf(scratch, &errors, "ERROR: Invalid argument or option - '/%.*s'.", StrExpand(arg));
+                flags |= 1 << optType;
+                if (opt->values.nodeCount)
+                {
+                    if ((1 << optType) == Glob_CLI_Ext)
+                    {
+                        if (StrIsChr(opt->values.first->string, '-'))
+                            flags &= ~Glob_CLI_Ext;
+                        else
+                            goto INVALID;
+                    }
+                    else goto INVALID;
+                }
             }
-            
-            else if (!pattern.size)
+            else
+                INVALID: StrListPushf(scratch, &errors, "ERROR: Invalid argument or option - '/%.*s'.", StrExpand(opt->name));
+        }
+        
+        for (StringNode* input = cmd.inputs.first; input; input = input->next)
+        {
+            String arg = input->string;
+            if (!pattern.size)
+            {
                 pattern = arg;
-            
+                if (input == cmd.inputs.last)
+                    StrListPush(scratch, &cmd.inputs, StrLit("."));
+            }
             else
             {
                 if (arg.size && arg.str[arg.size-1] == '*')
@@ -293,6 +309,7 @@ void main(i32 argc, char** argv)
                     FileIterBlock(scratch, iter, arg)
                     {
                         String str = StrJoin3(scratch, arg, StrLit("\\"), iter.name);
+                        str = PathNormString(scratch, str);
                         StrListPush(scratch, &paths, str);
                     }
                 }
@@ -301,7 +318,7 @@ void main(i32 argc, char** argv)
             }
         }
         
-        if (!errors.nodeCount && !displayHelp && !pattern.size)
+        if (!errors.nodeCount && !(flags & Glob_CLI_Help) && !pattern.size)
             StrListPushf(scratch, &errors, "ERROR: Missing pattern string.\n");
         
         if (errors.nodeCount)
@@ -312,8 +329,7 @@ void main(i32 argc, char** argv)
         }
         else
         {
-            if (displayHelp)
-                Outf(helpMessage);
+            if (flags & Glob_CLI_Help) Outf("%s", helpMessage);
             else
             {
                 Flags32 error = 0;
@@ -322,33 +338,45 @@ void main(i32 argc, char** argv)
                     
                     if (error & GLOB_SYNTAX_ERROR)
                         Errf("ERROR: Invalid syntax.\n");
-                    if (!enableExtension && (error & GLOB_SYNTAX_EXTENSION))
-                        Errf("ERROR: Extension syntax.\n");
+                    if ((error & GLOB_SYNTAX_EXTENSION))
+                    {
+                        if (flags & Glob_CLI_Ext)
+                            error = 0;
+                        else
+                            Errf("ERROR: Extension syntax.\n");
+                    }
                 }
                 
                 if (!error)
                 {
+                    b32 noMatches = 1;
                     StrListIter(&paths, path)
                     {
                         TempBlock(temp, scratch)
                         {
                             String text = path->string;
-                            if (matchFileContent)
+                            if (flags & Glob_CLI_File)
                                 text = OSReadFile(scratch, path->string, 0);
                             
                             b32 matched = glob(pattern, text, 0);
                             if (matched)
+                            {
+                                noMatches = 0;
                                 Outf("%.*s\n", StrExpand(path->string));
+                            }
                         }
                     }
                     
-                    if (displayMemoryUsage)
+                    if (noMatches)
+                        Outf("No matches found\n");
+                    
+                    if (flags & Glob_CLI_Debug)
                         Outf("Memory Usage: %llu Bytes\n", scratch->highWaterMark);
                 }
             }
         }
     }
     
-    return;
+    return 0;
 }
 #endif

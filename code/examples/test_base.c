@@ -665,7 +665,7 @@ int main(void)
         };
         
         for (u64 i = 0; i < ArrayCount(test); ++i)
-            TestFloat(test[i].f, Str(0)/*test[i].str*/);
+            TestFloat(test[i].f, ZeroStr/*test[i].str*/);
     }
     
     TEST("Log")
@@ -799,21 +799,21 @@ int main(void)
     {
         {
 #define FileName(name) StrLit("code/examples/"name)
-            String fileData = OSReadFile(arena, FileName("Test.txt"), true);
+            String fileData = OSReadFile(arena, FileName("Test.txt"));
             TestResult(StrCompare(fileData, StrLit("This is a test file!"), 0));
             TestResult(OSWriteFile(FileName("Test2.txt"), fileData));
-            TestResult(StrCompare(OSReadFile(arena, FileName("Test2.txt"), 0), fileData, 0));
+            TestResult(StrCompare(OSReadFile(arena, FileName("Test2.txt")), fileData, 0));
             TestResult(OSDeleteFile(FileName("Test2.txt")));
             
             FileProperties file = OSFileProperties(FileName("Test.txt"));
             OSRenameFile(FileName("Test.txt"), FileName("Test3.txt"));
-            TestResult(OSReadFile(arena, FileName("Test.txt"), 0).size == 0);
+            TestResult(OSReadFile(arena, FileName("Test.txt")).size == 0);
             {
                 FileProperties _file = OSFileProperties(FileName("Test3.txt"));
                 TestResult(CompareMem(&file, &_file, sizeof(FileProperties)));
             }
             OSRenameFile(FileName("Test3.txt"), FileName("Test.txt"));
-            TestResult(OSReadFile(arena, FileName("Test3.txt"), 0).size == 0);
+            TestResult(OSReadFile(arena, FileName("Test3.txt")).size == 0);
 #undef FileName
         }
         
@@ -942,7 +942,7 @@ int main(void)
             TestResult(scratch != arena);
         
         ArenaStack(stackArena, 1024);
-        TestResult(stackArena && stackArena->pos == ArenaMinSize(stackArena) && !stackArena->growing);
+        TestResult(stackArena && stackArena->pos == ArenaMinSize(stackArena) && !(stackArena->flags & ArenaFlag_Growing));
         u8* stackPtr = ArenaPushNZ(stackArena, 1024);
         TestResult(stackArena->pos == stackArena->cap && stackArena->commitPos == stackArena->cap);
         TestResult(stackPtr - (u8*)stackArena == sizeof(Arena)); 

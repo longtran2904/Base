@@ -1,0 +1,366 @@
+
+//~ labels
+
+//- Identifiers (MD_NodeFlag_Identifier)
+abc _foo_ x123
+almostAnyCIdentifier // not including $
+
+//- Numerics (MD_NodeFlag_Numeric)
+123 0x123ABC 0b10101 123.456
+0.123 123_456_789
+123abc456xyz
+123e+100
+456E-100
+789e+E-e+E-100100xyz
+
+//- String Literals (MD_NodeFlag_StringLiteral)
+
+//(MD_NodeFlag_StringDoubleQuote)
+"Hello World"
+" 'Hello World` "
+"\"Hello World\""
+"\\\a\b\c\d\e\f\""
+""
+
+//(MD_NodeFlag_StringSingleQuote)
+'Hello World'
+' "Hello World` '
+''
+
+//(MD_NodeFlag_StringTick)
+`Hello World`
+` "Hello World' `
+``
+
+//- Multi-Line String Literals (MD_NodeFlag_StringLiteral|MD_NodeFlag_StringTriplet)
+
+//(MD_NodeFlag_StringDoubleQuote)
+"""
+This string can go on
+for as many lines as I want.
+And it can say things like
+"Hello World"
+or you know, whatever.
+"""
+
+//(MD_NodeFlag_StringSingleQuote)
+'''
+Multi-line strings can start
+with a triplet of any of the
+string markers.
+'''
+
+//(MD_NodeFlag_Tick)
+```
+```
+
+//- Symbols (MD_NodeFlag_Symbol)
++ - * / = & ^ % ! | ? < > . ~
+$
+++ -- ** == && ^^ %% !! || ??
+<< >> .. ~~ $$ -> <- => <= ?.
++= -= *= /= |= &= ^= %= != |=
+...
++- +++++++ ??? !? $! $$$ <->
++-*/=&^%~|?<>.~$
+
+/*
+** A few punctuation characters are not counted with the rest
+** of the symbol characters. These are the 'reserved' characters:
+** ( ) { } [ ] : ; , @ # \
+**
+** And the sequences // and /* start comments so no symbol
+** can start with either of those pairs.
+**
+** Block comments are nested */
+*/
+
+
+//- Identifiers, Numbers, Strings, and Symbols are the different kinds
+// of 'labels' in Metadesk. They can all form main metadesk nodes:
+_my_label_: { bar123456; _123; }
+
+0: (1.0.1.1, 1.2.0.0)
+
+```
+#include <stdio.h>
+int main(){
+printf("Hello World\n");
+}
+```: "Hello World"
+
+..: . + .
+
+//~ Sets
+
+//- Unlabeled Sets
+
+//(MD_NodeFlag_HasParenLeft|MD_NodeFlag_HasParenRight)
+(foo bar)
+(
+ foo
+ bar
+ )
+()
+
+//(MD_NodeFlag_HasBracketLeft|MD_NodeFlag_HasBracketRight)
+[foo bar]
+
+//(MD_NodeFlag_HasBracketLeft|MD_NodeFlag_HasParenRight)
+[foo bar)
+
+//(MD_NodeFlag_HasParenLeft|MD_NodeFlag_HasBracketRight)
+(foo bar]
+
+//(MD_NodeFlag_HasBraceLeft|MD_NodeFlag_HasBraceRight)
+{foo bar}
+
+/*
+** Mixing { with ) or ] generates an error.
+** Same with ( or [ with }.
+** This is itended to make {} a useful way to delimit a set when extra help
+** via errors from the parser is preferable to flexibility.
+*/
+
+//- Labeled Sets
+
+label: (bar baz) 123: (foo bar)
+"foo": (bar baz) +++: (foo bar)
+empty: ()
+
+"""
+foo
+""": (bar baz)
+
+brack: [bar]
+paren: [foo)
+mixed: (bar]
+brace: {bar}
+
+/*
+** When a set has a label, it's node will have the label as it's string
+** contents, and the children as it's set contents. The node will have flags
+** for both it's label and it's set properties. For instance the root node 
+** parsed from 
+**                  +++: (foo bar) 
+** has the flags:
+**  MD_NodeFlag_HasParenLeft|MD_NodeFlag_HasParenRight|MD_NodeFlag_Symbol
+*/
+
+//- Nested Sets
+{
+    (child1 child2)
+    [child3 child4 child5]
+    child6: (child7)
+        [({})]
+}
+
+//- Undelimited Sets (<no left/right flags>)
+
+// delimited by newline
+newline1: bar baz
+
+// starts on the next line, delimited by new line
+newline2:
+bar baz
+
+// starts on the next line, consumes entire multi-line string
+newline3:
+"""
+bar
+"""
+
+// kind of weird, but you can chain things on so long as a newline
+// never appears outside of a multi-line string to end the set
+newline4: """
+bar
+""" baz """
+and-back-to-foo-again
+"""
+
+// nesting undelimited sets
+nested1: nested2:
+nested3: nested4
+
+// undelimited sets may not contain unlabeled delimited sets
+// the following forms one undelimited set followed by a delimited set
+// the delimited set is a sibling to daddy, not a child to daddy.
+// this also emits a warning because it's weird.
+daddy: son (cousin1, cousin2)
+
+// undelimited sets *may* however contain labeled delimited sets
+// now foo is an undelimited set that contains bar, and bar is a
+// delimited set that contains baz
+daddy: son: (grandchild1, grandchild2)
+
+// again things can get weird. Here bar and baz are both delimited
+// sets contained in foo, because at there are no newlines at the
+// level of the foo node until after the baz set.
+daddy:
+son1: (
+       a 
+       b
+       c
+       ) son2: (
+                1
+                2
+                3
+                )
+
+//- Seperators
+
+// A separator can be placed after any member of delimited sets.
+// The separator does not effect the shape of the tree but it does
+// attach flags to the nodes before and after it.
+
+(
+ word1
+ //(MD_NodeFlag_IsBeforeComma)
+ word2,
+ //(MD_NodeFlag_IsBeforeComma|MD_NodeFlag_IsAfterComma)
+ word3,
+ //(MD_NodeFlag_IsAfterComma)
+ word4
+ )
+
+(
+ word1
+ //(MD_NodeFlag_IsBeforeSemicolon)
+ word2;
+ //(MD_NodeFlag_IsBeforeSemicolon|MD_NodeFlag_IsAfterSemicolon)
+ word3;
+ //(MD_NodeFlag_IsAfterSemicolon)
+ word4
+ )
+
+(
+ word1
+ //(MD_NodeFlag_IsBeforeComma)
+ word2,
+ //(MD_NodeFlag_IsBeforeSemicolon|MD_NodeFlag_IsAfterComma)
+ word3;
+ //(MD_NodeFlag_IsAfterSemicolon|MD_NodeFlag_IsBeforeComma)
+ word4,
+ )
+
+// A separator ends an undelimited set early. Here the commas and semi-colon
+// split this line into three undelimited sets. The "before" flag goes on the
+// undelimited set, not the child. For instance, here the set a1 gets the flag
+// (MD_NodeFlag_IsBeforeComma)
+a1: b1,    a2: b2;    a3: b3
+
+//- Tags
+
+// tags are made with an @ before identifier
+@my_tag my_node
+
+// tags can be attached to any node
+@my_tag "string"
+
+// any number of tags can be attached to a node
+@tag1 @tag2 @tag3 @tag4 node_with_multi_tags
+
+// tags can be attached to sets
+@foo (a b)
+@foo [c d]
+@foo parent_node1: {child_node1}
+@foo parent_node2: child_node2
+
+// tags can be attached to nodes inside sets
+@outer_nameless (@inner_named inner)
+@parent parent_node3: @child child_node3
+
+// tags can have children of their own 
+// set with () and no space after the identifier
+@foo() node1
+@foo(bar) (baz1 baz2)
+@foo(bar baz) node2
+@foo(bar1, bar2) @bar node3
+
+// the children of a tag can be sets
+@foo({a b} [c d]) node4
+@foo(parent_tag_arg: child_tag_arg: 123) node5
+
+// the children of a tag are actually just a set delimited with ()
+@tag(tag_child, 123;
+     "strings etc") node4
+
+// the children of a tag can even be tagged
+@tag(tag_child, @number 123) node6
+@tag(tag_child, @number(integer) 123) node7
+
+//~ Example: Basic/C-like Expressions
+
+// @notes Many of the expressions in this example have to be expressed in slightly
+// unusual ways (from the perspective of C) to make them work in the Metadesk
+// grammar before the expression parser deals with them. Each of those cases in
+// this file have comments explaining it. - The rule of thumb is that sometimes
+// an expression needs to be placed in parentheses if it gets complicated.
+
+//- Basic
+expr1: 1;
+expr2: 2.71828;
+expr3: 5*5 + 1;
+expr4: b + w*a;
+expr5: sizeof xyz;
+expr6: expr4 + w*b + w*w*a;
+
+//- C like
+expr7: foo.bar
+
+// @notes If we just have `b: array[a];` here the Metadesk parser will emit a
+//  warning and the tree won't have the shape we actually intend. We want:
+//   b: (array [a])
+//  But we would actually get
+//   b: array
+//   [a]
+//  This happens because `b` is an "implicitly delimited" set, which _CANNOT_
+//  contain explicitly delimited sets like `[a]`
+//  Adding the parentheses makes this into an "explicitly delimited" set which
+//  _CAN_ contain `[a]`.
+expr_paren1: ( array[a] );
+
+// @notes The Metadesk expression parser uses parentheses like any common
+//  expression parser, but we have to remember that before the expression
+//  parser sees those parentheses, they actually get handled by the main
+//  Metadesk parser and turned into set nodes.
+//
+//  If we just have `f: (H << 16) | (H >> 16);` here, then the tree we would
+//  get from the Metadesk parser is:
+//   f: (H << 16)
+//   |
+//   (H >> 16)
+//
+//  Again the solution is to use an extra set of parentheses to tell the
+//  Metadesk parser that `(H << 16) | (H >> 16)` are all children of `f`.
+expr_paren2: ((H << 16) | (H >> 16));
+expr_paren3: (5*(5 + 1));
+expr_paren4: ((5 + 1)*(5 + 1));
+
+// @notes This time the problem is that we want the set delimiters `{}` to be
+//  visible to the expression parser. If we just have `g: {0, +1, -1}` then
+//  the shape of the tree becomes:
+//   g: (0, + 1, - 1)
+//
+//  If we want to treat `{...}` as a leaf in an expression in this case we
+//  need an extra set of parentheses so that `{...}` is a child of g and not
+//  just the delimiters of the g node itself.
+expr_paren5: ( {0, +1, -1} );
+
+// @notes This one is pretty much the same as the first one, postfix index and
+//  postfix call operators both introduce an explicitly delimited set, which
+//  can't be contained in an implicitly delimited set.
+expr_paren6: ( func(param, array[k], sizeof c) );
+
+// @notes In these cases we want a nameless node that just contains an
+//  expression. We need parentheses so that these form sets. An alternative in
+//  this case is to have the C code do more work to use the `;` separators to
+//  find the beginning and ending of expressions like these. What we have here
+//  keeps things very simple.
+(i += 1);
+(j = 0);
+(k = i*stride + j);
+
+// @notes Surprising things might count as expressions! Anything can be a leaf
+//  so long as it is not recognized as an operator.
+`good?`: ! + ? * ==;

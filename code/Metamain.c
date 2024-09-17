@@ -33,34 +33,38 @@ i32 main(i32 argc, char** argv)
     Arena* arena = ArenaMake();
     u64 counts[MG_Gen_COUNT] = {0};
     
-    StringList* hLists[MG_Gen_COUNT] =
+    StringList hLists[MG_Gen_COUNT] =
     {
-        &ZeroList, &ZeroList, &ZeroList,
-        &ZeroList, &ZeroList, &ZeroList,
-        &ZeroList, &ZeroList, &ZeroList,
+        ZeroList, ZeroList, ZeroList,
+        ZeroList, ZeroList, ZeroList,
+        ZeroList, ZeroList, ZeroList,
     };
     
-    StringList* cLists[MG_Gen_COUNT] =
+    StringList cLists[MG_Gen_COUNT] =
     {
-        &ZeroList, &ZeroList, &ZeroList,
-        &ZeroList, &ZeroList, &ZeroList,
-        &ZeroList, &ZeroList, &ZeroList,
+        ZeroList, ZeroList, ZeroList,
+        ZeroList, ZeroList, ZeroList,
+        ZeroList, ZeroList, ZeroList,
     };
     
     //- long: search and parse metadesk files
     MG_NodeList parses = {0};
     String projectDir = StrChopLastSlash(OSGetExeDir());
     String codeDir    = StrPushf(arena, "%.*s\\code", StrExpand(projectDir));
+    String ignoreDir  = StrPushf(arena, "%.*s\\retired", StrExpand(codeDir));
     
     DeferBlock(Outf("parsing metadesk..."), Outf(" %lld metadesk file(s) parsed\n", parses.count))
     {
         FileIterBlock(arena, it, codeDir, FileIterFlag_SkipFolders|FileIterFlag_Recursive)
         {
+            if (StrCompare(it.path, ignoreDir, 0))
+                continue;
+            
             String filepath = StrPushf(arena, "%.*s/%.*s", StrExpand(it.path), StrExpand(it.name));
             
             if (StrCompare(StrSkipLastDot(filepath), StrLit("mdesk"), 0))
             {
-                String data = OSReadFile(arena, filepath, 0);
+                String data = OSReadFile(arena, filepath);
                 MD_ParseResult parse = MD_ParseText(arena, filepath, data);
                 
                 for (MD_Msg* msg = parse.msgs.first; msg; msg = msg->next)
@@ -76,7 +80,7 @@ i32 main(i32 argc, char** argv)
                     }
                     
                     TextLoc location = TextLocFromOff(data, msg->node->src_offset);
-                    StrListPushf(arena, &messages, "%s%u:%u: %s: %.*s\n", filepath.str,
+                    StrListPushf(arena, &messages, "%s:%u:%u: %s: %.*s\n", filepath.str,
                                  location.line, location.col, level, StrExpand(msg->string));
                 }
                 
@@ -120,7 +124,7 @@ i32 main(i32 argc, char** argv)
             for (MD_EachNode(tag, node->first_tag))
             {
                 String tagArg = tag->first->string;
-                StringList** lists = md_node_has_tag(node, StrLit("c_file"), 0) ? cLists : hLists;
+                StringList* lists = md_node_has_tag(node, StrLit("c_file"), 0) ? cLists : hLists;
                 MG_GenType type = 0;
                 StringList* out = 0;
                 
@@ -161,7 +165,7 @@ i32 main(i32 argc, char** argv)
                     if (StrCompare(mg_tagNames[type], tag->string, 0))
                     {
                         MG_GenType target = type;
-                        out = lists[type];
+                        out = lists + type;
                         
                         if (type == MG_Gen_All && tagArg.size)
                         {
@@ -169,7 +173,7 @@ i32 main(i32 argc, char** argv)
                             {
                                 if (StrCompare(mg_genArg[subtype], tagArg, 0))
                                 {
-                                    out = lists[subtype];
+                                    out = lists + subtype;
                                     target = subtype;
                                     break;
                                 }
@@ -222,7 +226,7 @@ i32 main(i32 argc, char** argv)
                     
                     case MG_Gen_Embed:
                     {
-                        String data = OSReadFile(arena, node->first->string, 1);
+                        String data = OSReadFile(arena, node->first->string);
                         String embed = MG_ArrCFromData(arena, data);
                         StrListPushf(arena, out,
                                      CGlobalStr "u8 %.*s__data[] =\n{\n%.*s};\n\n"
@@ -274,13 +278,15 @@ i32 main(i32 argc, char** argv)
             String hData = {0}, cData = {0};
             ScratchBlock(scratch, arena)
             {
-                hData = StrListJoin(arena, hLists, ArrayCount(hLists),
-                                    .pre = StrLit("//- GENERATED H CODE\n\n"
-                                                  "#ifndef TEST_META_H\n#"
-                                                  "define TEST_META_H\n\n"),
-                                    .post = StrLit("#endif // TEST_META_H\n"));
+                hData = StrJoinListArr(arena, hLists, ArrayCount(hLists), 0, &(StringJoin){
+                                           .pre = StrLit("//- GENERATED H CODE\n\n"
+                                                         "#ifndef TEST_META_H\n#"
+                                                         "define TEST_META_H\n\n"),
+                                           .post = StrLit("#endif // TEST_META_H\n")
+                                       });
                 
-                cData = StrListJoin(arena, cLists, ArrayCount(cLists), .pre = "//- GENERATED C CODE\n\n");
+                cData = StrJoinListArr(arena, cLists, ArrayCount(cLists), 0,
+                                       &(StringJoin){ .pre = "//- GENERATED C CODE\n\n" });
             }
             
             success = 1;

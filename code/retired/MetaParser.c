@@ -571,7 +571,7 @@ function void ParseDeclaration(Parser* parser, DeclarationType declType, MetaInf
             type.kind = MetaInfoKind_Alias;
         type.first = type.last = typeInfo;
         type.count = 0;
-        type.name = Str(0);
+        type.name = ZeroStr;
         
         do
         {

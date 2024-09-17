@@ -49,7 +49,7 @@ if "%clang%"=="1" (
 	:: --- dependencies setup ---
 	set opts=!opts! -I%code%\code -I%code%\code\dependencies fast_float.o
 	set lib_opts=-fno-rtti -fno-exceptions -fno-cxx-exceptions -fno-async-exceptions -O2 -c
-	set links=-incremental:no -lWinmm.lib -lUserenv.lib -lAdvapi32.lib -lUser32.lib -lGdi32.lib -lDwmapi.lib
+	set links=-incremental:no -lKernel32.lib -lWinmm.lib -lUserenv.lib -lAdvapi32.lib -lUser32.lib -lGdi32.lib -lDwmapi.lib
 )
 
 if "%msvc%"=="1" (
@@ -75,7 +75,7 @@ if "%msvc%"=="1" (
 	:: --- dependencies setup ---
 	set opts=!opts! /I%code%\code /I%code%\code\dependencies fast_float.obj
 	set lib_opts=/nologo /GR- /EHa- /O2 /c
-	set links=/incremental:no Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
+	set links=/incremental:no Kernel32.lib Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
 )
 
 :: --- Build Dependencies -----------------------------------------------------
@@ -93,23 +93,26 @@ del *.pdb > NUL 2> NUL
 del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
 
-%compile% %opts% %warns% %code%\code\examples\test_base.c %out%test_base.exe %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\demo_gfx.c  %out%demo_gfx.exe  %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\demo.c      %out%demo.exe      %linker% %links%
-%compile% %opts% %warns% %code%\code\Metamain.c           %out%metagen.exe  %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\TestDLL.c   %out%TestDLL.dll %dll% %linker% %links%
+%compile% %opts% %warns% %code%\code\examples\test_scanner.c %out%test_scanner.exe %linker% %links%
+%compile% %opts% %warns% %code%\code\examples\test_base.c    %out%test_base.exe    %linker% %links%
+%compile% %opts% %warns% %code%\code\examples\demo_gfx.c     %out%demo_gfx.exe     %linker% %links%
+%compile% %opts% %warns% %code%\code\examples\demo.c         %out%demo.exe         %linker% %links%
+%compile% %opts% %warns% %code%\code\Metamain.c              %out%metagen.exe      %linker% %links%
+%compile% %opts% %warns% %code%\code\examples\TestDLL.c      %out%TestDLL.dll %dll% %linker% %links%
 
-:: %compile% %opts% %warns% %code%\code\examples\glob.c      %linker% %link%
-:: %compile% %opts% %warns% %code%\code\examples\test_glob.c %linker% %link%
-:: %compile% %opts% %warns% %code%\code\examples\parser.c    %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\glob.c      %out%glob.exe      %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\test_glob.c %linker% %links%
 :: %compile% %opts% %warns% %code%\code\retired\D3D11_Example.c %out%d3d11_exp %linker% %links%
 :: %compile% %opts% %warns% %code%\code\retired\LongCompressor.c %out%compressor %linker% %links%
 :: %compile% %opts% %warns% %code%\code\retired\Meta.c %out%Meta %linker% %links%
 
 :: --- Cleanup Build ----------------------------------------------------------
-ren fast_float.obj fast_float.temp > NUL 2> NUL
+ren fast_float.obj fast_float.obj.temp > NUL 2> NUL
+ren fast_float.o     fast_float.o.temp > NUL 2> NUL
 del *.obj > NUL 2> NUL
-ren fast_float.temp fast_float.obj > NUL 2> NUL 
+del *.o   > NUL 2> NUL
+ren fast_float.obj.temp fast_float.obj > NUL 2> NUL
+ren   fast_float.o.temp fast_float.o   > NUL 2> NUL
 
 del *.lib > NUL 2> NUL
 del *.ilk > NUL 2> NUL

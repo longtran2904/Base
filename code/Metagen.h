@@ -45,7 +45,6 @@ struct MG_Map
 };
 
 #define MG_PushMap(arena, cnt) ((MG_Map){ .slots = PushArray((arena), MG_MapSlot, (cnt)), .count = (cnt) })
-
 function void* MG_MapPtrFromStr(MG_Map map, String str);
 function void  MG_MapInsert(Arena* arena, MG_Map map, String str, void* val);
 

@@ -94,6 +94,7 @@ internal f64 SinTurn64(f64 x)
 #endif
     return y;
 }
+#undef EXTRA_PRECISION
 
 internal f32 SinPi32(f32 x)
 {
@@ -308,6 +309,9 @@ function f64 Ceil_f64(f64 x)
     ROUND_F64(x, r = _mm_add_sd(r, _mm_and_pd(_mm_cmpgt_sd(f, r), _mm_set1_pd(1.)))); // if (f > r) r += 1
     return x;
 }
+
+#undef ROUND_F32
+#undef ROUND_F64
 #endif
 
 function f32 Sqrt_f32(f32 x) { return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(x))); }
@@ -390,6 +394,7 @@ function v3i32 CrossV3I32(v3i32 a, v3i32 b)       { return (v3i32){ a.y*b.z - a.
 
 //- long: Range Functions
 function r1i32 R1I32(i32 min, i32 max)          { return (r1i32){ min, max }; }
+function r1i32 R1I32Size(i32 min, i32 size)     { return R1I32(min, min + size); }
 function r1i32 ShiftR1I32(r1i32 r, i32 x)       { r.min += x; r.max += x; return r; }
 function r1i32 PadR1I32(r1i32 r, i32 x)         { r.min += x; r.max -= x; return r; }
 function i32 CenterR1I32(r1i32 r)               { return (r.min + r.max) / 2; }
@@ -400,6 +405,7 @@ function r1i32 IntersectR1I32(r1i32 a, r1i32 b) { return (r1i32){ Max(a.min, b.m
 function i32 ClampR1I32(r1i32 r, i32 v)         { return Clamp(v, r.min, r.max); }
 
 function r1u64 R1U64(u64 min, u64 max)          { return (r1u64){ min, max }; }
+function r1u64 R1U64Size(u64 min, u64 size)     { return R1U64(min, min + size); }
 function r1u64 ShiftR1U64(r1u64 r, u64 x)       { r.min += x; r.max += x; return r; }
 function r1u64 PadR1U64(r1u64 r, u64 x)         { r.min += x; r.max -= x; return r; }
 function u64 CenterR1U64(r1u64 r)               { return (r.min + r.max) / 2; }
@@ -410,6 +416,7 @@ function r1u64 IntersectR1U64(r1u64 a, r1u64 b) { return (r1u64){ Max(a.min, b.m
 function u64 ClampR1U64(r1u64 r, u64 v)         { return Clamp(v, r.min, r.max); }
 
 function r1f32 R1F32(f32 min, f32 max)          { return (r1f32){ min, max }; }
+function r1f32 R1F32Size(f32 min, f32 size)     { return R1F32(min, min + size); }
 function r1f32 ShiftR1F32(r1f32 r, f32 x)       { r.min += x; r.max += x; return r; }
 function r1f32 PadR1F32(r1f32 r, f32 x)         { r.min += x; r.max -= x; return r; }
 function f32 CenterR1F32(r1f32 r)               { return (r.min + r.max) / 2.f; }
@@ -420,6 +427,7 @@ function r1f32 IntersectR1F32(r1f32 a, r1f32 b) { return (r1f32){ Max(a.min, b.m
 function f32 ClampR1F32(r1f32 r, f32 v)         { return Clamp(v, r.min, r.max); }
 
 function r2i32 R2I32(v2i32 min, v2i32 max)      { return (r2i32){ min, max }; }
+function r2i32 R2I32Size(v2i32 min, v2i32 size) { return R2I32(min, AddV2I32(min, size)); }
 function r2i32 ShiftR2I32(r2i32 r, v2i32 x)     { r.min = AddV2I32(r.min, x); r.max = AddV2I32(r.max, x); return r; }
 function r2i32 PadR2I32(r2i32 r, i32 x)         { r.x0 += x; r.x1 += x; r.y0 += x; r.y1 += x; return r; }
 function v2i32 CenterR2I32(r2i32 r)             { return (v2i32){ (r.min.x + r.max.x)/2, (r.min.y + r.max.y)/2 }; }
@@ -430,6 +438,7 @@ function r2i32 IntersectR2I32(r2i32 a, r2i32 b) { return (r2i32){ Max(a.x0, b.x0
 function v2i32 ClampR2I32(r2i32 r, v2i32 v)     { return (v2i32){ Clamp(v.x, r.min.x, r.max.x), Clamp(v.y, r.min.y, r.max.y) }; }
 
 function r2f32 R2F32(v2f32 min, v2f32 max)      { return (r2f32){ min, max }; }
+function r2f32 R2F32Size(v2f32 min, v2f32 size) { return R2F32(min, AddV2F32(min, size)); }
 function r2f32 ShiftR2F32(r2f32 r, v2f32 x)     { r.min = AddV2F32(r.min, x); r.max = AddV2F32(r.max, x); return r; }
 function r2f32 PadR2F32(r2f32 r, f32 x)         { r.x0 += x; r.x1 += x; r.y0 += x; r.y1 += x; return r; }
 function v2f32 CenterR2F32(r2f32 r)             { return (v2f32){ (r.min.x + r.max.x)/2.f, (r.min.y + r.max.y)/2.f }; }
@@ -555,19 +564,19 @@ function DenseTime TimeToDense(DateTime time)
 
 //~ long: Arena Functions
 
-#define ArenaMinSize(arena, ...) AlignUpPow2(sizeof(Arena), (__VA_ARGS__+0) ? (__VA_ARGS__+0) : (arena)->alignment)
+#define ArenaMinSize(arena) AlignUpPow2(sizeof(Arena), (arena)->alignment)
 
-function Arena* ArenaBuffer(u8* buffer, u64 size, u64 alignment)
+function Arena* BufferFromMem(u8* mem, u64 size)
 {
     Arena* result = 0;
     
     if (ALWAYS(size >= sizeof(Arena)))
     {
-        result = (Arena*)buffer;
+        result = (Arena*)mem;
         *result = (Arena)
         {
             .curr = result,
-            .alignment = ClampBot(alignment, 1),
+            .alignment = 1,
             .commitPos = size,
             .cap = size,
         };
@@ -581,7 +590,14 @@ function Arena* ArenaBuffer(u8* buffer, u64 size, u64 alignment)
     return result;
 }
 
-function Arena* ArenaReserve(u64 reserve, u64 alignment, b32 growing)
+function Arena* BufferFromArena(Arena* arena, u64 size)
+{
+    u64 bufferSize = size + sizeof(Arena);
+    u8* buffer = ArenaPush(arena, bufferSize);
+    return BufferFromMem(buffer, bufferSize);
+}
+
+function Arena* ArenaReserve(u64 reserve, u32 alignment, b32 growing)
 {
     Arena* result = 0;
     if (reserve >= MEM_INITIAL_COMMIT)
@@ -595,7 +611,7 @@ function Arena* ArenaReserve(u64 reserve, u64 alignment, b32 growing)
                 .curr = result,
                 
                 .alignment = alignment ? alignment : sizeof(iptr),
-                .growing = (b8)growing,
+                .flags = ArenaFlag_NullTerminate|(growing ? ArenaFlag_Growing : 0),
                 
                 .commitPos = MEM_INITIAL_COMMIT,
                 .cap = reserve,
@@ -632,7 +648,7 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
     u64 alignedPos = AlignUpPow2(current->pos, current->alignment);
     
     // allocate new chunk if necessary
-    if (current->growing)
+    if (current->flags & ArenaFlag_Growing)
     {
         if (alignedPos + size > current->cap)
         {
@@ -652,15 +668,16 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
                     .curr = new_chunk,
                     
                     .alignment = current->alignment,
-                    .growing = 1,
+                    .flags = current->flags,
                     
-                    .basePos = ArenaPos(current, current->cap),
+                    .basePos = current->basePos + current->cap,
                     .pos = minSize,
                     .commitPos = MEM_INITIAL_COMMIT,
                     .cap = newReserveSize,
                 };
                 
-                current = arena->curr = new_chunk;
+                current->curr = arena->curr = new_chunk;
+                current = new_chunk;
                 alignedPos = AlignUpPow2(current->pos, current->alignment);
             }
         }
@@ -695,7 +712,7 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
 
 function void ArenaPop(Arena* arena, u64 amount)
 {
-    u64 pos = ArenaCurrPos(arena);
+    u64 pos = ArenaPos(arena);
     u64 minSize = ArenaMinSize(arena);
     Assert(pos >= minSize);
     if (ALWAYS(pos - minSize > amount))
@@ -705,11 +722,12 @@ function void ArenaPop(Arena* arena, u64 amount)
 function void ArenaPopTo(Arena* arena, u64 pos)
 {
     Arena* current = arena->curr;
-    NEVER(pos > ArenaCurrPos(current));
-    if (pos < ArenaCurrPos(current))
+    u64 currPos = current->basePos + current->pos;
+    NEVER(pos > currPos);
+    if (pos < currPos)
     {
         u64 clampedPos = ClampBot(pos, sizeof(Arena));
-        u64 nextCommitPos = ClampTop(AlignUpPow2(clampedPos, MEM_COMMIT_BLOCK_SIZE), ArenaPos(current, current->cap));
+        u64 nextCommitPos = ClampTop(AlignUpPow2(clampedPos, MEM_COMMIT_BLOCK_SIZE), current->basePos + current->cap);
         
         while (nextCommitPos <= current->basePos)
         {
@@ -802,7 +820,7 @@ function void* ArenaPushPoisonEx(Arena* arena, u64 size, u64 preSize, u64 postSi
 {
     void* result = 0;
     Arena* current = arena->curr;
-    u64 allocAlignment = current->alignment;
+    u32 allocAlignment = current->alignment;
     
     if (preSize)
     {
@@ -831,17 +849,17 @@ function void* ArenaPushPoisonEx(Arena* arena, u64 size, u64 preSize, u64 postSi
     return result;
 }
 
-function void ArenaAlignNZ(Arena* arena, u64 alignment)
+function void ArenaAlignNZ(Arena* arena, u32 alignment)
 {
     Arena* current = arena->curr;
-    u64 oldAlignment = current->alignment;
+    u32 oldAlignment = current->alignment;
     current->alignment = alignment;
     ArenaPushNZ(current, 0);
     Assert(current == current->curr);
     current->alignment = oldAlignment;
 }
 
-function void ArenaAlign(Arena* arena, u64 alignment)
+function void ArenaAlign(Arena* arena, u32 alignment)
 {
     Arena* current = arena->curr;
     u8* start = PtrAdd(current, current->pos);
@@ -852,7 +870,7 @@ function void ArenaAlign(Arena* arena, u64 alignment)
 
 function TempArena TempBegin(Arena* arena)
 {
-    return (TempArena){ arena, ArenaCurrPos(arena) };
+    return (TempArena){ arena, ArenaPos(arena) };
 }
 
 function void TempEnd(TempArena temp)
@@ -902,6 +920,11 @@ TempArena BASE_SHARABLE(GetScratch)(Arena** conflictArray, u64 count)
 //~ long: String Functions
 
 //- long: Constructor Functions
+function u8 ChrFromStr(String str, u64 idx)
+{
+    return idx < str.size ? str.str[idx] : 0;
+}
+
 function String StrFromCStr(u8* cstr)
 {
     u8* ptr = cstr;
@@ -984,20 +1007,21 @@ function String StrTrim(String str, String arr, i32 dir)
         }
     }
     
-    return end >= first ? Substr(str, first, end + 1) : Str(0);
+    return end >= first ? Substr(str, first, end + 1) : ZeroStr;
 }
 
 //- long: Allocation Functions
 function String StrCopy(Arena* arena, String str)
 {
-    String result = StrPush(arena, str.size, 1);
+    String result = StrPush(arena, str.size);
     CopyMem(result.str, str.str, str.size);
     return result;
 }
 
-function String StrPush(Arena* arena, u64 size, b32 terminate)
+function String StrPush(Arena* arena, u64 size)
 {
-    String result = { PushArrayNZ(arena, u8, size + !!terminate), size };
+    b32 terminate = (arena->flags & ArenaFlag_NullTerminate) ? 1 : 0;
+    String result = { PushArrayNZ(arena, u8, size + terminate), size };
     if (terminate)
         result.str[size] = 0;
     return result;
@@ -1134,7 +1158,7 @@ function String StrPushfv(Arena* arena, char* fmt, va_list args)
         }
         
         if (result.str)
-            result.str[result.size+1] = 0;
+            result.str[result.size] = 0;
     }
     
     va_end(args2);
@@ -1156,7 +1180,7 @@ function String StrPad(Arena* arena, String str, char chr, u32 count, i32 dir)
     String result = str;
     if (size > str.size)
     {
-        result = StrPush(arena, size, 1);
+        result = StrPush(arena, size);
         if (dir <= 0) SetMem(result.str, chr, count);
         if (dir >= 0) SetMem(result.str + size - count, chr, count);
     }
@@ -1166,7 +1190,7 @@ function String StrPad(Arena* arena, String str, char chr, u32 count, i32 dir)
 function String StrInsert(Arena* arena, String str, u64 index, String value)
 {
     index = ClampTop(index, str.size - 1);
-    String result = StrPush(arena, str.size + value.size, 1);
+    String result = StrPush(arena, str.size + value.size);
     CopyMem(result.str, str.str, index);
     CopyMem(result.str + index, value.str, value.size);
     CopyMem(result.str + index + value.size, str.str + index, value.size - index);
@@ -1180,7 +1204,7 @@ function String StrRemove(Arena* arena, String str, u64 index, u64 count)
     if (index + count == str.size)
         return StrChop(str, count); // @RECONSIDER(long): Maybe just alloc a new null-terminated string
     
-    String result = StrPush(arena, count, 1);
+    String result = StrPush(arena, count);
     CopyMem(result.str, str.str, index);
     CopyMem(result.str + index, str.str + index + count, count);
     return result;
@@ -1192,7 +1216,7 @@ function String StrRepeat(Arena* arena, String str, u64 count)
     u64 size = count * str.size;
     if (size)
     {
-        result = StrPush(arena, size, 1);
+        result = StrPush(arena, size);
         for (u64 i = 0; i < count; ++i)
             CopyMem(result.str + i * str.size, str.str, str.size);
     }
@@ -1204,15 +1228,45 @@ function String ChrRepeat(Arena* arena, char chr, u64 count)
     String result = {0};
     if (count)
     {
-        result = StrPush(arena, count, 1);
+        result = StrPush(arena, count);
         SetMem(result.str, chr, count);
     }
     return result;
 }
 
+#define StrJoinSize(join, count, totalSize) ((join)->pre.size + (join)->post.size + (join)->mid.size*((count)-1) + (totalSize))
+
 function String StrJoinList(Arena* arena, StringList* list, StringJoin* join)
 {
-    return StrListJoinArr(arena, &list, 1, join);
+    NilPtr(StringJoin, join);
+    String pre = join->pre, mid = join->mid, post = join->post;
+    
+    u64 size = StrJoinSize(join, ClampBot(list->nodeCount, 1), list->totalSize);
+    String result = StrPush(arena, size);
+    u8* ptr = result.str;
+    
+    CopyMem(ptr, pre.str, pre.size);
+    ptr += pre.size;
+    
+    b32 isMid = false;
+    StrListIter(list, node)
+    {
+        if (isMid)
+        {
+            CopyMem(ptr, mid.str, mid.size);
+            ptr += mid.size;
+        }
+        
+        CopyMem(ptr, node->string.str, node->string.size);
+        ptr += node->string.size;
+        isMid = true;
+    }
+    
+    CopyMem(ptr, post.str, post.size);
+    ptr += post.size;
+    
+    Assert(ptr == (result.str + result.size));
+    return result;
 }
 
 function String StrJoinMax3(Arena* arena, StringJoin* join)
@@ -1225,92 +1279,28 @@ function String StrJoinMax3(Arena* arena, StringJoin* join)
     return StrJoin(arena, &list);
 }
 
-function String StrListJoinArr(Arena* arena, StringList** lists, u64 count, StringJoin* join)
+function String StrJoinListArr(Arena* arena, StringList* lists, u64 count, StringJoin* perNode, StringJoin* perList)
 {
-    NilPtr(StringJoin, join);
-    String pre = join->pre, mid = join->mid, post = join->post;
+    NilPtr(StringJoin, perList);
+    NilPtr(StringJoin, perNode);
     
-    u64 nodeCount = 0;
-    u64 totalSize = 0;
+    u64 size = StrJoinSize(perList, count, 0);
+    for (u64 i = 0; i < count; ++i)
+        size += StrJoinSize(perNode, ClampBot(lists[i].nodeCount, 1), lists[i].totalSize);
+    
+    Arena* buffer = BufferFromArena(arena, size);
+    u8* str = ArenaPtr(buffer);
+    
+    StrCopy(buffer, perList->pre);
     for (u64 i = 0; i < count; ++i)
     {
-        nodeCount += lists[i]->nodeCount;
-        totalSize += lists[i]->totalSize;
+        if (i)
+            StrCopy(buffer, perList->mid);
+        StrJoinList(buffer, lists + i, perNode);
     }
+    StrCopy(buffer, perList->post);
     
-    u64 size = pre.size + post.size + mid.size * (ClampBot(nodeCount , 1) - 1) + totalSize;
-    u8* str = PushArray(arena, u8, size + 1);
-    u8* ptr = str;
-    
-    CopyMem(ptr, pre.str, pre.size);
-    ptr += pre.size;
-    
-    b32 isMid = false;
-    for (u64 i = 0; i < count; ++i)
-    {
-        StrListIter(lists[i], node)
-        {
-            if (isMid)
-            {
-                CopyMem(ptr, mid.str, mid.size);
-                ptr += mid.size;
-            }
-            
-            CopyMem(ptr, node->string.str, node->string.size);
-            ptr += node->string.size;
-            isMid = true;
-        }
-    }
-    
-    CopyMem(ptr, post.str, post.size);
-    ptr += post.size;
-    
-    Assert(ptr == (str + size));
-    return Str(str, size);
-}
-
-function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringMatchFlags flags)
-{
-    StringList result = {0};
-    
-    if (splits->totalSize && str.size)
-    {
-        b32 allowEmpty = flags & SplitStr_KeepEmpties;
-        u8* ptr = str.str;
-        u8* firstWord = ptr;
-        u8* opl = str.str + str.size;
-        
-        // NOTE(long): < rather than <= because firstWord = ptr + 1 can crash at the end of buffer
-        for (; ptr < opl; ++ptr)
-        {
-            String substr = StrRange(ptr, opl);
-            StringNode* match = 0;
-            for (StringNode* node = splits->first; node; node = node->next)
-            {
-                if (StrCompare(StrPrefix(substr, node->string.size), node->string, flags))
-                {
-                    match = node;
-                    break;
-                }
-            }
-            
-            if (match)
-            {
-                // NOTE(long): try to emit word, <= rather than < will allow empty members
-                // EX: split "A,B,,C" with "," -> { "A", "B", "", "C" } vs { "A", "B", "C" }
-                if ((firstWord < ptr) || (firstWord == ptr && allowEmpty))
-                    StrListPush(arena, &result, StrRange(firstWord, ptr));
-                ptr += match->string.size - 1;
-                firstWord = ptr + 1;
-            }
-        }
-        
-        // try to emit the final word
-        if (firstWord < ptr)
-            StrListPush(arena, &result, StrRange(firstWord, ptr));
-    }
-    
-    return result;
+    return StrRange(str, ArenaPtr(buffer));
 }
 
 function StringList StrSplitArr(Arena* arena, String str, String splits, StringMatchFlags flags)
@@ -1338,7 +1328,7 @@ function StringList StrSplitArr(Arena* arena, String str, String splits, StringM
         }
         
         // try to emit the final word
-        if (firstWord < ptr)
+        if (firstWord < ptr || (firstWord == ptr && allowEmpty))
             StrListPush(arena, &result, StrRange(firstWord, ptr));
     }
     
@@ -1347,15 +1337,37 @@ function StringList StrSplitArr(Arena* arena, String str, String splits, StringM
 
 function StringList StrSplit(Arena* arena, String str, String split, StringMatchFlags flags)
 {
-    StringList list = {0};
-    StrListPushNode(&list, split, &(StringNode){0});
-    return StrSplitList(arena, str, &list, flags);
-}
-
-function String StrReplaceList(Arena* arena, String str, StringList* oldStr, String newStr, StringMatchFlags flags)
-{
-    StringList list = StrSplitList(arena, str, oldStr, SplitStr_KeepEmpties|flags);
-    return StrJoin(arena, &list, .mid = newStr);
+    StringList result = {0};
+    
+    if (split.size && str.size)
+    {
+        b32 allowEmpty = flags & SplitStr_KeepEmpties;
+        u8* ptr = str.str;
+        u8* firstWord = ptr;
+        u8* opl = str.str + str.size;
+        
+        // NOTE(long): < rather than <= because firstWord = ptr + 1 can crash at the end of buffer
+        for (; ptr < opl; ++ptr)
+        {
+            String substr = StrRange(ptr, opl);
+            if (StrStartsWith(substr, split, flags))
+            {
+                // NOTE(long): try to emit word, <= rather than < will allow empty members
+                // EX: split "A,B,,C" with "," -> { "A", "B", "", "C" } vs { "A", "B", "C" }
+                // EX: split "A,B," -> { "A", "B", "" } vs { "A", "B" }
+                if (firstWord < ptr || (firstWord == ptr && allowEmpty))
+                    StrListPush(arena, &result, StrRange(firstWord, ptr));
+                ptr += split.size - 1;
+                firstWord = ptr + 1;
+            }
+        }
+        
+        // try to emit the final word
+        if (firstWord < ptr || (firstWord == ptr && allowEmpty))
+            StrListPush(arena, &result, StrRange(firstWord, ptr));
+    }
+    
+    return result;
 }
 
 function String StrReplaceArr(Arena* arena, String str, String charArr, String newStr, StringMatchFlags flags)
@@ -1366,14 +1378,13 @@ function String StrReplaceArr(Arena* arena, String str, String charArr, String n
 
 function String StrReplace(Arena* arena, String str, String oldStr, String newStr, StringMatchFlags flags)
 {
-    StringNode node = {0}; StringList list = {0};
-    StrListPushNode(&list, oldStr, &node);
-    return StrReplaceList(arena, str, &list, newStr, flags);
+    StringList list = StrSplit(arena, str, oldStr, SplitStr_KeepEmpties|flags);
+    return StrJoin(arena, &list, .mid = newStr);
 }
 
 function String StrToLower(Arena* arena, String str)
 {
-    String result = StrPush(arena, str.size, 1);
+    String result = StrPush(arena, str.size);
     for (u64 i = 0; i < str.size; ++i)
         result.str[i] = IsCharacter(str.str[i]) ? ChrToLower(str.str[i]) : str.str[i];
     return result;
@@ -1381,7 +1392,7 @@ function String StrToLower(Arena* arena, String str)
 
 function String StrToUpper(Arena* arena, String str)
 {
-    String result = StrPush(arena, str.size, 1);
+    String result = StrPush(arena, str.size);
     for (u64 i = 0; i < str.size; ++i)
         result.str[i] = IsCharacter(str.str[i]) ? ChrToUpper(str.str[i]) : str.str[i];
     return result;
@@ -1831,6 +1842,9 @@ function u32 StrEncodeWide(u16* dst, u32 codepoint)
     return size;
 }
 
+#undef InvalidRune
+#undef InvalidDecoder
+
 function String32 StrToStr32(Arena* arena, String str)
 {
     u64 expectedSize = str.size;
@@ -2068,36 +2082,6 @@ function String StrFromTime(Arena* arena, DateTime time)
     return StrPushf(arena, "%02u/%02u/%04u %02u:%02u %s", time.day, time.mon, (u16)time.year, hour, time.min, am ? "AM" : "PM");
 }
 
-function String StrFromArg(char* arg, b32* isArg, String* argValue)
-{
-    String result = StrFromCStr(arg);
-    NilB32(isArg);
-    NilPtr(String, argValue);
-    *argValue = ZeroStr;
-    
-    if (result.size > 1)
-    {
-        if (arg[0] == '-' || arg[0] == '/')
-        {
-            *isArg = 1;
-            result = StrSkip(result, 1);
-        }
-    }
-    
-    if (result.size > 1)
-    {
-        String value = StrSkipUntil(result, StrLit(":="), 0);
-        if (!StrIsIdentical(value, result))
-            *argValue = value;
-        else if (result.str[result.size - 1] == '-')
-            *argValue = StrPostfix(result, 1);
-        
-        result = StrChop(result, argValue->size);
-    }
-    
-    return result;
-}
-
 function String StrFromF32(Arena* arena, f32 x, u32 prec)
 {
     return StrFromF64(arena, (f64)x, prec);
@@ -2105,7 +2089,7 @@ function String StrFromF32(Arena* arena, f32 x, u32 prec)
 
 function String StrFromF64(Arena* arena, f64 x, u32 prec)
 {
-    String result = StrPushf(arena, "%.*e", (i32)prec, x);
+    String result = StrPushf(arena, "%.*g", (i32)prec + 1, x);
     return result;
 }
 
@@ -2147,10 +2131,117 @@ function String StrFromI64(Arena* arena, i64 x, u32 radix)
     return result;
 }
 
+//~ long: CLI Parsing
+
+function CmdLine CmdLineFromStrList(Arena* arena, StringList* args)
+{
+    // NOTE(long): If the user types: myprogram.exe --foo -- a- // \' "abc, cde" /, \:a,b"d::"a
+    // Then args will be: `myprogram.exe`, `--foo`, `--`, `a-`, `//`, `\'`, `abc, cde`, `\:a,bd::a`
+    // AFAICT, there will never be any double quote inside any argument (`""` will become an empty string)
+    // If the user types "myprogram" rather than "myprogram.exe" then the first arg will become "myprogram"
+    
+    CmdLine result = {0};
+    result.programName = args->first->string;
+    
+    b32 pashthrough = 0;
+    for (StringNode* node = args->first->next,* next = 0; node != 0; node = next)
+    {
+        next = node->next;
+        String str = node->string;
+        
+        // NOTE(long): `--foo`, `-bar`, and `/baz` are options while `abc` is an input
+        // All arguments after a single "--" (with no trailing string) will be considered as inputs.
+        // So "myprogram.exe --a /b foo -- abc --def" will have 2 options (a, b) and 3 inputs (foo, abc, --def)
+        b32 isOption = !pashthrough && node->string.size > 0;
+        if (isOption)
+        {
+            char c = node->string.str[0];
+            b32 isDashDash = StrCompare(node->string, StrLit("--"), MatchStr_RightSloppy);
+            if (isDashDash)
+            {
+                if (node->string.size == 2)
+                {
+                    pashthrough = 1;
+                    continue;
+                }
+                
+                str = StrSkip(str, 2);
+            }
+            else if (c == '-' || c == '/')
+                str = StrSkip(str, 1);
+            else
+                isOption = 0;
+        }
+        
+        if (isOption)
+        {
+            b32 hasArgs = 0;
+            String optName, argStr;
+            {
+                i64 argPos = StrFindArr(str, StrLit(":="), 0);
+                hasArgs = argPos >= 0;
+                optName = StrPrefix(str, argPos);
+                argStr  = StrSkip(str, argPos+1);
+            }
+            
+            StringList optArgs = {0};
+            if (hasArgs)
+            {
+                for (StringNode* n = node; n; n = n->next)
+                {
+                    next = n->next;
+                    
+                    StringList argList = StrSplit(arena, n == node ? argStr : n->string, StrLit(","), 0);
+                    for (StringNode* subArg = argList.first; subArg; subArg = subArg->next)
+                        StrListPush(arena, &optArgs, subArg->string);
+                    
+                    b32 last_is_comma = n->string.size && n->string.str[n->string.size - 1] == ',';
+                    b32 next_is_arg   = n == node && argStr.size == 0;
+                    if (!last_is_comma && !next_is_arg)
+                        break;
+                }
+            }
+            else if (StrCompare(StrPostfix(str, 2), StrLit("--"), 0))
+            {
+                StrListPush(arena, &optArgs, StrLit("--"));
+                optName = StrChop(str, 2);
+            }
+            else if (StrCompare(StrPostfix(str, 1), StrLit("-"), 0))
+            {
+                StrListPush(arena, &optArgs, StrLit("-"));
+                optName = StrChop(str, 1);
+            }
+            
+            CmdLinePushOpt(arena, &result.opts, optName)->values = optArgs;
+        }
+        else
+            StrListPush(arena, &result.inputs, node->string);
+    }
+    
+    return result;
+}
+
+function CmdLineOpt* CmdLinePushOpt(Arena* arena, CmdLineOptList* list, String name)
+{
+    CmdLineOpt* opt = PushStruct(arena, CmdLineOpt);
+    opt->name = name;
+    SLLQueuePush(list->first, list->last, opt);
+    list->count++;
+    return opt;
+}
+
+function CmdLineOpt* CmdLineOptFromStr(CmdLine* cmd, String name, StringMatchFlags flags)
+{
+    for (CmdLineOpt* opt = cmd->opts.first; opt; opt = opt->next)
+        if (StrCompare(opt->name, name, flags))
+            return opt;
+    return 0;
+}
+
 //- long: C-Syntax Functions
 function String StrCEscape(Arena* arena, String str)
 {
-    // NOTE(rjf): This doesn't handle hex/octal/unicode escape sequences right now, just the simple stuff
+    // TODO(long): This doesn't handle hex/octal/unicode escape sequences right now, just the simple stuff
     StringList strs = {0};
     String result = {0};
     u64 start = 0;
@@ -2159,7 +2250,7 @@ function String StrCEscape(Arena* arena, String str)
     {
         for (u64 i = 0; i <= str.size; ++i)
         {
-            // NOTE(long): what about `\n`
+            // NOTE(long): Check for '\r` to convert \r\n to \n
             if (i == str.size || str.str[i] == '\\' || str.str[i] == '\r')
             {
                 String substr = Substr(str, start, i);
@@ -2190,7 +2281,7 @@ function String StrCEscape(Arena* arena, String str)
                     case '?': replace_byte = '?';  break; // @RECONSIDER(long): Bruh, fuck di/trigraphs
                 }
                 
-                String replace_string = StrCopy(scratch, Str(&replace_byte, 1));
+                String replace_string = StrCopy(scratch, StrFromChr(replace_byte));
                 StrListPush(scratch, &strs, replace_string);
                 
                 if (replace_byte != '\\' && replace_byte != '"' && replace_byte != '\'')
@@ -2358,7 +2449,7 @@ Logger BASE_SHARABLE(LogEnd)(Arena* arena)
         }
         
         SLLStackPop(logThread.stack);
-        ArenaPopTo(list->arena, ArenaPos(list->arena, ((u8*)list - (u8*)list->arena)));
+        ArenaPopTo(list->arena, list->arena->curr->basePos + ((u8*)list - (u8*)list->arena));
     }
     return result;
 }
@@ -2451,7 +2542,7 @@ BufferInterleave(Arena *arena, void **in,
     // TODO(allen): look at disassembly for real speed work
     
     // setup buffer
-    String result = StrPush(arena, laneCount*elementSize*elementCount, 0);
+    String result = PushBufferNZ(arena, laneCount*elementSize*elementCount);
     
     // fill loop
     u8 *out_ptr = result.str;
@@ -2478,7 +2569,7 @@ BufferUninterleave(Arena *arena, void *in,
     // allocate outs
     String *result = PushArrayNZ(arena, String, laneCount);
     for (u64 i = 0; i < laneCount; i += 1)
-        result[i] = StrPush(arena, bytes_per_lane, 0);
+        result[i] = PushBufferNZ(arena, bytes_per_lane);
     
     // fill loop
     u8 *in_ptr = (u8*)in;
@@ -2693,13 +2784,14 @@ BeforeMain(BaseInit)
     ScratchEnd(scratch);
 }
 
-function void OSSetArgs(int argc, char** argv)
+function StringList OSSetArgs(int argc, char** argv)
 {
     for (int i = 0; i < argc; ++i)
     {
         String arg = StrFromCStr(argv[i]);
         StrListPush(win32PermArena, &win32CmdLine, arg);
     }
+    return win32CmdLine;
 }
 
 function StringList OSGetArgs(void)
@@ -2733,8 +2825,6 @@ function HINSTANCE W32GetInstance(void)
 {
     return win32Instance;
 }
-
-#define GET_PROC_ADDR(f, m, n) (*(PROC*)(&(f))) = GetProcAddress((m), (n))
 
 //~ long: Time
 
@@ -2826,7 +2916,7 @@ function DateTime OSToUniTime(DateTime localTime)
 
 //~ long: Console Handling
 
-internal String W32ReadFile(Arena* arena, HANDLE file, b32 terminateData)
+internal String W32ReadFile(Arena* arena, HANDLE file)
 {
     String result = {0};
     u64 size = 0;
@@ -2834,7 +2924,8 @@ internal String W32ReadFile(Arena* arena, HANDLE file, b32 terminateData)
     if (GetFileSizeEx(file, (PLARGE_INTEGER)&size) && size)
     {
         TempArena restorePoint = TempBegin(arena);
-        u8* buffer = PushArray(arena, u8, size + !!terminateData);
+        String str = StrPush(arena, size);
+        u8* buffer = str.str;
         
         u8* ptr = buffer;
         u8* opl = buffer + size;
@@ -2848,7 +2939,7 @@ internal String W32ReadFile(Arena* arena, HANDLE file, b32 terminateData)
         }
         
         if (success)
-            result = Str(buffer, size);
+            result = str;
         else
             TempEnd(restorePoint);
     }
@@ -2861,7 +2952,7 @@ internal String W32ReadFile(Arena* arena, HANDLE file, b32 terminateData)
 // https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
 #define CONSOLE_INTERNAL_BUFFER_SIZE KB(8)
 
-function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData)
+function String OSReadConsole(Arena* arena, i32 handle)
 {
     String result = {0};
     
@@ -2880,34 +2971,33 @@ function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData)
     {
         DWORD fileType = GetFileType(file);
         if (fileType == FILE_TYPE_DISK)
-            result = W32ReadFile(arena, file, terminateData);
+            result = W32ReadFile(arena, file);
         
         else
         {
             TempArena restorePoint = TempBegin(arena);
             DWORD bufferSize = CONSOLE_INTERNAL_BUFFER_SIZE;
             DWORD actualRead = 0;
-            DWORD readSize = bufferSize - !!terminateData;
-            u8* buffer = PushArray(arena, u8, bufferSize);
+            String str = StrPush(arena, bufferSize);
             
             if (fileType == FILE_TYPE_PIPE)
             {
                 // TODO(long): https://handmade.network/forums/t/8916-how_to_read_from_and_write_to_the_console_in_win32#30197
             }
             
-            if (ReadFile(file, buffer, readSize, &actualRead, 0))
+            if (ReadFile(file, str.str, (DWORD)str.size, &actualRead, 0))
             {
                 if (actualRead)
                 {
-                    result = Str(buffer, actualRead);
+                    result = Str(str.str, actualRead);
                     
                     // NOTE(long): Stupid Microsoft with stupid \r\n
                     if (StrCompare(StrPostfix(result, 2), StrLit("\r\n"), 0))
                         result.size -= 2;
                     else
-                        Assert(actualRead == readSize);
+                        Assert(actualRead == str.size);
                     
-                    ArenaPop(arena, readSize - result.size);
+                    ArenaPop(arena, str.size - result.size);
                 }
             }
             
@@ -2948,19 +3038,24 @@ function b32 OSWriteConsole(i32 handle, String data)
 
 //~ long: File Handling
 
-function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
+// NOTE(long): It's ok for _scratch_ to collide with whatever arena in the caller
+#define W32ReallocPath(str, ...) Stmnt(ScratchBlock(_scratch_) \
+                                       { \
+                                           (str) = StrCopy(_scratch_, (str)); \
+                                           __VA_ARGS__; \
+                                       })
+
+function String OSReadFile(Arena* arena, String fileName)
 {
     String result = {0};
-    ScratchBegin(scratch); // It's ok for this to collide with arena
-    fileName = StrCopy(scratch, fileName);
-    HANDLE file = CreateFileA(fileName.str,
-                              GENERIC_READ, FILE_SHARE_READ, 0,
-                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-    ScratchEnd(scratch);
+    HANDLE file = INVALID_HANDLE_VALUE;
+    W32ReallocPath(fileName, file = CreateFileA(fileName.str,
+                                                GENERIC_READ, FILE_SHARE_READ, 0,
+                                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0));
     
     if (file != INVALID_HANDLE_VALUE)
     {
-        result = W32ReadFile(arena, file, terminateData);
+        result = W32ReadFile(arena, file);
         CloseHandle(file);
     }
     
@@ -2970,9 +3065,10 @@ function String OSReadFile(Arena* arena, String fileName, b32 terminateData)
 function b32 OSWriteList(String fileName, StringList* data)
 {
     b32 result = 0;
-    HANDLE file = CreateFileA(fileName.str,
-                              GENERIC_WRITE, FILE_SHARE_WRITE, 0,
-                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    HANDLE file = INVALID_HANDLE_VALUE;
+    W32ReallocPath(fileName, file = CreateFileA(fileName.str,
+                                                GENERIC_WRITE, FILE_SHARE_WRITE, 0,
+                                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0));
     
     if (file != INVALID_HANDLE_VALUE)
     {
@@ -3026,7 +3122,10 @@ function FileProperties OSFileProperties(String fileName)
 {
     FileProperties result = {0};
     WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
-    if (GetFileAttributesEx(fileName.str, GetFileExInfoStandard, &attributes))
+    b32 success = 0;
+    
+    W32ReallocPath(fileName, success = GetFileAttributesEx(fileName.str, GetFileExInfoStandard, &attributes));
+    if (success)
     {
         result = (FileProperties)
         {
@@ -3047,41 +3146,53 @@ function String OSGetTempDir(void) { return win32TempPath; }
 function String OSGetCurrDir(Arena* arena)
 {
     DWORD size = GetCurrentDirectoryA(0, 0);
-    u8* buffer = PushArrayNZ(arena, u8, size);
-    size = GetCurrentDirectoryA(size + 1, buffer);
-    return Str(buffer, size);
+    String result = PushBufferNZ(arena, size);
+    result.size = GetCurrentDirectoryA(size, result.str);
+    return result;
 }
 
 function b32 OSDeleteFile(String fileName)
 {
-    b32 result = DeleteFile(fileName.str);
+    b32 result = 0;
+    W32ReallocPath(fileName, result = DeleteFile(fileName.str));
     return result;
 }
 
 function b32 OSRenameFile(String oldName, String newName)
 {
-    // NOTE(long): Can't move a directory across drives
-    b32 result = MoveFile(oldName.str, newName.str);
+    b32 result = 0;
+    ScratchBlock(scratch)
+    {
+        // @W32ReallocPath
+        oldName = StrCopy(scratch, oldName);
+        newName = StrCopy(scratch, newName);
+        
+        // NOTE(long): Can't move a directory across drives
+        result = MoveFile(oldName.str, newName.str);
+    }
     return result;
 }
 
 function b32 OSCreateDir(String path)
 {
-    WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
-    GetFileAttributesEx(path.str, GetFileExInfoStandard, &attributes);
-    
     b32 result = 0;
-    if (attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-        result = 1;
-    else
-        result = CreateDirectory(path.str, 0);
-    
+    ScratchBlock(scratch)
+    {
+        WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
+        path = StrCopy(scratch, path); // @W32ReallocPath
+        GetFileAttributesEx(path.str, GetFileExInfoStandard, &attributes);
+        
+        result = attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
+        if (!result)
+            result = CreateDirectory(path.str, 0);
+    }
     return result;
 }
 
 function b32 OSDeleteDir(String path)
 {
-    b32 result = RemoveDirectory(path.str);
+    b32 result = 0;
+    W32ReallocPath(path, result = RemoveDirectory(path.str));
     return result;
 }
 
@@ -3215,7 +3326,7 @@ function void FileIterEnd(OSFileIter* iter)
 function OSLib OSLoadLib(String path)
 {
     OSLib result = {0};
-    result.v[0] = (u64)LoadLibraryA(path.str);
+    W32ReallocPath(path, result.v[0] = (u64)LoadLibraryA(path.str));
     return result;
 }
 

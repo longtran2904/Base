@@ -6,8 +6,9 @@
 //~ TODO(long):
 // [ ] Custom printf format
 // [ ] Support for custom data structures
-// [ ] Command line interface
 // [ ] Property-based testing
+// [ ] Seperate backing buffer for arenas
+// [ ] Upgrade to the wide string platform API
 
 //~/////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -351,19 +352,20 @@
 #define ENABLE_ASSERT 1
 #endif
 
-#if ENABLE_ASSERT
 #define DebugPrint(str) OSWriteConsole(OS_STD_ERR, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " str))
+#define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
+
+#if ENABLE_ASSERT
 #define Assert(c) Stmnt(if (!(c)) { DebugPrint("Assertion \"" Stringify(c) "\" failed\n"); AssertBreak(); })
 #define PANIC(str) Stmnt(DebugPrint("PANIC \"" str "\"\n"); AssertBreak())
-#else
-#define DebugPrint(...) 0
-#define Assert(...)
-#define PANIC(...)
-#endif
-
 #define ALWAYS(x) ((x) ? 1 : (DebugPrint("ALWAYS(" Stringify(x) ") is false\n"), AssertBreak(), 0))
 #define  NEVER(x) ((x) ? (DebugPrint("NEVER(" Stringify(x) ") is true\n"), AssertBreak(), 1) : 0)
-#define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
+#else
+#define Assert(...)
+#define  PANIC(...)
+#define ALWAYS(x) (x)
+#define  NEVER(x) (x)
+#endif
 
 #define Stringify_(s) #s
 #define Stringify(s) Stringify_(s)
@@ -387,6 +389,8 @@
 // @UB(long): Clang complains about these
 #define IntFromPtr(p) (uptr)((char*)p - (char*)0)
 #define PtrFromInt(n) (void*)((char*)0 + (n))
+
+#define PtrAdd(ptr, offset) ((u8*)(ptr) + (offset))
 
 #define   Member(T, m) (((T*)0)->m)
 #define OffsetOf(T, m) IntFromPtr(&Member(T, m))
@@ -429,12 +433,14 @@
 #define Billion(x)  ((x)*1000000000llu)
 #define Trillion(x) ((x)*1000000000000llu)
 
+#define IsControl(c) (c < ' ' || c == MAX_I8)
 #define IsCharacter(c) (InRange(c, 'A', 'Z') || InRange(c, 'a', 'z'))
 #define IsBinary(c) InRange(c, '0', '1')
 #define IsDigit(c) InRange(c, '0', '9')
 #define IsNonZeroDigit(c) InRange(c, '1', '9')
 #define IsOctalDigit(c) InRange(c, '0', '7')
 #define IsHexadecimalDigit(c) (InRange(c, 'A', 'F') || InRange(c, 'a', 'f') || IsDigit(c))
+#define IsAlphaNumeric(c) (IsCharacter(c) || IsDigit(c))
 
 #define Characters "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 #define Binary "01"
@@ -498,7 +504,7 @@
 #define DLLPushBack_NPZ(nil, f, l, n, next, prev) (CheckNil(nil, f) ? \
                                                    ((f)=(l)=(n), (n)->next=(n)->prev=(nil)) : \
                                                    ((l)->next=(n), (l)=(n), (n)->prev=(l), (n)->next=(nil)))
-#define DLLPushBack_NP(f, l, n, next, prev) DLLPushBack_NPZ(0, f, l, next, prev)
+#define DLLPushBack_NP(f, l, n, next, prev) DLLPushBack_NPZ(0, f, l, n, next, prev)
 #define DLLPushBack(f, l, n) DLLPushBack_NP(f, l, n, next, prev)
 #define DLLPushFront(f, l, n) DLLPushBack_NP(l, f, n, prev, next)
 
@@ -874,7 +880,7 @@ function DenseTime TimeToDense(DateTime  time);
 
 //~ long: File Properties
 
-typedef u32 DataAccessFlags;
+typedef Flags32 DataAccessFlags;
 enum
 {
     DataAccessFlag_Read = (1 << 0),
@@ -882,7 +888,7 @@ enum
     DataAccessFlag_Execute = (1 << 2),
 };
 
-typedef u32 FilePropertyFlags;
+typedef Flags32 FilePropertyFlags;
 enum
 {
     FilePropertyFlag_IsFolder = (1 << 0),
@@ -901,15 +907,21 @@ struct FileProperties
 
 //~ long: Arena Types
 
+typedef Flags32 ArenaFlags;
+enum
+{
+    ArenaFlag_Growing       = 1 << 0,
+    ArenaFlag_NullTerminate = 1 << 1,
+};
+
 typedef struct Arena Arena;
 struct Arena
 {
     Arena* prev;
     Arena* curr;
     
-    u64 alignment;
-    b8 growing;
-    b8 padding[7];
+    u32 alignment;
+    ArenaFlags flags;
     
     // @RECONSIDER(long): Maybe postfix all relative fields with offset rather than pos
     // pos -> (used/allocated)Offset, commitPos -> commit(ted)Offset
@@ -1021,7 +1033,7 @@ struct StringJoin
     String post;
 };
 
-typedef u32 StringMatchFlags;
+typedef Flags32 StringMatchFlags;
 enum
 {
     MatchStr_IgnoreCase  = 1 << 0,
@@ -1191,6 +1203,7 @@ function v3i32 CrossV3I32(v3i32 a, v3i32 b);
 
 //- long: Range Functions
 function r1i32 R1I32(i32 min, i32 max);
+function r1i32 R1I32Size(i32 min, i32 size);
 function r1i32 ShiftR1I32(r1i32 r, i32 x);
 function r1i32 PadR1I32(r1i32 r, i32 x);
 function i32 CenterR1I32(r1i32 r);
@@ -1201,6 +1214,7 @@ function r1i32 IntersectR1I32(r1i32 a, r1i32 b);
 function i32 ClampR1I32(r1i32 r, i32 v);
 
 function r1u64 R1U64(u64 min, u64 max);
+function r1u64 R1U64Size(u64 min, u64 size);
 function r1u64 ShiftR1u64(r1u64 r, u64 x);
 function r1u64 PadR1u64(r1u64 r, u64 x);
 function u64 CenterR1u64(r1u64 r);
@@ -1211,6 +1225,7 @@ function r1u64 IntersectR1u64(r1u64 a, r1u64 b);
 function u64 ClampR1u64(r1u64 r, u64 v);
 
 function r1f32 R1F32(f32 min, f32 max);
+function r1f32 R1F32Size(f32 min, f32 size);
 function r1f32 ShiftR1F32(r1f32 r, f32 x);
 function r1f32 PadR1F32(r1f32 r, f32 x);
 function f32 CenterR1F32(r1f32 r);
@@ -1222,6 +1237,7 @@ function f32 ClampR1F32(r1f32 r, f32 v);
 
 #define R2I32P(x, y, z, w) R2I32(V2I32((x), (y)), V2I32((z), (w)))
 function r2i32 R2I32(v2i32 min, v2i32 max);
+function r2i32 R2I32Size(v2i32 min, v2i32 size);
 function r2i32 ShiftR2I32(r2i32 r, v2i32 x);
 function r2i32 PadR2I32(r2i32 r, i32 x);
 function v2i32 CenterR2I32(r2i32 r);
@@ -1233,6 +1249,7 @@ function v2i32 ClampR2I32(r2i32 r, v2i32 v);
 
 #define R2F32P(x, y, z, w) R2F32(V2F32((x), (y)), V2F32((z), (w)))
 function r2f32 R2F32(v2f32 min, v2f32 max);
+function r2f32 R2F32Size(v2f32 min, v2f32 size);
 function r2f32 ShiftR2F32(r2f32 r, v2f32 x);
 function r2f32 PadR2F32(r2f32 r, f32 x);
 function v2f32 CenterR2F32(r2f32 r);
@@ -1250,9 +1267,11 @@ function u64 OffFromTextLoc(String str, TextLoc loc);
 
 //~ long: Arena Functions
 
-function Arena* ArenaBuffer(u8* buffer, u64 size, u64 alignment);
-function Arena* ArenaReserve(u64 reserve, u64 alignment, b32 growing);
+function Arena* ArenaReserve(u64 reserve, u32 alignment, b32 growing);
 function void   ArenaRelease(Arena* arena);
+
+function Arena* BufferFromMem(u8* mem, u64 size);
+function Arena* BufferFromArena(Arena* arena, u64 size);
 
 // NOTE(long): NZ stands for no zero. ArenaPush will zero the memory while ArenaPushNZ won't.
 // If zero-on-pop is defined then Push/PushNZ will be the same.
@@ -1268,20 +1287,20 @@ function void* ArenaPushPoisonEx(Arena* arena, u64 size, u64 preSize, u64 postSi
 
 function void ArenaPop    (Arena* arena, u64 amount);
 function void ArenaPopTo  (Arena* arena, u64 pos); // This is the abosolute pos, which means it must account for basePos
-function void ArenaAlign  (Arena* arena, u64 alignment);
-function void ArenaAlignNZ(Arena* arena, u64 alignment);
+function void ArenaAlign  (Arena* arena, u32 alignment);
+function void ArenaAlignNZ(Arena* arena, u32 alignment);
 
 #define ArenaMake(...) ArenaReserve(MEM_DEFAULT_RESERVE_SIZE, MEM_DEFAULT_ALIGNMENT, (__VA_ARGS__ + 0))
-#define ArenaStack(name, size, ...) u8 UNIQUE(_buffer)[(size) + sizeof(Arena)] = {0}; \
-    Arena* name = ArenaBuffer(UNIQUE(_buffer), sizeof(UNIQUE(_buffer)), (__VA_ARGS__+0))
-#define ArenaPos(arena, pos) ((arena)->curr->basePos + (pos))
-#define ArenaCurrPos(arena) ArenaPos(arena, (arena)->curr->pos)
+#define ArenaStack(name, size) u8 UNIQUE(_buffer)[(size) + sizeof(Arena)] = {0}; \
+    Arena* name = BufferFromMem(UNIQUE(_buffer), sizeof(UNIQUE(_buffer)))
+#define ArenaPos(arena) ((arena)->curr->basePos, (arena)->curr->pos)
+#define ArenaPtr(arena) PtrAdd((arena), (arena)->pos)
 
-#define PtrAdd(ptr, offset) ((u8*)(ptr) + (offset))
-
-#define   PushStruct(arena, type)        (type*)  ArenaPush((arena), sizeof(type))
+#define   PushBuffer(arena, size)     (String){ ArenaPush  ((arena), (size)), (size) }
+#define PushBufferNZ(arena, size)     (String){ ArenaPushNZ((arena), (size)), (size) }
+#define   PushStruct(arena, type)        (type*)ArenaPush  ((arena), sizeof(type))
 #define PushStructNZ(arena, type)        (type*)ArenaPushNZ((arena), sizeof(type))
-#define    PushArray(arena, type, count) (type*)  ArenaPush((arena), sizeof(type) * (count))
+#define    PushArray(arena, type, count) (type*)ArenaPush  ((arena), sizeof(type) * (count))
 #define  PushArrayNZ(arena, type, count) (type*)ArenaPushNZ((arena), sizeof(type) * (count))
 
 TempArena BASE_SHARABLE(GetScratch)(Arena** conflictArray, u64 count);
@@ -1301,13 +1320,13 @@ function void      TempEnd(TempArena temp);
 #define TempPoisonBlock(name, arena) \
     for (TempArena name = (ArenaPushPoisonEx((arena), 0, MEM_POISON_SIZE, 0), TempBegin(arena)), UNIQUE(name) = {0}; \
          UNIQUE(name).pos == 0; \
-         UNIQUE(name).pos = ArenaCurrPos(arena), TempEnd(name), \
+         UNIQUE(name).pos = ArenaPos(arena), TempEnd(name), \
          ArenaPushPoisonEx((arena), 0, UNIQUE(name).pos - name.pos, MEM_POISON_SIZE))
 
 // NOTE(long): This macro is heavily coupled with how the TempArena/Begin/End and GetScratch works
 // It must be changed when any of those things change
 #define ScratchBlock(name, ...) for (Arena* name = GetScratch(ArrayExpand(Arena*, 0, __VA_ARGS__)).arena, \
-                                     UNIQUE(name) = { .pos = ArenaCurrPos(name) }; \
+                                     UNIQUE(name) = { .pos = ArenaPos(name) }; \
                                      UNIQUE(name).pos; \
                                      TempEnd((TempArena){ .arena = name, .pos = UNIQUE(name).pos }), UNIQUE(name).pos = 0)
 
@@ -1319,7 +1338,10 @@ function void      TempEnd(TempArena temp);
 #define StrRange(first, opl) (String){ (first), (opl) - (first) }
 #define StrConst(s) { (u8*)(s), sizeof(s) - 1 }
 #define StrLit(s) (String){ (u8*)(s), sizeof(s) - 1 }
+#define StrFromChr(c) Str(.str = &(c), .size = 1)
 #define StrExpand(s) (i32)((s).size), ((s).str)
+
+function u8 ChrFromStr(String str, u64 idx);
 
 function String StrChop   (String str, u64 size);
 function String StrSkip   (String str, u64 size);
@@ -1341,7 +1363,7 @@ function String StrTrim(String str, String arr, i32 dir);
 
 //- long: Allocation Functions
 function String StrCopy(Arena* arena, String str);
-function String StrPush(Arena* arena, u64 size, b32 terminate);
+function String StrPush(Arena* arena, u64 size);
 #define StrCloneCStr(arena, cstr) StrCopy((arena), StrFromCStr(cstr))
 #define StrToCStr(a, s) StrCopy((a), (s)).str
 
@@ -1384,16 +1406,13 @@ function String StrJoinMax3(Arena* arena, StringJoin* join);
 #define StrJoin(arena, list, ...) StrJoinList((arena), (list), &(StringJoin){ .pre = {0}, __VA_ARGS__ })
 #define StrJoin3(arena, ...) StrJoinMax3((arena), &(StringJoin){ __VA_ARGS__ })
 
-function String StrListJoinArr(Arena* arena, StringList** lists, u64 count, StringJoin* join);
-#define StrListJoin(arena, lists, count, ...) StrListJoinArr(arena, lists, count, &(StringJoin){ .pre = {0}, __VA_ARGS__ })
+function String StrJoinListArr(Arena* arena, StringList* lists, u64 count, StringJoin* perNode, StringJoin* perList);
 
-function StringList StrSplitList(Arena* arena, String str, StringList* splits, StringMatchFlags flags);
-function StringList StrSplitArr (Arena* arena, String str, String      splits, StringMatchFlags flags);
-function StringList StrSplit    (Arena* arena, String str, String      split , StringMatchFlags flags);
+function StringList StrSplitArr(Arena* arena, String str, String splits, StringMatchFlags flags);
+function StringList    StrSplit(Arena* arena, String str, String split , StringMatchFlags flags);
 
-function String StrReplaceList(Arena* arena, String str, StringList* oldStr, String newStr, StringMatchFlags flags);
-function String StrReplaceArr (Arena* arena, String str, String      oldArr, String newStr, StringMatchFlags flags);
-function String StrReplace    (Arena* arena, String str, String      oldStr, String newStr, StringMatchFlags flags);
+function String    StrReplace(Arena* arena, String str, String oldStr, String newStr, StringMatchFlags flags);
+function String StrReplaceArr(Arena* arena, String str, String oldArr, String newStr, StringMatchFlags flags);
 
 function String StrToLower(Arena* arena, String str);
 function String StrToUpper(Arena* arena, String str);
@@ -1502,13 +1521,42 @@ function u32 U32FromStr(String str, u32 radix, b32* error);
 function u64 U64FromStr(String str, u32 radix, b32* error);
 
 function String StrFromTime(Arena* arena, DateTime time);
-function String StrFromArg(char* arg, b32* isArg, String* argValue);
 
 //- long: C-Syntax Functions
 function String StrCEscape(Arena* arena, String str);
 
 function i64 I64FromStrC(String str, b32* error);
 function u64 U64FromStrC(String str, b32* error);
+
+//~ long: CLI Parsing
+
+typedef struct CmdLineOpt CmdLineOpt;
+struct CmdLineOpt
+{
+    CmdLineOpt* next;
+    String name;
+    StringList values;
+};
+
+typedef struct CmdLineOptList CmdLineOptList;
+struct CmdLineOptList
+{
+    CmdLineOpt* first;
+    CmdLineOpt* last;
+    u64 count;
+};
+
+typedef struct CmdLine CmdLine;
+struct CmdLine
+{
+    String programName;
+    StringList inputs;
+    CmdLineOptList opts;
+};
+
+function CmdLine CmdLineFromStrList(Arena* arena, StringList* args);
+function CmdLineOpt* CmdLinePushOpt(Arena* arena, CmdLineOptList* list, String name);
+function CmdLineOpt* CmdLineOptFromStr(CmdLine* cmd, String name, StringMatchFlags flags);
 
 //~ long: Logs/Errors
 
@@ -1617,12 +1665,13 @@ function u64 Hash64 (u8* values, u64 count);
 
 //~ long: OS Setup
 
+function StringList OSSetArgs(int argc, char **argv);
 function StringList OSGetArgs(void);
-function void OSSetArgs(int argc, char **argv);
 function void OSExit(u32 code);
 
 //~ long: Memory Functions
 
+// TODO(long): Memory Protection (Read/Write/Execute)
 function void* OSReserve(u64 size);
 function void  OSRelease(void* ptr);
 function b32    OSCommit(void* ptr, u64 size);
@@ -1638,12 +1687,12 @@ enum
     OS_STD_ERR,
 };
 
-function String OSReadConsole(Arena* arena, i32 handle, b32 terminateData);
+function String OSReadConsole(Arena* arena, i32 handle);
 function b32   OSWriteConsole(i32 handle, String data);
 
 //~ long: File Handling
 
-function String OSReadFile(Arena* arena, String fileName, b32 terminateData);
+function String OSReadFile(Arena* arena, String fileName);
 function b32   OSWriteList(String fileName, StringList* data);
 #define OSWriteFile(file, data) OSWriteList((file), &(StringList) \
                                             { \
@@ -1661,7 +1710,7 @@ function FileProperties OSFileProperties(String fileName);
 
 //~ long: File Iteration
 
-typedef u32 OSFileIterFlags;
+typedef Flags32 OSFileIterFlags;
 enum
 {
     FileIterFlag_SkipFolders = (1 << 0),
@@ -1674,24 +1723,24 @@ enum
 typedef struct OSFileIter
 {
     // @CONSIDER(long): Combine name and props into a single FileInfo struct
+    FileProperties props;
     String name;
     String path;
-    FileProperties props;
     
     OSFileIterFlags flags;
-    u8 v[640];
+    u8 v[600];
 } OSFileIter;
 
 // TODO(long): Make these work with volume
-
-// NOTE(long): The path passed in must be valid for the entire duration between Init and End
+// NOTE(long): The path passed in must have the same lifetime as OSFileIter
 function OSFileIter FileIterInit(String path, OSFileIterFlags flags);
 function b32 FileIterNext(Arena* arena, OSFileIter* iter);
 function void FileIterEnd(OSFileIter* iter);
 #define FileIterBlock(arena, iterName, path, ...) for (OSFileIter iterName = FileIterInit(path, (__VA_ARGS__ + 0)); \
                                                        FileIterNext(arena, &iterName) ? 1 : (FileIterEnd(&iterName), 0);)
+// @CONSIDER(long): FileIterPush/Pop
 
-//~ TODO(long): File Maps
+//~ TODO(long): Streaming/Buffering/Overlapping
 
 //~ long: Paths
 
@@ -1700,7 +1749,7 @@ function String  OSGetExeDir(void);
 function String OSGetUserDir(void);
 function String OSGetTempDir(void);
 
-// @CONSIDER(long): Maybe have a OSSetCurrDir and OSGetInitDir
+// @CONSIDER(long): OSSetCurrDir and OSGetInitDir?
 // https://devblogs.microsoft.com/oldnewthing/20101109-00/?p=12323
 
 //~ long: Time

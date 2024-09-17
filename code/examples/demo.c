@@ -136,8 +136,8 @@ int main(void)
             Outf("%.*s\n", StrExpand(node->string));
         
         u64 time = OSNowMS();
-        u64 pos = ArenaCurrPos(arena);
-        u64 overhead = ArenaCurrPos(logThread.arena);
+        u64 pos = ArenaPos(arena);
+        u64 overhead = ArenaPos(logThread.arena);
         LogBlock(arena, logs, .callback = DemoLogCallback)
         {
             Outf("\n-Stress Test-\n");
@@ -145,7 +145,7 @@ int main(void)
                 LogPush(i % LogType_Count, "Log: %llu", i);
         }
         Outf("Elapsed: %llums\n", OSNowMS() - time);
-        Outf("Memory: %llu bytes, Overhead: %llu bytes\n", ArenaCurrPos(arena) - pos, ArenaCurrPos(logThread.arena) - overhead);
+        Outf("Memory: %llu bytes, Overhead: %llu bytes\n", ArenaPos(arena) - pos, ArenaPos(logThread.arena) - overhead);
         Outf("Count: %llu nodes, Size: %llu bytes\n", logs.nodeCount, logs.totalSize);
     }
     
@@ -175,7 +175,7 @@ int main(void)
         Outf("---STDIO---\n");
         //OSSleepMS(10000);
         OSWriteConsole(OS_STD_OUT, StrLit("Please enter your name: "));
-        String input = OSReadConsole(arena, OS_STD_IN, 0);
+        String input = OSReadConsole(arena, OS_STD_IN);
         if (StrCompare(input, StrLit("Long"), 1))
             OSWriteConsole(OS_STD_OUT, StrPushf(arena, "\"%.*s\" is the most beautiful name I've ever seen\n", StrExpand(input)));
         else if (StrCompare(input, StrLit("sad"), 1))

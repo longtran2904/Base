@@ -95,7 +95,7 @@ function b32 InitD3D11(void)
     {
 #define X(r, n, p) if (!error) \
     { \
-        GET_PROC_ADDR(w32##n, scopeModule, Stringify(n)); \
+        W32_GET_PROC_ADDR(w32##n, scopeModule, Stringify(n)); \
         if (!w32##n) ErrorSet("Failed to load "Stringify(n), error); \
     }
         

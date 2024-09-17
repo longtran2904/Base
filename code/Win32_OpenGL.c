@@ -158,7 +158,7 @@ function b32 InitGL(void)
     
     if (!error)
     {
-#define X(r, n, p)  GET_PROC_ADDR(w32Wgl##n, w32OpenGLModule, Stringify(Concat(wgl, n)));
+#define X(r, n, p)  W32_GET_PROC_ADDR(w32Wgl##n, w32OpenGLModule, Stringify(Concat(wgl, n)));
         WGL_FUNCS(X)
 #undef X
         
@@ -312,7 +312,7 @@ function b32 InitGL(void)
 		{
 #define X(r, n, p) if (!error) \
     { \
-        GET_PROC_ADDR(n, w32OpenGLModule, Stringify(n)); \
+        W32_GET_PROC_ADDR(n, w32OpenGLModule, Stringify(n)); \
         if (!n) ErrorSet("Failed to load "Stringify(n), error); \
     }
             GL_FUNCS(X);

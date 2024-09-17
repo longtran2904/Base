@@ -1,35 +1,35 @@
 @table(name, str) MyEnumTable:
 {
-    { A "A" 2 }
-    { B "B" 3 }
-    { C "C" 5 }
+    { A }
+    { B }
+    { C }
 }
 
 @table(name, ret, params)
 R_BackendHookTable:
 {
-    { EquipOS                   R_Handle `void`                                                             }
-    { EquipWindow               R_Handle `R_Handle os_eqp, OS_Handle window`                                }
-    { UnequipWindowFunction     void     `R_Handle os_eqp, R_Handle window_eqp`                             }
-    { ReserveTexture2DFunction  R_Handle `R_Handle os_eqp, Vec2S64 size, R_Texture2DFormat fmt`             }
-    { ReleaseTexture2DFunction  void     `R_Handle os_eqp, R_Handle texture`                                }
-    { FillTexture2DFunction     void     `R_Handle os_eqp, R_Handle texture, Rng2S64 subrect, String8 data` }
-    { SizeFromTexture2DFunction Vec2F32  `R_Handle texture`                                                 }
-    { StartFunction             void     `R_Handle os_eqp, R_Handle window_eqp, Vec2S64 resolution`         }
-    { Submit2DFunction          void     `R_Handle os_eqp, R_Handle window_eqp, R2_CmdList commands`        }
-    { FinishFunction            void     `R_Handle os_eqp, R_Handle window_eqp`                             }
+    { EquipOS           R_Handle `void`                                                             }
+    { EquipWindow       R_Handle `R_Handle os_eqp, OS_Handle window`                                }
+    { UnequipWindow     void     `R_Handle os_eqp, R_Handle window_eqp`                             }
+    { ReserveTexture2D  R_Handle `R_Handle os_eqp, Vec2S64 size, R_Texture2DFormat fmt`             }
+    { ReleaseTexture2D  void     `R_Handle os_eqp, R_Handle texture`                                }
+    { FillTexture2D     void     `R_Handle os_eqp, R_Handle texture, Rng2S64 subrect, String8 data` }
+    { SizeFromTexture2D Vec2F32  `R_Handle texture`                                                 }
+    { Start             void     `R_Handle os_eqp, R_Handle window_eqp, Vec2S64 resolution`         }
+    { Submit2D          void     `R_Handle os_eqp, R_Handle window_eqp, R2_CmdList commands`        }
+    { Finish            void     `R_Handle os_eqp, R_Handle window_eqp`                             }
 }
 
 @gen(structs)
 {
     @expand(R_BackendHookTable a)
-        ```
-        typedef struct $(a.name)Struct $(a.name)Struct;
-        struct $(a.name)Struct
-        {
-        R_$(a.name)Function* $(a.name); $(a.params != void -> '\n'..(@replace(',', ';\n') @upper @lower(R_HANDLE OS_EQP) a.params)..';')
-        }$(`\n`)
-        ```
+    ```
+    typedef struct $(a.name)Struct $(a.name)Struct;
+    struct $(a.name)Struct
+    {
+    R_$(a.name)Function* $(a.name); $(a.params != void -> '\n'..(@replace(',', ';\n') @upper @lower(R_HANDLE OS_EQP) a.params)..';')
+    }$(`\n`)
+    ```
 }
 
 @gen
@@ -44,9 +44,9 @@ R_BackendHookTable:
 @gen(functions)
 {
     `void      R_SelectBackend(R_Backend backend)`
-        @expand(R_BackendHookTable a) `$(a.ret .. =>9) $(R_..a.name)($(a.params));`
-        ``
-        @expand(R_BackendHookTable a) `$(a.ret .. =>9) $(R_..a.name..Stub)($(a.params));`
+    @expand(R_BackendHookTable a) `$(a.ret .. =>9) $(R_..a.name)($(a.params));`
+    ``
+    @expand(R_BackendHookTable a) `$(a.ret .. =>9) $(R_..a.name..Stub)($(a.params));`
 }
 
 @enum MyEnum: @expand(MyEnumTable a) `$(a.name)_ur_mom`
@@ -59,7 +59,8 @@ R_BackendHookTable:
 }
 
 @text myText:
-"""cbuffer Globals : register(b0)
+"""
+cbuffer Globals : register(b0)
 {
 float2 viewport_size_px;
 float opacity;
@@ -220,6 +221,7 @@ final_color.a *= opacity;
 final_color.a *= corner_sdf_t;
 final_color.a *= border_sdf_t;
 return final_color;
-}"""
+}
+"""
 
 @embed metagen_exe: "code\test.mdesk"
