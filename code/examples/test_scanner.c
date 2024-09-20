@@ -374,28 +374,62 @@ internal MD_TokenizeResult Long_MD_TokenizeFromText(Arena *arena, String8 text)
     return result;
 }
 
+internal String MD_DumpJSON(Arena* arena, MD_Node* node, u64 indent)
+{
+    String result = {0};
+    if (!md_node_is_nil(node) && node->kind == MD_NodeKind_Main)
+    {
+        if (node->flags & MD_NodeFlag_MaskLabelKind)
+            result = node->raw_string;
+        
+        else if (node->flags & MD_NodeFlag_HasBracketLeft)
+        {
+            ScratchBlock(scratch, arena)
+            {
+                StringList list = {0};
+                for (MD_EachNode(child, node->first))
+                {
+                    String str = MD_DumpJSON(scratch, child, indent + 2);
+                    StrListPush(scratch, &list, str);
+                }
+                result = StrJoin(arena, &list, .pre = StrLit("[\n"), .mid = StrLit(",\n"), .post = StrLit("\n]"));
+            }
+        }
+        
+        else if (node->flags & MD_NodeFlag_HasBraceLeft)
+        {
+            ScratchBlock(scratch, arena)
+            {
+                StringList list = {0};
+                StrListPushf(scratch, &list, "%*s{\n", indent, "");
+                for (MD_EachNode(child, node->first))
+                {
+                    String str = MD_DumpJSON(scratch, child->first, indent + 2);
+                    StrListPushf(scratch, &list, "%*s\"%.*s\": %.*s%s", indent + 2, "",
+                                 StrExpand(child->string), StrExpand(str),
+                                 md_node_is_nil(child->next) ? "\n" : ",\n");
+                }
+                StrListPushf(scratch, &list, "%*s}", indent, "");
+                result = StrJoin(arena, &list);
+            }
+        }
+    }
+    
+    return result;
+}
+
 int main(void)
 {
     ScratchBegin(scratch);
-#if 0
-    String file = OSReadFile(scratch, StrLit("code/syntax.mdesk"), 1);
-    MD_TokenizeResult result = Long_MD_TokenizeFromScanner(scratch, file);
-    
-    for (u64 i = 0; i < result.tokens.count; ++i)
-    {
-        MD_Token token = result.tokens.v[i];
-        String str = Substr(file, token.range.min, token.range.max);
-        Outf("`%.*s`(%llu, %llu)): { ", StrExpand(str), token.range.min, token.range.max);
-        StringList list = md_string_list_from_token_flags(scratch, token.flags);
-        StrListIter(&list, node)
-            Outf("%.*s%s ", StrExpand(node->string), node->next ? "," : "");
-        Outf(" }\n");
-    }
-#endif
+    String file = StrLit("code/test.json");
+    MD_ParseResult parse = MD_ParseText(scratch, file, OSReadFile(scratch, file));
+    String dump = MD_DumpJSON(scratch, parse.root->first, 0);
+    OSWriteFile(StrLit("code/out_test.mdesk"), dump);
+    Assert(parse.root->first == parse.root->last);
     
     String text = OSReadFile(scratch, StrLit("code/test.json"));
     TokenArray array = JSON_TokenizeFromText(scratch, text);
-    JSON_Value value = JSON_ParseFromTokens(scratch, text, array);
+    JSON_Value value = JSON_ValueFromTokens (scratch, text, array);
     OSWriteFile(StrLit("code/out_test.json"), JSON_StrFromValue(scratch, value, 0));
     
     text = OSReadFile(scratch, StrLit("code/test.csv"));

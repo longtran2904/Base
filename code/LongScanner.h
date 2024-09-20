@@ -311,7 +311,8 @@ function JSON_Value JSON_ValueFromStr(JSON_Object obj, String str);
 function void JSON_ObjInsertValue(Arena* arena, JSON_Object obj, String key, JSON_Value value);
 
 function TokenArray JSON_TokenizeFromText(Arena* arena, String text);
-function JSON_Value JSON_ParseFromTokens (Arena* arena, String text, TokenArray array);
+function JSON_Node* JSON_ParseFromTokens (Arena* arena, String text, TokenArray array);
+function JSON_Value JSON_ValueFromTokens (Arena* arena, String text, TokenArray array);
 
 function String JSON_StrFromValue(Arena* arena, JSON_Value value, u32 indent);
 

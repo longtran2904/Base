@@ -932,6 +932,13 @@ function String StrFromCStr(u8* cstr)
     return StrRange(cstr, ptr);
 }
 
+function String16 Str16FromWStr(u16* wstr)
+{
+    u16* ptr = wstr;
+    for (; *ptr; ++ptr);
+    return Str16(wstr, ptr - wstr);
+}
+
 function String StrChop(String str, u64 size)
 {
     u64 clampedSize = ClampTop(size, str.size);
@@ -1845,7 +1852,7 @@ function u32 StrEncodeWide(u16* dst, u32 codepoint)
 #undef InvalidRune
 #undef InvalidDecoder
 
-function String32 StrToStr32(Arena* arena, String str)
+function String32 Str32FromStr(Arena* arena, String str)
 {
     u64 expectedSize = str.size;
     u32* memory = PushArrayNZ(arena, u32, expectedSize + 1);
@@ -1868,7 +1875,7 @@ function String32 StrToStr32(Arena* arena, String str)
     return (String32){ memory, size };
 }
 
-function String16 StrToStr16(Arena* arena, String str)
+function String16 Str16FromStr(Arena* arena, String str)
 {
     u64 expectedSize = str.size;
     u16* memory = PushArrayNZ(arena, u16, expectedSize + 1);
@@ -1930,14 +1937,14 @@ function String StrFromStr16(Arena* arena, String16 str)
     return Str(memory, size);
 }
 
-function String StrBackspace(String str)
+function String UTF8Delete(String str, u64 count)
 {
     if (str.size)
     {
         u64 i = str.size - 1;
-        for (; i > 0; --i)
+        for (u64 runeLeft = count; i > 0 && runeLeft > 0; --i)
             if (str.str[i] <= 0x7F || str.str[i] >= 0xC0)
-                break;
+                runeLeft--;
         str.size = i;
     }
     return str;
@@ -1958,17 +1965,17 @@ function u64 UTF8Length(String str)
     return result;
 }
 
-function u32 UTF8GetErr(String str, u64* index)
+function u32 UTF8GetErr(String str, u64* firstErrIdx)
 {
     StringDecode decode = {0};
-    NilPtr(u64, index);
+    NilPtr(u64, firstErrIdx);
     
     Str8Stream(str, ptr, opl)
     {
         decode = StrDecodeUTF8(ptr, (u64)(opl - ptr));
         if (decode.error)
         {
-            *index = ptr - str.str;
+            *firstErrIdx = ptr - str.str;
             break;
         }
         
@@ -2723,12 +2730,12 @@ BeforeMain(BaseInit)
     //- Setup binary path
     {
         DWORD cap = 2048;
-        u8* buffer = 0;
+        u16* buffer = 0;
         DWORD size = 0;
         for (u64 r = 0; r < 4; ++r, cap *= 4)
         {
-            u8* tryBuffer = PushArrayNZ(scratch, u8, cap);
-            DWORD trySize = GetModuleFileNameA(0, tryBuffer, cap);
+            u16* tryBuffer = PushArrayNZ(scratch, u16, cap);
+            DWORD trySize = GetModuleFileNameW(0, tryBuffer, cap);
             if (trySize == cap && GetLastError() == ERROR_INSUFFICIENT_BUFFER)
                 ScratchClear(scratch);
             else
@@ -2740,45 +2747,52 @@ BeforeMain(BaseInit)
         }
         
         if (ALWAYS(size))
-            win32BinaryPath = StrCopy(win32PermArena, StrChopAfter(Str(buffer, size), StrLit("/\\"), MatchStr_LastMatch));
+        {
+            String binaryPath = StrFromStr16(scratch, Str16(buffer, size));
+            binaryPath = StrChopAfter(binaryPath, StrLit("/\\"), MatchStr_LastMatch);
+            win32BinaryPath = StrCopy(win32PermArena, binaryPath);
+        }
     }
     
     //- Setup user path
     {
         HANDLE token = GetCurrentProcessToken();
         DWORD cap = 2048;
-        u8* buffer = PushArrayNZ(scratch, u8, cap);
-        if (!GetUserProfileDirectoryA(token, buffer, &cap))
+        u16* buffer = PushArrayNZ(scratch, u16, cap);
+        if (!GetUserProfileDirectoryW(token, buffer, &cap))
         {
             ScratchClear(scratch);
-            buffer = PushArrayNZ(scratch, u8, cap);
-            if (!GetUserProfileDirectoryA(token, buffer, &cap))
+            buffer = PushArrayNZ(scratch, u16, cap);
+            if (!GetUserProfileDirectoryW(token, buffer, &cap))
                 buffer = 0;
         }
         
         if (ALWAYS(buffer))
+        {
             // NOTE(long): the docs make it sound like we can only count on cap getting the size on failure
             // so we're just going to cstring this to be safe.
-            win32UserPath = StrCloneCStr(win32PermArena, buffer);
+            String16 userPath = Str16FromWStr(buffer);
+            win32UserPath = StrFromStr16(win32PermArena, userPath);
+        }
     }
     
     //- Setup temp path
     {
         DWORD cap = 2048;
-        u8* buffer = PushArrayNZ(scratch, u8, cap);
-        DWORD size = GetTempPathA(cap, buffer);
+        u16* buffer = PushArrayNZ(scratch, u16, cap);
+        DWORD size = GetTempPathW(cap, buffer);
         if (size >= cap)
         {
             ScratchClear(scratch);
-            buffer = PushArrayNZ(scratch, u8, size);
-            size = GetTempPathA(size, buffer);
+            buffer = PushArrayNZ(scratch, u16, size);
+            size = GetTempPathW(size, buffer);
         }
         
         // NOTE(long): size - 1 because this particular string function in the Win32 API
         // is different from the others and it includes the trailing backslash.
         // We want consistency, so the "- 1" removes it.
         if (ALWAYS(size > 1))
-            win32TempPath = StrCopy(win32PermArena, Str(buffer, size - 1));
+            win32TempPath = StrFromStr16(win32PermArena, Str16(buffer, size - 1));
     }
     
     ScratchEnd(scratch);
@@ -3039,19 +3053,19 @@ function b32 OSWriteConsole(i32 handle, String data)
 //~ long: File Handling
 
 // NOTE(long): It's ok for _scratch_ to collide with whatever arena in the caller
-#define W32ReallocPath(str, ...) Stmnt(ScratchBlock(_scratch_) \
-                                       { \
-                                           (str) = StrCopy(_scratch_, (str)); \
-                                           __VA_ARGS__; \
-                                       })
+#define W32WidePath(name16, str, ...) Stmnt(ScratchBlock(_scratch_) \
+                                            { \
+                                                String16 name16 = Str16FromStr(_scratch_, (str)); \
+                                                __VA_ARGS__; \
+                                            })
 
 function String OSReadFile(Arena* arena, String fileName)
 {
     String result = {0};
     HANDLE file = INVALID_HANDLE_VALUE;
-    W32ReallocPath(fileName, file = CreateFileA(fileName.str,
-                                                GENERIC_READ, FILE_SHARE_READ, 0,
-                                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0));
+    W32WidePath(path, fileName, file = CreateFileW(path.str,
+                                                   GENERIC_READ, FILE_SHARE_READ, 0,
+                                                   OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0));
     
     if (file != INVALID_HANDLE_VALUE)
     {
@@ -3066,9 +3080,9 @@ function b32 OSWriteList(String fileName, StringList* data)
 {
     b32 result = 0;
     HANDLE file = INVALID_HANDLE_VALUE;
-    W32ReallocPath(fileName, file = CreateFileA(fileName.str,
-                                                GENERIC_WRITE, FILE_SHARE_WRITE, 0,
-                                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0));
+    W32WidePath(path, fileName, file = CreateFileW(path.str,
+                                                   GENERIC_WRITE, FILE_SHARE_WRITE, 0,
+                                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0));
     
     if (file != INVALID_HANDLE_VALUE)
     {
@@ -3124,7 +3138,7 @@ function FileProperties OSFileProperties(String fileName)
     WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
     b32 success = 0;
     
-    W32ReallocPath(fileName, success = GetFileAttributesEx(fileName.str, GetFileExInfoStandard, &attributes));
+    W32WidePath(path, fileName, success = GetFileAttributesExW(path.str, GetFileExInfoStandard, &attributes));
     if (success)
     {
         result = (FileProperties)
@@ -3145,16 +3159,21 @@ function String OSGetUserDir(void) { return win32UserPath; }
 function String OSGetTempDir(void) { return win32TempPath; }
 function String OSGetCurrDir(Arena* arena)
 {
-    DWORD size = GetCurrentDirectoryA(0, 0);
-    String result = PushBufferNZ(arena, size);
-    result.size = GetCurrentDirectoryA(size, result.str);
+    String result = {0};
+    ScratchBlock(scratch, arena)
+    {
+        DWORD size = GetCurrentDirectoryW(0, 0);
+        u16* buffer = PushArrayNZ(arena, u16, size);
+        size = GetCurrentDirectoryW(size, buffer);
+        result = StrFromStr16(arena, Str16(buffer, size));
+    }
     return result;
 }
 
 function b32 OSDeleteFile(String fileName)
 {
     b32 result = 0;
-    W32ReallocPath(fileName, result = DeleteFile(fileName.str));
+    W32WidePath(path, fileName, result = DeleteFileW(path.str));
     return result;
 }
 
@@ -3163,12 +3182,12 @@ function b32 OSRenameFile(String oldName, String newName)
     b32 result = 0;
     ScratchBlock(scratch)
     {
-        // @W32ReallocPath
-        oldName = StrCopy(scratch, oldName);
-        newName = StrCopy(scratch, newName);
+        // @W32WidePath
+        String16 o = Str16FromStr(scratch, oldName);
+        String16 n = Str16FromStr(scratch, newName);
         
         // NOTE(long): Can't move a directory across drives
-        result = MoveFile(oldName.str, newName.str);
+        result = MoveFileW(o.str, n.str);
     }
     return result;
 }
@@ -3179,12 +3198,12 @@ function b32 OSCreateDir(String path)
     ScratchBlock(scratch)
     {
         WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
-        path = StrCopy(scratch, path); // @W32ReallocPath
-        GetFileAttributesEx(path.str, GetFileExInfoStandard, &attributes);
+        String16 wpath = Str16FromStr(scratch, path); // @W32WidePath
+        GetFileAttributesExW(wpath.str, GetFileExInfoStandard, &attributes);
         
         result = attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
         if (!result)
-            result = CreateDirectory(path.str, 0);
+            result = CreateDirectoryW(wpath.str, 0);
     }
     return result;
 }
@@ -3192,7 +3211,7 @@ function b32 OSCreateDir(String path)
 function b32 OSDeleteDir(String path)
 {
     b32 result = 0;
-    W32ReallocPath(path, result = RemoveDirectory(path.str));
+    W32WidePath(wpath, path, result = RemoveDirectoryW(wpath.str));
     return result;
 }
 
@@ -3204,7 +3223,7 @@ struct W32FileIter
     W32FileIter* next;
     String path;
     HANDLE handle;
-    WIN32_FIND_DATAA findData; // WIN32_FIND_DATAA is 320 bytes while WIN32_FIND_DATAW is 592 bytes
+    WIN32_FIND_DATAW findData; // WIN32_FIND_DATAA is 320 bytes while WIN32_FIND_DATAW is 592 bytes
 };
 StaticAssert(ArrayCount(Member(OSFileIter, v)) >= sizeof(W32FileIter), w32fileiter);
 
@@ -3215,8 +3234,8 @@ function void W32FileIterInit(W32FileIter* iter, String path)
     ScratchBlock(scratch)
     {
         iter->path = path;
-        path = StrJoin3(scratch, path, StrLit("\\*"));
-        iter->handle = FindFirstFile(path.str, &iter->findData);
+        String16 wpath = Str16FromStr(scratch, StrJoin3(scratch, path, StrLit("\\*")));
+        iter->handle = FindFirstFileW(wpath.str, &iter->findData);
         Assert(iter->handle != INVALID_HANDLE_VALUE);
     }
 }
@@ -3243,9 +3262,9 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter)
     {
         while (!(iter->flags & FileIterFlag_Done))
         {
-            WIN32_FIND_DATAA* data = &w32Iter->findData;
+            WIN32_FIND_DATAW* data = &w32Iter->findData;
             DWORD attributes = data->dwFileAttributes;
-            CHAR* fileName = data->cFileName;
+            WCHAR* fileName = data->cFileName;
             String subdir = {0};
             
             // Check for . and ..
@@ -3273,7 +3292,8 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter)
             {
                 result = true;
                 iter->path = w32Iter->path;
-                iter->name = StrCloneCStr(arena, fileName);
+                String16 name = Str16FromWStr(fileName);
+                iter->name = StrFromStr16(arena, name);
                 
                 iter->props = (FileProperties)
                 {
@@ -3286,7 +3306,7 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter)
             }
             
             // Increment the iter
-            b32 done = !FindNextFile(w32Iter->handle, &w32Iter->findData);
+            b32 done = !FindNextFileW(w32Iter->handle, &w32Iter->findData);
             
             // Recursively iterate all the files and subfolders
             if (subdir.size)
@@ -3326,7 +3346,7 @@ function void FileIterEnd(OSFileIter* iter)
 function OSLib OSLoadLib(String path)
 {
     OSLib result = {0};
-    W32ReallocPath(path, result.v[0] = (u64)LoadLibraryA(path.str));
+    W32WidePath(wpath, path, result.v[0] = (u64)LoadLibraryW(wpath.str));
     return result;
 }
 
@@ -3348,7 +3368,7 @@ function void OSFreeLib(OSLib lib)
 function void OSGetEntropy(void* data, u64 size)
 {
     HCRYPTPROV prov = 0;
-    CryptAcquireContextA(&prov, 0, 0, PROV_DSS, CRYPT_VERIFYCONTEXT);
+    CryptAcquireContextW(&prov, 0, 0, PROV_DSS, CRYPT_VERIFYCONTEXT);
     CryptGenRandom(prov, (u32)ClampTop(size, MAX_U32), (BYTE*)data);
     CryptReleaseContext(prov, 0);
 }

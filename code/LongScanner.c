@@ -467,8 +467,9 @@ function String CSV_StrFromTable(Arena* arena, StringTable table)
             {
                 if (StrContainsChr(str, "\",\n"))
                 {
-                    str = StrReplace(scratch, str, StrLit("\""), StrLit("\"\""), 0);
-                    str = StrPushf(scratch, "\"%.*s\"", StrExpand(str));
+                    String quote = StrLit("\"");
+                    StringList list = StrSplit(scratch, str, quote, SplitStr_KeepEmpties);
+                    str = StrJoin(scratch, &list, .mid = StrLit("\"\""), .pre = quote, .post = quote);
                 }
                 
                 StrWriteToStr(str, 0, result, off);
@@ -759,7 +760,7 @@ internal u64 JSON_ChildCount(JSON_Node* node)
     return result;
 }
 
-function JSON_Value JSON_ParseFromTokens(Arena* arena, String text, TokenArray array)
+function JSON_Node* JSON_ParseFromTokens(Arena* arena, String text, TokenArray array)
 {
     JSON_Node* result = PushStruct(arena, JSON_Node);
     
@@ -857,7 +858,14 @@ function JSON_Value JSON_ParseFromTokens(Arena* arena, String text, TokenArray a
     }
     
     Assert(result == parent);
-    return result->first ? result->first->value : (JSON_Value){0};
+    return result;
+}
+
+function JSON_Value JSON_ValueFromTokens(Arena* arena, String text, TokenArray array)
+{
+    JSON_Node* node = JSON_ParseFromTokens(arena, text, array);
+    JSON_Value result = node->first ? node->first->value : (JSON_Value){0};
+    return result;
 }
 
 function String JSON_StrFromValue(Arena* arena, JSON_Value value, u32 indent)

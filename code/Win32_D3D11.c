@@ -106,7 +106,7 @@ function b32 InitD3D11(void)
             
             if (!error)
             {
-                dxgiModule = LoadLibraryA("dxgi.dll");
+                dxgiModule = LoadLibraryW(L"dxgi.dll");
                 if (!dxgiModule)
                     ErrorSet("Failed to load dxgi.dll", error);
             }
@@ -126,7 +126,7 @@ function b32 InitD3D11(void)
             
             if (!error)
             {
-                d3d11Module = LoadLibraryA("d3d11.dll");
+                d3d11Module = LoadLibraryW(L"d3d11.dll");
                 if (!d3d11Module)
                     ErrorSet("Failed to load d3d11.dll", error);
             }
@@ -147,7 +147,7 @@ function b32 InitD3D11(void)
             if (!error)
             {
                 // TODO: deal with the fact that there're multiple versions of this dll
-                d3dcompilerModule = LoadLibraryA(D3D_COMPILER_DLL);
+                d3dcompilerModule = LoadLibraryW(Concat(L, D3D_COMPILER_DLL));
                 if (!d3dcompilerModule)
                     ErrorSet("Failed to load " D3D_COMPILER_DLL, error);
             }

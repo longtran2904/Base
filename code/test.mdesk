@@ -1,4 +1,4 @@
-@table(name, str) MyEnumTable:
+@table(name) MyEnumTable:
 {
     { A }
     { B }
@@ -55,7 +55,7 @@ R_BackendHookTable:
 
 @data(`char*`) myenum_string_table:
 {
-    @expand(MyEnumTable a) `"$(a.str)"`;
+    @expand(MyEnumTable a) `"$(a.name)"`;
 }
 
 @text myText:

@@ -8,7 +8,7 @@
 // [ ] Support for custom data structures
 // [ ] Property-based testing
 // [ ] Seperate backing buffer for arenas
-// [ ] Upgrade to the wide string platform API
+// [X] Upgrade to the wide string platform API
 
 //~/////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -394,7 +394,7 @@
 
 #define   Member(T, m) (((T*)0)->m)
 #define OffsetOf(T, m) IntFromPtr(&Member(T, m))
-#define MemberFromOffset(T, ptr, off) (T)((((u8*)ptr) + (off)))
+#define MemberFromOffset(T, ptr, off) (*(T*)((u8*)(ptr) + (off)))
 
 #define BitCast(type, var) (*((type)*)(&(var))) // @UB(long)
 #define PrcCast(a, b) ((*(VoidFunc**)(&(a))) = (VoidFunc*)(b))
@@ -1293,7 +1293,7 @@ function void ArenaAlignNZ(Arena* arena, u32 alignment);
 #define ArenaMake(...) ArenaReserve(MEM_DEFAULT_RESERVE_SIZE, MEM_DEFAULT_ALIGNMENT, (__VA_ARGS__ + 0))
 #define ArenaStack(name, size) u8 UNIQUE(_buffer)[(size) + sizeof(Arena)] = {0}; \
     Arena* name = BufferFromMem(UNIQUE(_buffer), sizeof(UNIQUE(_buffer)))
-#define ArenaPos(arena) ((arena)->curr->basePos, (arena)->curr->pos)
+#define ArenaPos(arena) ((arena)->curr->basePos + (arena)->curr->pos)
 #define ArenaPtr(arena) PtrAdd((arena), (arena)->pos)
 
 #define   PushBuffer(arena, size)     (String){ ArenaPush  ((arena), (size)), (size) }
@@ -1334,7 +1334,10 @@ function void      TempEnd(TempArena temp);
 
 //- long: Constructor Functions
 #define ZeroStr ((String){0})
-#define Str(...) ((String){ __VA_ARGS__ })
+#define   Str(...)   ((String){ __VA_ARGS__ })
+#define Str16(...) ((String16){ __VA_ARGS__ })
+#define Str32(...) ((String32){ __VA_ARGS__ })
+
 #define StrRange(first, opl) (String){ (first), (opl) - (first) }
 #define StrConst(s) { (u8*)(s), sizeof(s) - 1 }
 #define StrLit(s) (String){ (u8*)(s), sizeof(s) - 1 }
@@ -1342,13 +1345,14 @@ function void      TempEnd(TempArena temp);
 #define StrExpand(s) (i32)((s).size), ((s).str)
 
 function u8 ChrFromStr(String str, u64 idx);
+function String StrFromCStr(u8* cstr);
+function String16 Str16FromWStr(u16* wstr);
 
 function String StrChop   (String str, u64 size);
 function String StrSkip   (String str, u64 size);
 function String StrPrefix (String str, u64 size);
 function String StrPostfix(String str, u64 size);
 
-function String StrFromCStr(u8* cstr);
 function String Substr(String str, u64 first, u64 opl);
 function String SubstrRange(String str, u64 first, u64 range);
 function StringJoin SubstrSplit(String str, String substr);
@@ -1491,14 +1495,14 @@ function StringDecode StrDecodeWide(u16* str, u64 cap);
 function u32          StrEncodeUTF8(u8 * dst, u32 codepoint);
 function u32          StrEncodeWide(u16* dst, u32 codepoint);
 
-function String32 StrToStr32(Arena* arena, String   str);
-function String16 StrToStr16(Arena* arena, String   str);
-function String StrFromStr32(Arena* arena, String32 str);
-function String StrFromStr16(Arena* arena, String16 str);
-function String StrBackspace(String str);
+function String32 Str32FromStr(Arena* arena, String   str);
+function String16 Str16FromStr(Arena* arena, String   str);
+function String   StrFromStr32(Arena* arena, String32 str);
+function String   StrFromStr16(Arena* arena, String16 str);
 
-function u64 UTF8Length(String str);
-function u32 UTF8GetErr(String str, u64* index); // returns the first invalid character
+function String UTF8Delete(String str, u64 count);
+function u64    UTF8Length(String str);
+function u32    UTF8GetErr(String str, u64* firstErrIdx);
 
 #define StrFromRune(arena, rune) StrFromStr32((arena), (String32){ &(rune), 1 })
 #define UTF8IsValid(str) (UTF8GetErr(str) == -1)
@@ -1728,7 +1732,7 @@ typedef struct OSFileIter
     String path;
     
     OSFileIterFlags flags;
-    u8 v[600];
+    u8 v[640-sizeof(OSFileIterFlags)];
 } OSFileIter;
 
 // TODO(long): Make these work with volume

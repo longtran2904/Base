@@ -426,7 +426,12 @@ function b32 GFXPeekInput(void)
 
 function void GFXMessageBox(String title, String message)
 {
-    MessageBoxA(0, message.str, title.str, MB_OK);
+    ScratchBlock(scratch)
+    {
+        String16 wtitle = Str16FromStr(scratch, title);
+        String16 wmessage = Str16FromStr(scratch, message);
+        MessageBoxW(0, wmessage.str, wtitle.str, MB_OK);
+    }
 }
 
 function void GFXErrorBox(Logger* logger, i32 code)
@@ -442,7 +447,8 @@ function void GFXErrorBox(Logger* logger, i32 code)
             String error = StrJoin(scratch, &errors,
                                    .pre = StrPushf(scratch, "The process has encountered %llu error(s):\n", errors.nodeCount),
                                    .mid = StrLit(".\n"), .post = StrLit(".\n"));
-            MessageBoxA(0, error.str, "Error", MB_OK|MB_ICONERROR);
+            String16 werror = Str16FromStr(scratch, error);
+            MessageBoxW(0, werror.str, L"Error", MB_OK|MB_ICONERROR);
         }
         
         if (code)

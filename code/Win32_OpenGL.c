@@ -150,7 +150,7 @@ function b32 InitGL(void)
         
         if (!error)
         {
-            w32OpenGLModule = LoadLibrary("opengl32.dll");
+            w32OpenGLModule = LoadLibraryW(L"opengl32.dll");
             if (w32OpenGLModule == 0)
                 ErrorSet("Failed to initialize opengl.dll", error);
         }
