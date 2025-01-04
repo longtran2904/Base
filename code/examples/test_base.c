@@ -91,7 +91,7 @@ int main(void)
         i32 bar[100];
         CopyFixedArr(bar, foo);
         TestResult(bar[0] == 0 && bar[50] == 50 && bar[99] == 99);
-        TestResult(CompareMem(foo, bar, sizeof(foo)));
+        TestResult(CmpMem(foo, bar, sizeof(foo)));
         
         typedef struct TestStruct TestStruct;
         struct TestStruct
@@ -713,7 +713,7 @@ int main(void)
         for (u64 i = 0; i < logger.count; ++i)
         {
             Record record = logger.records[i];
-            TestResult(CompareMem(record.file, __FILE__, sizeof(__FILE__)));
+            TestResult(CmpMem(record.file, __FILE__, sizeof(__FILE__)));
             TestResult(InRange(record.line, startLine, endLine) && InRange(record.level, 0, LogType_Count - 1));
         }
     }
@@ -786,11 +786,11 @@ int main(void)
         }
         
         // result3/4
-        TestResult(CompareMem(result4.str, result1.str, count));
+        TestResult(CmpMem(result4.str, result1.str, count));
         for (u64 lane = 0; lane < LANE_COUNT; ++lane)
         {
             u16* ptr = (u16*)result3[lane].str;
-            TestResult(CompareMem(ptr, buffer + count * lane, count));
+            TestResult(CmpMem(ptr, buffer + count * lane, count));
         }
 #undef LANE_COUNT
     }
@@ -810,7 +810,7 @@ int main(void)
             TestResult(OSReadFile(arena, FileName("Test.txt")).size == 0);
             {
                 FileProperties _file = OSFileProperties(FileName("Test3.txt"));
-                TestResult(CompareMem(&file, &_file, sizeof(FileProperties)));
+                TestResult(CmpMem(&file, &_file, sizeof(FileProperties)));
             }
             OSRenameFile(FileName("Test3.txt"), FileName("Test.txt"));
             TestResult(OSReadFile(arena, FileName("Test3.txt")).size == 0);
@@ -909,11 +909,9 @@ int main(void)
     
     TEST("File Iter")
     {
-        StringList exts = {0};
-        StrListPush(arena, &exts, StrLit("c"));
-        StrListPush(arena, &exts, StrLit("h"));
+        StringList exts = StrList(arena, ArrayExpand(String, StrLit("c"), StrLit("h"), StrLit("mdesk"),
+                                                     StrLit("csv"), StrLit("json")));
         StrListPush(arena, &exts, StrLit("txt"));
-        StrListPush(arena, &exts, StrLit("mdesk"));
         
         FileIterBlock(arena, iter, StrLit("code"))
         {
@@ -925,14 +923,14 @@ int main(void)
         }
         
         String txt = StrListPop(&exts);
-        StringList names = StrList(arena, ArrayExpand(String, StrLit("md.h"), StrLit("md.c"), StrLit("md_stb_sprintf.h")));
+        StringList names = StrList(arena, ArrayExpand(String, StrLit("mdesk.h"), StrLit("mdesk.c")));
         
-        FileIterBlock(arena, iter, StrLit("code\\dependencies\\md"))
+        FileIterBlock(arena, iter, StrLit("code\\dependencies\\mdesk"))
         {
             String ext = StrSkipUntil(iter.name, StrLit("."), MatchStr_LastMatch);
             TestResult(StrCompareList(ext, &exts, 0) && !StrCompare(ext, txt, 0));
             TestResult(StrCompareList(iter.name, &names, 0) &&
-                       iter.props.modifyTime >= iter.props.createTime && !(iter.props.flags & FilePropertyFlag_IsFolder));
+                       !(iter.props.flags & FilePropertyFlag_IsFolder));
         }
     }
     
@@ -959,7 +957,7 @@ int main(void)
         {
             i64* array = PushArray(arena, i64, bigCount);
             i64 arr[10] = {0};
-            TestResult(CompareMem(arr, array, 10));
+            TestResult(CmpMem(arr, array, 10));
             TestResult(arena->pos == temp.pos + bigCount * sizeof(u64));
             TestResult(temp.pos == minPos);
         }

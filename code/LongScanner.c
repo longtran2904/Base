@@ -48,6 +48,23 @@ function Marker* MarkerPushNumber(Scanner* scanner, i64 user, String exponents)
     return result;
 }
 
+function Marker* MarkerPushOpsCombine(Scanner* scanner, i64 user, String symbols, u8 postfixSymbol, b32 matchTwice)
+{
+    Marker* result = ScannerPushMark(scanner, user, symbols, MarkerFlag_MatchArray|MarkerFlag_PostfixStr);
+    result->escapes[0] = postfixSymbol;
+    if (matchTwice)
+        result->flags |= MarkerFlag_MatchTwice;
+    return result;
+}
+
+function Marker* MarkerPushOps(Scanner* scanner, i64 user, String symbols, b32 matchTwice)
+{
+    Marker* result = ScannerPushMark(scanner, user, symbols, MarkerFlag_MatchArray);
+    if (matchTwice)
+        result->flags |= MarkerFlag_MatchTwice;
+    return result;
+}
+
 //- long: Lexing Functions
 
 function b32 ScannerAdvance(Scanner* scanner, i64 advance)
@@ -141,10 +158,10 @@ function b32 ScannerAdvanceUntil(Scanner* scanner, String val, ScannerMatchFlags
 internal String ScannerInverseStr(Arena* arena, String str)
 {
     String result = PushBuffer(arena, str.size);
-    for (u64 i = 0; i < result.size; ++i)
+    ForEach(i, result.size)
         result.str[i] = str.str[str.size - 1 - i];
     
-    for (u64 i = 0; i < result.size; ++i)
+    ForEach(i, result.size)
     {
         u8 c = result.str[i];
         switch (result.str[i])
@@ -172,16 +189,29 @@ internal b32 MarkerMatchBeg(Scanner* scanner, Marker* marker, u64* outSize)
     String str = marker->str;
     
     ScratchBegin(scratch);
-    String inverseStr = {0};
-    if (flags & MarkerFlag_InverseStr)
-        inverseStr = ScannerInverseStr(scratch, str);
+    u64 size = 1;
     
-    b32 matchStr = HasAnyFlags(flags, MarkerFlag_MatchRange|MarkerFlag_MatchLine) || flags == 0;
-    if (matchStr)
+    if (HasAnyFlags(flags, MarkerFlag_MatchRange|MarkerFlag_MatchLine) || flags == 0)
+    {
         result |= ScannerCompare(scanner, str, 0);
+        if (result)
+        {
+            size = str.size;
+            if ((flags & MarkerFlag_MatchTwice) && ScannerCompare(scanner, StrRepeat(scratch, str, 2), 0))
+                size = str.size * 2;
+        }
+    }
+    
     if (flags & MarkerFlag_MatchArray)
-        result |= (ScannerCompare(scanner, str, ScannerMatchFlag_IsArray) ||
-                   ScannerCompare(scanner, inverseStr, ScannerMatchFlag_IsArray));
+    {
+        result |= ScannerCompare(scanner, str, ScannerMatchFlag_IsArray);
+        if (result && (flags & MarkerFlag_MatchTwice))
+        {
+            String twice = ChrRepeat(scratch, ScannerPeekByte(scanner, 0), 2);
+            if (ScannerCompare(scanner, twice, 0))
+                size = 2;
+        }
+    }
     
     if (flags & MarkerFlag_MatchAlpha)
         result |= IsCharacter(byte);
@@ -197,7 +227,7 @@ internal b32 MarkerMatchBeg(Scanner* scanner, Marker* marker, u64* outSize)
     
     ScratchEnd(scratch);
     if (result && outSize)
-        *outSize = matchStr ? str.size : 1;
+        *outSize = size;
     return result;
 }
 
@@ -209,15 +239,15 @@ internal b32 MarkerMatchEnd(Scanner* scanner, Marker* marker, u64* outSize)
     String str = marker->str;
     
     ScratchBegin(scratch);
-    String inverseStr = {0};
+    String inverseStr = str;
     if (flags & MarkerFlag_InverseStr)
         inverseStr = ScannerInverseStr(scratch, str);
     
     b32 matchStr = flags & MarkerFlag_MatchRange;
     if (matchStr)
-        result |= ScannerCompare(scanner, (flags & MarkerFlag_InverseStr) ? inverseStr : str, 0);
+        result |= ScannerCompare(scanner, inverseStr, 0);
     if (flags & MarkerFlag_MatchArray)
-        result |= ScannerCompare(scanner, StrJoin3(scratch, str, inverseStr), ScannerMatchFlag_UntilNot);
+        result |= ScannerCompare(scanner, inverseStr, ScannerMatchFlag_UntilNot);
     
     if (!result && HasAnyFlags(flags, MarkerFlag_MatchAlpha|MarkerFlag_MatchDigit))
     {
@@ -250,39 +280,28 @@ function Token ScannerNext(Scanner* scanner)
     {
         Marker* marker = 0;
         i64 user = 0;
-        u64 start = 0;
-        for (MarkerNode* node = scanner->first; node; node = node->next)
+        u64 start = scanner->pos;
+        ForList(MarkerNode, node, scanner->first)
         {
-            b32 prefix = ((node->marker.flags & MarkerFlag_PrefixStr) &&
-                          ScannerCompare(scanner, node->marker.str, ScannerMatchFlag_IsArray));
-            if (prefix) ScannerAdvance(scanner, 1);
-            
-#if 0
-            b32 isMatchLine = node->marker.flags & MarkerFlag_MatchLine;
-            b32 isMatchAll = node->marker.flags & MarkerFlag_MatchAll;
-            b32 isMatchRange = node->marker.flags & MarkerFlag_MatchRange;
-            b32 isMatchArray = node->marker.flags & MarkerFlag_MatchArray;
-            
-            b32 isMatchAlpha = node->marker.flags & MarkerFlag_MatchAlpha;
-            b32 isMatchDigit = node->marker.flags & MarkerFlag_MatchDigit;
-            
-            b32 isMatchIdentifier = node->marker.flags & MarkerFlag_MatchIdentifier;
-            b32 isMatchNumeric = node->marker.flags & MarkerFlag_MatchNumeric;
-            
-            b32 isInverseStr = node->marker.flags & MarkerFlag_InverseStr;
-            b32 isPrefixStr = node->marker.flags & MarkerFlag_PrefixStr;
-            b32 isPostfixStr = node->marker.flags & MarkerFlag_PostfixStr;
-#endif
+            if (node->marker.flags & MarkerFlag_PrefixStr)
+                if (!ScannerParse(scanner, StrFromChr(node->marker.escapes[0]), 0))
+                    goto CLEANUP;
             
             u64 size = 0;
             if (MarkerMatchBeg(scanner, &node->marker, &size))
             {
+                ScannerAdvance(scanner, size);
+                if (node->marker.flags & MarkerFlag_PostfixStr)
+                    if (!ScannerParse(scanner, StrFromChr(node->marker.escapes[0]), 0))
+                        goto CLEANUP;
+                
                 marker = &node->marker;
                 user = node->user;
-                start = scanner->pos;
-                scanner->pos += size;
                 break;
             }
+            
+            CLEANUP:
+            scanner->pos = start;
         }
         
         if (marker)
@@ -297,8 +316,8 @@ function Token ScannerNext(Scanner* scanner)
             {
                 u64 size = 1;
                 
-                if (ScannerCompare(scanner, StrLit(NlineStr), ScannerMatchFlag_IsArray))
-                    if ((marker->flags == MarkerFlag_MatchLine && !escaped) || (marker->flags & MarkerFlag_MatchLine))
+                if (ScannerCompare(scanner, StrLit(NlineStr), ScannerMatchFlag_IsArray) && (marker->flags & MarkerFlag_MatchLine))
+                    if (marker->flags != MarkerFlag_MatchLine || !escaped)
                         break;
                 
                 if (escaped)
@@ -312,9 +331,6 @@ function Token ScannerNext(Scanner* scanner)
                 
                 advance = size;
             }
-            
-            if (marker->flags & MarkerFlag_PostfixStr)
-                ScannerParse(scanner, marker->str, ScannerMatchFlag_IsArray);
             
             result.range = R1U64(start, scanner->pos);
             result.user = user;
@@ -348,7 +364,7 @@ function Token ScannerPeekAhead(Scanner* scanner, i64 tokenCount)
 {
     u64 pos = scanner->pos;
     Token result = {0};
-    for (i64 i = 0; i < tokenCount; ++i)
+    ForEach(_, tokenCount)
     {
         result = ScannerNext(scanner);
         if (result.flags & ScanResultFlag_EOF)
@@ -359,6 +375,19 @@ function Token ScannerPeekAhead(Scanner* scanner, i64 tokenCount)
 }
 
 //~ long: Token Functions
+
+function String StrFromToken(String text, Token token)
+{
+    String result = Substr(text, token.range.min, token.range.max);
+    return result;
+}
+
+function b32 TokenMatch(String text, Token token, String match)
+{
+    String lexeme = StrFromToken(text, token);
+    b32 result = StrCompare(lexeme, match, 0);
+    return result;
+}
 
 function void TokenChunkListPush(Arena* arena, TokenChunkList* list, u64 cap, Token token)
 {
@@ -382,7 +411,7 @@ function TokenArray TokenArrayFromChunkList(Arena* arena, TokenChunkList* chunks
     result.count = chunks->totalTokenCount;
     result.tokens = PushArrayNZ(arena, Token, result.count);
     u64 index = 0;
-    for (TokenChunkNode* n = chunks->first; n; n = n->next)
+    ForList(TokenChunkNode, n, chunks->first)
     {
         CopyMem(result.tokens + index, n->tokens, sizeof(Token)*n->count);
         index += n->count;
@@ -390,9 +419,8 @@ function TokenArray TokenArrayFromChunkList(Arena* arena, TokenChunkList* chunks
     return result;
 }
 
-//~ long: Common Helpers
+//~ long: CSV Parser
 
-//- CSV Parser
 function u64 CSV_StrListPushRow(Arena* arena, StringList* list, String text)
 {
     Scanner* scanner = &ScannerFromStr(arena, text);
@@ -435,14 +463,16 @@ function StringTable CSV_TableFromStr(Arena* arena, String str)
     StringTable result = {0};
     
     u64 lineCount = 1;
-    for (u64 i = 0; i < str.size - 1; ++i)
+    ForEach(i, str.size-1)
+    {
         if (str.str[i] == '\n')
             lineCount++;
+    }
     
     result.rowCount = lineCount;
     result.rows = PushArray(arena, StringList, lineCount);
     
-    for (u64 i = 0; i < result.rowCount; ++i)
+    ForEach(i, result.rowCount)
     {
         u64 next = CSV_StrListPushRow(arena, result.rows + i, str);
         result.cellCount += result.rows[i].nodeCount;
@@ -460,7 +490,7 @@ function String CSV_StrFromTable(Arena* arena, StringTable table)
     String result = StrPush(arena, cellCount-1 + cellCount*2 + table.totalSize * 2);
     for (u64 row = 0, off = 0; row < table.rowCount; ++row)
     {
-        for (StringNode* node = table.rows[row].first; node; node = node->next)
+        ForList(StringNode, node, table.rows[row].first)
         {
             String str = node->string;
             ScratchBlock(scratch, arena)
@@ -492,7 +522,7 @@ function String CSV_StrFromTable(Arena* arena, StringTable table)
     return result;
 }
 
-//- JSON Parser
+//~ long: JSON Parser
 function TokenArray JSON_TokenizeFromText(Arena* arena, String text)
 {
     ScratchBegin(scratch, arena);
@@ -502,7 +532,7 @@ function TokenArray JSON_TokenizeFromText(Arena* arena, String text)
     u8 *byte = byte_first;
     
     //- long: Scan string & produce tokens
-    for (; byte < byte_opl;)
+    while (byte < byte_opl)
     {
         Token token = { .range.min = byte - byte_first };
         
@@ -717,11 +747,11 @@ function JSON_Value JSON_ValueFromStr(JSON_Object obj, String str)
     u64 hash = Hash64(str.str, str.size);
     
     JSON_MapSlot slot = obj.slots[hash % obj.count];
-    for (JSON_MapNode* n = slot.first; n; n = n->next)
+    ForList(JSON_MapNode, node, slot.first)
     {
-        if (StrCompare(n->key, str, 0))
+        if (StrCompare(node->key, str, 0))
         {
-            result = n->value;
+            result = node->value;
             break;
         }
     }
@@ -755,7 +785,7 @@ internal JSON_Node* JSON_PopNode(JSON_Node** parent, JSON_ValueType type, Token*
 internal u64 JSON_ChildCount(JSON_Node* node)
 {
     u64 result = 0;
-    for (JSON_Node* child = node->first; child; child = child->next)
+    ForList(JSON_Node, _, node->first)
         result++;
     return result;
 }
@@ -784,9 +814,11 @@ function JSON_Node* JSON_ParseFromTokens(Arena* arena, String text, TokenArray a
                     u64 count = JSON_ChildCount(objNode);
                     objNode->value.obj = JSON_PushObject(arena, count);
                     
-                    for (JSON_Node* node = objNode->first; node; node = node->next)
+                    ForList(JSON_Node, node, objNode->first)
+                    {
                         if (node->first)
                             JSON_ObjInsertValue(arena, objNode->value.obj, node->value.str, node->first->value);
+                    }
                 }
             } break;
             
@@ -799,8 +831,8 @@ function JSON_Node* JSON_ParseFromTokens(Arena* arena, String text, TokenArray a
                     arrNode->value.array = JSON_PushArray(arena, count);
                     
                     u64 i = 0;
-                    for (JSON_Node* node = arrNode->first; node; node = node->next, ++i)
-                        arrNode->value.array.values[i] = node->value;
+                    ForList(JSON_Node, node, arrNode->first)
+                        arrNode->value.array.values[i++] = node->value;
                 }
             } break;
             
@@ -844,7 +876,7 @@ function JSON_Node* JSON_ParseFromTokens(Arena* arena, String text, TokenArray a
             if ((parent->value.type == JSON_ValueType_Object || parent == result) &&
                 value.type == JSON_ValueType_String)
             {
-                for (token++; token < tokenOpl - 1 && token->user == JSON_TokenType_Whitespace; ++token); // Skip whitespaces
+                for (++token; token < tokenOpl - 1 && token->user == JSON_TokenType_Whitespace; ++token); // Skip whitespaces
                 if (token->user == JSON_TokenType_Assignment)
                     pushParent = 1;
             }
@@ -882,7 +914,7 @@ function String JSON_StrFromValue(Arena* arena, JSON_Value value, u32 indent)
         case JSON_ValueType_String:
         {
             u64 size = value.str.size + 2;
-            for (u64 i = 0; i < value.str.size; ++i)
+            ForEach(i, value.str.size)
             {
                 char c = value.str.str[i];
                 
@@ -900,7 +932,7 @@ function String JSON_StrFromValue(Arena* arena, JSON_Value value, u32 indent)
             String str = { PushArrayNZ(arena, u8, size) };
             str.str[str.size++] = '"';
             
-            for (u64 i = 0; i < value.str.size; ++i)
+            ForEach(i, value.str.size)
             {
                 char c = value.str.str[i];
                 
@@ -949,9 +981,9 @@ function String JSON_StrFromValue(Arena* arena, JSON_Value value, u32 indent)
             ScratchBlock(scratch, arena)
             {
                 StringList list = {0};
-                for (u64 i = 0; i < value.array.count; ++i)
+                ForEach(idx, value.array.count)
                 {
-                    String str = JSON_StrFromValue(scratch, value.array.values[i], indent + 2);
+                    String str = JSON_StrFromValue(scratch, value.array.values[idx], indent + 2);
                     StrListPush(scratch, &list, str);
                 }
                 result = StrJoin(arena, &list, .pre = StrLit("[\n"), .mid = StrLit(",\n"), .post = StrLit("\n]"));
@@ -964,9 +996,9 @@ function String JSON_StrFromValue(Arena* arena, JSON_Value value, u32 indent)
             {
                 StringList list = {0};
                 StrListPushf(scratch, &list, "%*s{\n", indent, "");
-                for (u64 i = 0; i < value.obj.count; ++i)
+                ForEach(objIdx, value.obj.count)
                 {
-                    for (JSON_MapNode* node = value.obj.slots[i].first; node; node = node->next)
+                    ForList(JSON_MapNode, node, value.obj.slots[objIdx].first)
                     {
                         String str = JSON_StrFromValue(scratch, node->value, indent + 2);
                         StrListPushf(scratch, &list, "%*s\"%.*s\": %.*s%s", indent + 2, "",

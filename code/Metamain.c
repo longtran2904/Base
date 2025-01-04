@@ -31,21 +31,10 @@ i32 main(i32 argc, char** argv)
     //- long: set up state
     StringList messages = {0};
     Arena* arena = ArenaMake();
+    
     u64 counts[MG_Gen_COUNT] = {0};
-    
-    StringList hLists[MG_Gen_COUNT] =
-    {
-        ZeroList, ZeroList, ZeroList,
-        ZeroList, ZeroList, ZeroList,
-        ZeroList, ZeroList, ZeroList,
-    };
-    
-    StringList cLists[MG_Gen_COUNT] =
-    {
-        ZeroList, ZeroList, ZeroList,
-        ZeroList, ZeroList, ZeroList,
-        ZeroList, ZeroList, ZeroList,
-    };
+    StringList hLists[MG_Gen_COUNT] = {0};
+    StringList cLists[MG_Gen_COUNT] = {0};
     
     //- long: search and parse metadesk files
     MG_NodeList parses = {0};

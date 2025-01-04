@@ -8,7 +8,6 @@
 // [ ] Support for custom data structures
 // [ ] Property-based testing
 // [ ] Seperate backing buffer for arenas
-// [X] Upgrade to the wide string platform API
 
 //~/////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -320,7 +319,7 @@
 #  elif COMPILER_CL
 #    define AssertBreak() __debugbreak()
 #  else
-#    define AssertBreak() (*(volatile int *)0 = 0)
+#    define AssertBreak() (*(volatile i32 *)0 = 0)
 #  endif
 #endif
 
@@ -338,22 +337,47 @@
 #error BeforeMain missing for this OS
 #endif
 
+//- long: ASAN Macros
+#if __SANITIZE_ADDRESS__
+#define ENABLE_SANITIZER 1
+#include <sanitizer/asan_interface.h>
+#else
+#define ENABLE_SANITIZER 0
+#endif
+
+#if ENABLE_SANITIZER
+#define   AsanPoison(ptr, size)   __asan_poison_memory_region((ptr), (size))
+#define AsanUnpoison(ptr, size) __asan_unpoison_memory_region((ptr), (size))
+#define AsanIsPoison(ptr, size) (__asan_region_is_poisoned((ptr), (size)) != 0)
+#else
+#define   AsanPoison(...)
+#define AsanUnpoison(...)
+#define AsanIsPoison(...)
+#endif
+
 //~ long: Helper Macros
 
+//- long: Primitive macros
+#define Stringify_(s) #s
+#define Stringify(s) Stringify_(s)
+#define Concat_(a, b) a##b
+#define Concat(a, b) Concat_(a, b)
+#define UNIQUE(name) Concat(name, __LINE__)
+
+//- long: Debug/Assert Macros
 #define Stmnt(S) do { S; } while (0)
 #define fallthrough
 #define UNUSED(x) ((void)(x))
 #define DEBUG(x, ...) Stmnt(__VA_ARGS__; UNUSED(x))
-#define DebugReturn() Stmnt(if (0) return)
-
+#define EXIT() Stmnt(if (0) return)
 // TODO(long): Redesign DEBUG and DebugReturn. Add NotImplemented and Unreachable
+
+#define DebugPrint(str) OSWriteConsole(OS_STD_ERR, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " str))
+#define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
 
 #ifndef ENABLE_ASSERT
 #define ENABLE_ASSERT 1
 #endif
-
-#define DebugPrint(str) OSWriteConsole(OS_STD_ERR, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " str))
-#define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
 
 #if ENABLE_ASSERT
 #define Assert(c) Stmnt(if (!(c)) { DebugPrint("Assertion \"" Stringify(c) "\" failed\n"); AssertBreak(); })
@@ -367,37 +391,53 @@
 #define  NEVER(x) (x)
 #endif
 
-#define Stringify_(s) #s
-#define Stringify(s) Stringify_(s)
-#define Concat_(a, b) a##b
-#define Concat(a, b) Concat_(a, b)
-#define UNIQUE(name) Concat(name, __LINE__)
-
-#define NilPtr(type, ptr) type UNIQUE(ptr) = {0}; if (!(ptr)) (ptr) = &UNIQUE(ptr);
-#define NilB32(ptr) NilPtr(b32, ptr)
-
-#define EnumCount(type) Concat(type, _Count)
-#define ArrayCount(a) (sizeof(a)/sizeof(*(a)))
-#define ArrayExpand(type, ...) (type[]){ __VA_ARGS__ }, ArrayCount(((type[]){ __VA_ARGS__ }))
-
-#define HasAnyFlags(flags, fl)  ((flags) & (fl))
-#define HasAllFlags(flags, fl) (((flags) & (fl)) == (fl))
-#define     NoFlags(flags, fl) (!HasAnyFlags(flags, fl))
-
-#define Implies(a,b) (!(a) || (b))
+//- long: Cast Macros
+#define BitCast(type, var) (*((type)*)(&(var))) // @UB(long)
+#define PrcCast(a, b) ((*(VoidFunc**)(&(a))) = (VoidFunc*)(b))
 
 // @UB(long): Clang complains about these
 #define IntFromPtr(p) (uptr)((char*)p - (char*)0)
 #define PtrFromInt(n) (void*)((char*)0 + (n))
-
 #define PtrAdd(ptr, offset) ((u8*)(ptr) + (offset))
 
-#define   Member(T, m) (((T*)0)->m)
-#define OffsetOf(T, m) IntFromPtr(&Member(T, m))
+#define MemberOf(T, m) (((T*)0)->m)
+#define OffsetOf(T, m) IntFromPtr(&MemberOf(T, m))
 #define MemberFromOffset(T, ptr, off) (*(T*)((u8*)(ptr) + (off)))
 
-#define BitCast(type, var) (*((type)*)(&(var))) // @UB(long)
-#define PrcCast(a, b) ((*(VoidFunc**)(&(a))) = (VoidFunc*)(b))
+#define KB(x) ((x) << 10)
+#define MB(x) ((x) << 20)
+#define GB(x) ((x) << 30)
+#define TB(x) ((x) << 40)
+
+#define Thousand(x) ((x)*1000)
+#define Million(x)  ((x)*1000000llu)
+#define Billion(x)  ((x)*1000000000llu)
+#define Trillion(x) ((x)*1000000000000llu)
+
+#define MagicP(T,x,s) ((T)(x) << (s))
+#define MagicU32(a,b,c,d) (MagicP(U32,a,0) | MagicP(U32,b,8) | MagicP(U32,c,16) | MagicP(U32,d,24))
+#define C4(str) (*(u32*)(str))
+#define ExpandC4(x) (i32)(sizeof(x)), (i8*)(&(x))
+
+//- long: Utility Macros
+#define NilPtr(type, ptr) type UNIQUE(ptr) = {0}; if (!(ptr)) (ptr) = &UNIQUE(ptr);
+#define NilB32(ptr) NilPtr(b32, ptr)
+
+#define ForEach(name, count) for (i32 name = 0; name < (count); ++name)
+#define ForBack(name, count) for (i32 name = (count)-1; name >= 0; --name)
+#define DeferBlock(begin, end) for (i32 UNIQUE(_i_) = ((begin), 0); UNIQUE(_i_) == 0; (UNIQUE(_i_) += 1), (end))
+
+#define ArrayCount(a) (sizeof(a)/sizeof(*(a)))
+#define ArrayExpand(type, ...) (type[]){ __VA_ARGS__ }, ArrayCount(((type[]){ __VA_ARGS__ }))
+
+//- long: Math Macros
+#define HasAnyFlags(flags, fl)  ((flags) & (fl))
+#define HasAllFlags(flags, fl) (((flags) & (fl)) == (fl))
+#define     NoFlags(flags, fl) (!HasAnyFlags(flags, fl))
+
+#define Boolify(x) ((x) != 0) // @RECONSIDER(long): Do I need this? Can't I just use `!!`?
+#define Implies(a,b) (!(a) || (b))
+#define CheckNil(nil, p) ((p) == 0 || (p) == nil)
 
 #define Min(a, b) ((a)<(b)?(a):(b))
 #define Max(a, b) ((a)>(b)?(a):(b))
@@ -418,21 +458,7 @@
 #define GetSign(n) ((n) > 0 ? 1 : ((n) < 0 ? -1 : 0))
 #define GetUnsigned(n) ((n) >= 0 ? 1 : -1)
 
-#define MagicP(T,x,s) ((T)(x) << (s))
-#define MagicU32(a,b,c,d) (MagicP(U32,a,0) | MagicP(U32,b,8) | MagicP(U32,c,16) | MagicP(U32,d,24))
-
-#define Boolify(x) ((x) != 0) // @RECONSIDER(long): Do I need this? Can't I just use `!!`?
-
-#define KB(x) ((x) << 10)
-#define MB(x) ((x) << 20)
-#define GB(x) ((x) << 30)
-#define TB(x) ((x) << 40)
-
-#define Thousand(x) ((x)*1000)
-#define Million(x)  ((x)*1000000llu)
-#define Billion(x)  ((x)*1000000000llu)
-#define Trillion(x) ((x)*1000000000000llu)
-
+//- long: String Macros
 #define IsControl(c) (c < ' ' || c == MAX_I8)
 #define IsCharacter(c) (InRange(c, 'A', 'Z') || InRange(c, 'a', 'z'))
 #define IsBinary(c) InRange(c, '0', '1')
@@ -459,6 +485,7 @@
 #define NlineStr "\n\r"
 #define WspaceStr SpaceStr NlineStr
 
+//- long: Mem Macros
 #include <string.h> // TODO(long): Replace memset, memcpy, and memcmp
 #define SetMem(ptr, val, size) memset((ptr), (val), (size))
 #define ZeroMem(ptr, size) SetMem((ptr), 0, (size))
@@ -471,39 +498,21 @@
 #define CopyFixedArr(dest, src) CopyMem((dest), (src), Min(sizeof(*(dest)), sizeof(*(src)))*Min(ArrayCount(dest), ArrayCount(src)))
 #define CopyTypedArr(dest, src, count) CopyMem((dest), (src), Min(sizeof(*(dest)), sizeof(*(src)))*(count))
 
-#define CompareMem(a, b, size) (memcmp((a), (b), (size)) == 0)
-#define CompareArr(a, b) CompareMem((a), (b), Min(ArrayCount(a) * sizeof(*(a)), ArrayCount(b) * sizeof(*(b))))
-#define  CmpStruct(a, b) CompareMem(&(a), &(b), sizeof(a))
+#define    CmpMem(a, b, size) (memcmp((a), (b), (size)) == 0)
+#define    CmpArr(a, b) CmpMem((a), (b), Min(ArrayCount(a) * sizeof(*(a)), ArrayCount(b) * sizeof(*(b))))
+#define CmpStruct(a, b) CmpMem(&(a), &(b), sizeof(a))
 
-#if __SANITIZE_ADDRESS__
-#define ENABLE_SANITIZER 1
-#include <sanitizer/asan_interface.h>
-#else
-#define ENABLE_SANITIZER 0
-#endif
+//~ long: Meta Markup Macros
 
-#if ENABLE_SANITIZER
-#define   AsanPoison(ptr, size)   __asan_poison_memory_region((ptr), (size))
-#define AsanUnpoison(ptr, size) __asan_unpoison_memory_region((ptr), (size))
-#define AsanIsPoison(ptr, size) (__asan_region_is_poisoned((ptr), (size)) != 0)
-#else
-#define   AsanPoison(...)
-#define AsanUnpoison(...)
-#define AsanIsPoison(...)
-#endif
-
-#define C4(str) (*(u32*)(str))
-#define ExpandC4(x) (i32)(sizeof(x)), (i8*)(&(x))
-
-#define DeferBlock(begin, end) for (int UNIQUE(_i_) = ((begin), 0); UNIQUE(_i_) == 0; (UNIQUE(_i_) += 1), (end))
-
-#define CheckNil(nil, p) ((p) == 0 || (p) == nil)
+#define EmbedFile(name, path)    (name)
+#define TweakB32(name)           (TWEAK_##name)
+#define TweakF32(name, min, max) (TWEAK_##name)
 
 //~ long: Linked List Macros
 
 #define DLLPushBack_NPZ(nil, f, l, n, next, prev) (CheckNil(nil, f) ? \
                                                    ((f)=(l)=(n), (n)->next=(n)->prev=(nil)) : \
-                                                   ((l)->next=(n), (l)=(n), (n)->prev=(l), (n)->next=(nil)))
+                                                   ((n)->prev=(l), (l)->next=(n), (l)=(n), (n)->next=(nil)))
 #define DLLPushBack_NP(f, l, n, next, prev) DLLPushBack_NPZ(0, f, l, n, next, prev)
 #define DLLPushBack(f, l, n) DLLPushBack_NP(f, l, n, next, prev)
 #define DLLPushFront(f, l, n) DLLPushBack_NP(l, f, n, prev, next)
@@ -529,6 +538,9 @@
 
 #define SLLStackPop_N(f, next) ((f)==0 ? 0 :((f)=(f)->next))
 #define SLLStackPop(f) SLLStackPop_N(f, next)
+
+#define ForList_N(type, name, first, next) for (type* name = (first); name; name = name->next)
+#define ForList(type, name, first) ForList_N(type, name, first, next)
 
 //~ long: Basic Types
 
@@ -595,6 +607,8 @@ typedef i8  b8;
 typedef i16 b16;
 typedef i32 b32;
 typedef i64 b64;
+typedef struct u128 u128;
+struct u128 { u64 v[2]; };
 
 typedef u8  Flags8;
 typedef u16 Flags16;
@@ -714,9 +728,9 @@ union v3i32
     i32 v[3];
 };
 
-//- TODO(long): 4D Vectors/Colors
+//- @CONSIDER(long): 4D Vectors/Colors
 
-//- TODO(long): 2x2/3x3/4x4 Matrix
+//- @CONSIDER(long): 2x2/3x3/4x4 Matrix
 
 //- long: 1D Range
 typedef union r1i32 r1i32;
@@ -769,6 +783,7 @@ struct TextLoc
 
 //~ long: Symbolic Types
 
+typedef enum Axis Axis;
 enum Axis
 {
     Axis_X,
@@ -776,7 +791,6 @@ enum Axis
     Axis_Z,
     Axis_W,
 };
-typedef enum Axis Axis;
 
 typedef enum Side Side;
 enum Side
@@ -901,6 +915,7 @@ struct FileProperties
     u64 size;
     FilePropertyFlags flags;
     DataAccessFlags access;
+    // NOTE(long): The creation time can sometimes be later than the last modified time
     DenseTime createTime;
     DenseTime modifyTime;
 };
@@ -1086,6 +1101,10 @@ struct StringDecode
 #define Str32Stream(str, ptr, opl) for (u32 *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
 
 //~ long: Math Functions
+
+//- long: Large Type Functions
+#define U128(v0, v1) ((u128){ v0, v1 })
+#define CmpU128(a, b) CmpStruct(a, b)
 
 //- long: Float Functions
 function f32 Inf_f32(void);
@@ -1372,7 +1391,7 @@ function String StrPush(Arena* arena, u64 size);
 #define StrToCStr(a, s) StrCopy((a), (s)).str
 
 function String StrFromFlags(Arena* arena, String* names, u64 nameCount, u64 flags);
-#define GetEnumStr(type, e) (InRange(e, 0, EnumCount(type) - 1) ? (Concat(type, _names)[(i32)(e)]) : StrLit("Invalid"))
+#define GetEnumStr(type, e) (InRange(e, 0, Concat(type, _Count) - 1) ? (Concat(type, _names)[(i32)(e)]) : StrLit("Invalid"))
 #define GetEnumCStr(type, e) GetEnumStr(type, e).str
 #define GetFlagStr(arena, type, flags) StrFromFlags((arena), Concat(type, _names), ArrayCount(Concat(type, _names)), (flags))
 #define GetFlagName(arena, type, flags) GetFlagStr(arena, type, flags).str
@@ -1678,7 +1697,7 @@ function void OSExit(u32 code);
 // TODO(long): Memory Protection (Read/Write/Execute)
 function void* OSReserve(u64 size);
 function void  OSRelease(void* ptr);
-function b32    OSCommit(void* ptr, u64 size);
+function void*  OSCommit(void* ptr, u64 size);
 function void OSDecommit(void* ptr, u64 size);
 
 //~ long: Console Handling
@@ -1724,7 +1743,8 @@ enum
     FileIterFlag_Done        = (1 << 31),
 };
 
-typedef struct OSFileIter
+typedef struct OSFileIter OSFileIter;
+struct OSFileIter
 {
     // @CONSIDER(long): Combine name and props into a single FileInfo struct
     FileProperties props;
@@ -1733,7 +1753,7 @@ typedef struct OSFileIter
     
     OSFileIterFlags flags;
     u8 v[640-sizeof(OSFileIterFlags)];
-} OSFileIter;
+};
 
 // TODO(long): Make these work with volume
 // NOTE(long): The path passed in must have the same lifetime as OSFileIter
@@ -1783,6 +1803,8 @@ function void OSGetEntropy(void* data, u64 size);
 
 //~ long: Clipboard
 
+// TODO(long): Clipboard for images/files
+// TODO(long): Clip
 function void   OSSetClipboard(String string);
 function String OSGetClipboard(Arena *arena);
 

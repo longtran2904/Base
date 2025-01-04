@@ -189,13 +189,13 @@ nested3: nested4
 daddy: son (cousin1, cousin2)
 
 // undelimited sets *may* however contain labeled delimited sets
-// now foo is an undelimited set that contains bar, and bar is a
-// delimited set that contains baz
+// now daddy is an undelimited set that contains son, and son is a
+// delimited set that contains grandchild
 daddy: son: (grandchild1, grandchild2)
 
-// again things can get weird. Here bar and baz are both delimited
-// sets contained in foo, because at there are no newlines at the
-// level of the foo node until after the baz set.
+// again things can get weird. Here son1 and son2 are both delimited
+// sets contained in daddy, because at there are no newlines at the
+// level of the daddy node until after the son2 set.
 daddy:
 son1: (
        a 

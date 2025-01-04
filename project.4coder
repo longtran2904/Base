@@ -72,5 +72,6 @@ reference_paths =
     //"C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.19041.0\\um\\d3d11.h",
     //"C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.19041.0\\um\\d3dcommon.h",
     //"C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.19041.0\\shared\\dxgi.h",
-    "D:\\Documents\\Projects\\Base\\code\\generated"
+    "D:\\Documents\\Projects\\Base\\code\\generated",
+    "D:\\Documents\\Projects\\Base\\code\\dependencies"
 };

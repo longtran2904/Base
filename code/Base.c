@@ -2266,36 +2266,30 @@ function String StrCEscape(Arena* arena, String str)
                 start = i+1;
             }
             
-            if (i < str.size && str.str[i] == '\\')
+            if (i < str.size - 1 && str.str[i] == '\\')
             {
-                u8 next_char = str.str[i+1];
-                u8 replace_byte = 0;
+                u8 replaceByte = 0;
                 
-                switch (next_char)
+                switch (str.str[i+1])
                 {
                     default: break;
-                    case 'a': replace_byte = 0x07; break;
-                    case 'b': replace_byte = 0x08; break;
-                    case 'e': replace_byte = 0x1b; break;
-                    case 'f': replace_byte = 0x0c; break;
-                    case 'n': replace_byte = 0x0a; break;
-                    case 'r': replace_byte = 0x0d; break;
-                    case 't': replace_byte = 0x09; break;
-                    case 'v': replace_byte = 0x0b; break;
-                    case '\\':replace_byte = '\\'; break;
-                    case '\'':replace_byte = '\''; break;
-                    case '"': replace_byte = '"';  break;
-                    case '?': replace_byte = '?';  break; // @RECONSIDER(long): Bruh, fuck di/trigraphs
+                    case 'a': replaceByte = 0x07; break;
+                    case 'b': replaceByte = 0x08; break;
+                    case 'e': replaceByte = 0x1b; break;
+                    case 'f': replaceByte = 0x0c; break;
+                    case 'n': replaceByte = 0x0a; break;
+                    case 'r': replaceByte = 0x0d; break;
+                    case 't': replaceByte = 0x09; break;
+                    case 'v': replaceByte = 0x0b; break;
+                    case '\\':replaceByte = '\\'; break;
+                    case '\'':replaceByte = '\''; break;
+                    case '"': replaceByte = '"';  break;
                 }
                 
-                String replace_string = StrCopy(scratch, StrFromChr(replace_byte));
-                StrListPush(scratch, &strs, replace_string);
-                
-                if (replace_byte != '\\' && replace_byte != '"' && replace_byte != '\'')
-                {
-                    i++;
-                    start++;
-                }
+                String replaceStr = StrCopy(scratch, StrFromChr(replaceByte));
+                StrListPush(scratch, &strs, replaceStr);
+                ++i;
+                ++start;
             }
         }
         
@@ -2358,15 +2352,34 @@ CHECK_PRINTF_FUNC(1) function void Outf(CHECK_PRINTF char* fmt, ...)
     va_list args;
     va_start(args, fmt);
     i32 size = stbsp_vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    
     if (ALWAYS(size >= 0))
     {
-        if (NEVER(size > PRINT_INTERNAL_BUFFER_SIZE))
-            size = PRINT_INTERNAL_BUFFER_SIZE;
+        String msg = Str(buffer, size);
+        u8* extra = 0;
         
-        b32 result = OSWriteConsole(OS_STD_OUT, Str(buffer, size));
+        if (size > PRINT_INTERNAL_BUFFER_SIZE)
+        {
+            msg.size = PRINT_INTERNAL_BUFFER_SIZE;
+            i32 allocSize = size + 1;
+            extra = OSCommit(0, allocSize);
+            
+            if (ALWAYS(extra))
+            {
+                va_start(args, fmt);
+                size = stbsp_vsnprintf(extra, allocSize, fmt, args);
+                va_end(args);
+                if (ALWAYS(size))
+                    msg = Str(extra, size);
+            }
+        }
+        
+        b32 result = OSWriteConsole(OS_STD_OUT, msg);
         ALWAYS(result);
+        if (extra)
+            OSDecommit(extra, size);
     }
-    va_end(args);
 }
 
 CHECK_PRINTF_FUNC(1) function void Errf(CHECK_PRINTF char* fmt, ...)
@@ -2626,9 +2639,9 @@ function void* OSReserve(u64 size)
     return result;
 }
 
-function b32 OSCommit(void* ptr, u64 size)
+function void* OSCommit(void* ptr, u64 size)
 {
-    b32 result = VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE) != 0;
+    void* result = VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE)/* != 0*/;
     if (!result)
     {
         DEBUG(error, DWORD error = GetLastError());
@@ -3225,7 +3238,7 @@ struct W32FileIter
     HANDLE handle;
     WIN32_FIND_DATAW findData; // WIN32_FIND_DATAA is 320 bytes while WIN32_FIND_DATAW is 592 bytes
 };
-StaticAssert(ArrayCount(Member(OSFileIter, v)) >= sizeof(W32FileIter), w32fileiter);
+StaticAssert(ArrayCount(MemberOf(OSFileIter, v)) >= sizeof(W32FileIter), w32fileiter);
 
 #define W32GetIter(iter) ((W32FileIter*)(iter)->v)
 
@@ -3274,14 +3287,22 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter)
             {
                 if ((attributes & FILE_ATTRIBUTE_HIDDEN) && (iter->flags & FileIterFlag_SkipHidden))
                     emit = 0;
+                
                 else if (attributes & FILE_ATTRIBUTE_DIRECTORY)
                 {
                     if (iter->flags & FileIterFlag_Recursive)
+                    {
                         // NOTE(long): Must do this before FindNextFile because it will overwrite fileName
-                        subdir = StrPushf(arena, "%.*s\\%s", StrExpand(w32Iter->path), fileName);
+                        // Also, StrPushf doesn't work with WCHAR
+                        String16 name16 = Str16FromWStr(fileName);
+                        String name = StrFromStr16(arena, name16);
+                        subdir = StrPushf(arena, "%.*s\\%.*s", StrExpand(w32Iter->path), StrExpand(name));
+                    }
+                    
                     if (iter->flags & FileIterFlag_SkipFolders)
                         emit = 0;
                 }
+                
                 else if (iter->flags & FileIterFlag_SkipFiles)
                     emit = 0;
             }
@@ -3381,9 +3402,9 @@ function void OSSetClipboard(String string)
     {
         EmptyClipboard();
         HANDLE handle = GlobalAlloc(GMEM_MOVEABLE, string.size + 1);
-        if (handle)
+        u8* buffer = handle ? (u8*)GlobalLock(handle) : 0;
+        if (buffer)
         {
-            u8* buffer = (u8*)GlobalLock(handle);
             CopyMem(buffer, string.str, string.size);
             buffer[string.size] = 0;
             GlobalUnlock(handle);
@@ -3399,14 +3420,11 @@ function String OSGetClipboard(Arena *arena)
     if (IsClipboardFormatAvailable(CF_TEXT) && OpenClipboard(0))
     {
         HANDLE handle = GetClipboardData(CF_TEXT);
-        if (handle)
+        u8* buffer = handle ? (u8*)GlobalLock(handle) : 0;
+        if (buffer)
         {
-            u8* buffer = (u8*)GlobalLock(handle);
-            if (buffer)
-            {
-                result = StrCloneCStr(arena, buffer);
-                GlobalUnlock(handle);
-            }
+            result = StrCloneCStr(arena, buffer);
+            GlobalUnlock(handle);
         }
         CloseClipboard();
     }

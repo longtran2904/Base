@@ -8,12 +8,12 @@
 typedef Flags32 ScanResultFlags;
 enum
 {
-    ScanResultFlag_EOF,
-    ScanResultFlag_NoMatches,
+    ScanResultFlag_EOF = 1 << 0,
+    ScanResultFlag_NoMatches = 1 << 1,
     
-    ScanResultFlag_TokenUnclosed,
-    ScanResultFlag_TokenHasPrefix,
-    ScanResultFlag_TokenHasPostfix,
+    ScanResultFlag_TokenUnclosed = 1 << 2,
+    ScanResultFlag_TokenHasPrefix = 1 << 3,
+    ScanResultFlag_TokenHasPostfix = 1 << 4,
 };
 
 typedef Flags16 MarkerFlags;
@@ -21,17 +21,19 @@ enum
 {
     MarkerFlag_MatchLine = 1 << 0, // end before newline
     MarkerFlag_MatchAll = 1 << 1,
-    MarkerFlag_MatchRange = 1 << 2,
-    MarkerFlag_MatchArray = 1 << 3,
+    MarkerFlag_MatchTwice = 1 << 2,
     
-    MarkerFlag_MatchAlpha = 1 << 4, // a-z A-Z _
-    MarkerFlag_MatchDigit = 1 << 5, // 0-9
+    MarkerFlag_MatchRange = 1 << 4,
+    MarkerFlag_MatchArray = 1 << 5,
+    
+    MarkerFlag_MatchAlpha = 1 << 6, // a-z A-Z _
+    MarkerFlag_MatchDigit = 1 << 7, // 0-9
     MarkerFlag_MatchAlphaNumeric = MarkerFlag_MatchAlpha|MarkerFlag_MatchDigit,
     
     // Starts with Alpha or underscore and ends when not AlphaNumeric or underscore
-    MarkerFlag_MatchIdentifier = MarkerFlag_MatchAlpha|MarkerFlag_MatchAll|(1 << 6),
+    MarkerFlag_MatchIdentifier = MarkerFlag_MatchAlpha|MarkerFlag_MatchAll|(1 << 8),
     // Starts with Numeric or dot and ends when not Identifier, or dot
-    MarkerFlag_MatchNumeric = MarkerFlag_MatchDigit|MarkerFlag_MatchAll|(1 << 7),
+    MarkerFlag_MatchNumeric = MarkerFlag_MatchDigit|MarkerFlag_MatchAll|(1 << 9),
     
     MarkerFlag_InverseStr = 1 << 11, // `{` -> `}`, `/*` -> `*/`, `({` -> `})`
     MarkerFlag_PrefixStr = 1 << 12,
@@ -145,8 +147,8 @@ function Marker* MarkerPushNumber(Scanner* scanner, i64 user, String prefixes);
 #define ScannerPushFlags(scanner, user, flags) ScannerPushMark((scanner), (user), ZeroStr, ZeroStr, (flags));
 
 #define ScannerStrFromRange(scanner, range) Substr((scanner)->source, (range).min, (range).max)
-#define ScannerCurrStr(scanner) StrSkip((scanner)->source, pos)
-#define ScannerPrevStr(scanner) StrPrefix((scanner)->source, pos)
+#define ScannerCurrStr(scanner) StrSkip((scanner)->source, (scanner)->pos)
+#define ScannerPrevStr(scanner) StrPrefix((scanner)->source, (scanner)->pos)
 
 //- long: Lexing Functions
 function b32 ScannerAdvance(Scanner* scanner, i64 advance);
@@ -164,15 +166,18 @@ function Token ScannerPeekAhead(Scanner* scanner, i64 tokenCount);
 
 //~ long: Token Functions
 
+function String StrFromToken(String text, Token token);
+function b32 TokenMatch(String text, Token token, String match);
+
 function void TokenChunkListPush(Arena* arena, TokenChunkList* list, u64 cap, Token token);
 function TokenArray TokenArrayFromChunkList(Arena* arena, TokenChunkList* chunks);
 
-#define TokenItFromArray(_tokens) ((TokenIter){.array = (_tokens), .current = (_tokens).tokens })
+#define TokenItFromArray(array) ((TokenIter){ (array), (array).tokens })
 #define TokenItIsDone(it) ((it)->current && (it)->current < (it)->array.tokens + (it)->array.count)
 function Token* TokenItNext(TokenIter* it);
 function Token* TokenItNextIgnore(TokenIter* it, i64 ignore);
 
-//~ long: Common Helpers
+//~ long: CSV Parser
 
 //- long: String Table
 typedef struct StringTable StringTable;
@@ -185,13 +190,14 @@ struct StringTable
 function StringTable StrTableFromStr(Arena* arena, String str, u8 seperator, u8 terminator);
 function StringTable StrTablePushRow(Arena* arena, String row, u8 seperator);
 
-//- long: CSV Parser
+//- long: CSV
 function u64 CSV_StrListPushRow(Arena* arena, StringList* list, String text);
 function StringTable CSV_TableFromStr(Arena* arena, String str);
 #define StrListIterCSVRow(arena, list, text) for (String UNIQUE(str) = (text); UNIQUE(str).size; \
                                                   StrSkip(UNIQUE(str), CSV_StrListPushRow((arena), (list), UNIQUE(str))))
 
-//- long: (L)JSON Parser
+//~ long: (L)JSON Parser
+
 // LJSON is a superset of SJSON + JSON5. It has all the same features plus extras.
 // - A value may be an identifier
 // - Semicolons and commas are the same
@@ -207,6 +213,7 @@ function StringTable CSV_TableFromStr(Arena* arena, String str);
 #define USE_LJSON_SPEC 1
 #endif
 
+//- long: JSON Types
 typedef enum JSON_TokenType JSON_TokenType;
 enum JSON_TokenType
 {
@@ -299,13 +306,14 @@ struct JSON_Node
     r1u64 range;
 };
 
+//- long: JSON Functions
 #define JSON_I64Value(value) ((JSON_Value){.type = JSON_ValueType_Integer, .ivalue = (value)})
 #define JSON_F64Value(value) ((JSON_Value){.type = JSON_ValueType_Float,   .fvalue = (value)})
 #define JSON_B32Value(value) ((JSON_Value){.type = JSON_ValueType_Boolean, .bvalue = (value)})
 #define JSON_StrValue(value) ((JSON_Value){.type = JSON_ValueType_String,  .str    = (value)})
 
-#define  JSON_PushArray(arena, count) ((JSON_Array){ PushArrayNZ(arena, JSON_Value, (count)), (count) })
-#define JSON_PushObject(arena, count) ((JSON_Object){ PushArray(arena, JSON_MapSlot, (count)), (count) })
+#define  JSON_PushArray(arena, count) ( (JSON_Array){ PushArrayNZ(arena,   JSON_Value, (count)), (count) })
+#define JSON_PushObject(arena, count) ((JSON_Object){   PushArray(arena, JSON_MapSlot, (count)), (count) })
 
 function JSON_Value JSON_ValueFromStr(JSON_Object obj, String str);
 function void JSON_ObjInsertValue(Arena* arena, JSON_Object obj, String key, JSON_Value value);

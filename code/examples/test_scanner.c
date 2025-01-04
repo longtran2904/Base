@@ -1,11 +1,13 @@
 #include "Base.h"
 #include "Base.c"
 
+#include "LongMD.h"
 #include "LongScanner.h"
 #include "LongScanner.c"
-#include "LongMD.h"
+#include "CLex.h"
+#include "CLex.c"
 
-function MD_TokenizeResult Long_MD_TokenizeFromScanner(Arena* arena, String text)
+function MD_TokenizeResult MD_TokenizeFromScanner(Arena* arena, String text)
 {
     Scanner* scanner = &ScannerFromStr(arena, text);
     
@@ -27,7 +29,7 @@ function MD_TokenizeResult Long_MD_TokenizeFromScanner(Arena* arena, String text
     
     MarkerPushArr(scanner, MD_TokenFlag_Whitespace, StrLit(SpaceStr"\r"), 0);
     MarkerPushArr(scanner, MD_TokenFlag_Newline, StrLit("\n"), 1);
-    MarkerPushArr(scanner, MD_TokenFlag_Reserved, StrLit("{}()[]#,\\:;@"), 1);
+    MarkerPushArr(scanner, MD_TokenFlag_Reserved, StrLit("{0}()[]#,\\:;@"), 1);
     MarkerPushArr(scanner, MD_TokenFlag_Symbol, StrLit("~!$%^&*-=+<.>/?|"), 0);
     
     scanner->fallback = MD_TokenFlag_BadCharacter;
@@ -54,7 +56,7 @@ function MD_TokenizeResult Long_MD_TokenizeFromScanner(Arena* arena, String text
     return result;
 }
 
-function MD_TokenizeResult Long_MD_TokenizeFromLexer(Arena* arena, String8 text)
+function MD_TokenizeResult MD_TokenizeFromLexer(Arena* arena, String8 text)
 {
     Scanner* scanner = &ScannerFromStr(arena, text);
     MD_TokenChunkList tokens = {0};
@@ -156,7 +158,7 @@ function MD_TokenizeResult Long_MD_TokenizeFromLexer(Arena* arena, String8 text)
         }
         
         //- rjf: resvered symbols
-        else if (ScannerParse(scanner, StrLit("{}()[]#,\\:;@"), ScannerMatchFlag_IsArray))
+        else if (ScannerParse(scanner, StrLit("{0}()[]#,\\:;@"), ScannerMatchFlag_IsArray))
         {
             flags = MD_TokenFlag_Reserved;
         }
@@ -186,7 +188,7 @@ function MD_TokenizeResult Long_MD_TokenizeFromLexer(Arena* arena, String8 text)
     return result;
 }
 
-internal MD_TokenizeResult Long_MD_TokenizeFromText(Arena *arena, String8 text)
+internal MD_TokenizeResult MD_TokenizeFromText(Arena *arena, String8 text)
 {
     ScratchBegin(scratch, arena);
     MD_TokenChunkList tokens = {0};
@@ -374,44 +376,44 @@ internal MD_TokenizeResult Long_MD_TokenizeFromText(Arena *arena, String8 text)
     return result;
 }
 
-internal String MD_DumpJSON(Arena* arena, MD_Node* node, u64 indent)
+internal String MD_DumpJSON(Arena* arena, MD_Node* node, i32 indent)
 {
     String result = {0};
-    if (!md_node_is_nil(node) && node->kind == MD_NodeKind_Main)
+    if (md_node_is_nil(node) || node->kind != MD_NodeKind_Main) result = StrLit("<invalid>");
+    
+    // TODO(long): Indentation for key and array
+    
+    else if (node->flags & MD_NodeFlag_MaskLabelKind) result = node->raw_string;
+    
+    else if (node->flags & MD_NodeFlag_HasBracketLeft)
     {
-        if (node->flags & MD_NodeFlag_MaskLabelKind)
-            result = node->raw_string;
-        
-        else if (node->flags & MD_NodeFlag_HasBracketLeft)
+        ScratchBlock(scratch, arena)
         {
-            ScratchBlock(scratch, arena)
+            StringList list = {0};
+            for (MD_EachNode(child, node->first))
             {
-                StringList list = {0};
-                for (MD_EachNode(child, node->first))
-                {
-                    String str = MD_DumpJSON(scratch, child, indent + 2);
-                    StrListPush(scratch, &list, str);
-                }
-                result = StrJoin(arena, &list, .pre = StrLit("[\n"), .mid = StrLit(",\n"), .post = StrLit("\n]"));
+                String str = MD_DumpJSON(scratch, child, indent + 2);
+                StrListPush(scratch, &list, str);
             }
+            result = StrJoin(arena, &list, .pre = StrLit("[\n"), .mid = StrLit(",\n"), .post = StrLit("\n]"));
         }
-        
-        else if (node->flags & MD_NodeFlag_HasBraceLeft)
+    }
+    
+    else if (node->flags & MD_NodeFlag_HasBraceLeft)
+    {
+        ScratchBlock(scratch, arena)
         {
-            ScratchBlock(scratch, arena)
+            StringList list = {0};
+            StrListPushf(scratch, &list, "%*s{\n", indent, "");
+            for (MD_EachNode(child, node->first))
             {
-                StringList list = {0};
-                StrListPushf(scratch, &list, "%*s{\n", indent, "");
-                for (MD_EachNode(child, node->first))
-                {
-                    String str = MD_DumpJSON(scratch, child->first, indent + 2);
-                    StrListPushf(scratch, &list, "%*s\"%.*s\": %.*s%s", indent + 2, "",
-                                 StrExpand(child->string), StrExpand(str),
-                                 md_node_is_nil(child->next) ? "\n" : ",\n");
-                }
-                StrListPushf(scratch, &list, "%*s}", indent, "");
-                result = StrJoin(arena, &list);
+                String str = MD_DumpJSON(scratch, child->first, indent + 2);
+                StrListPushf(scratch, &list, "%*s\"%.*s\": %.*s%s", indent + 2, "",
+                             StrExpand(child->string), StrExpand(str),
+                             md_node_is_nil(child->next) ? "\n" : ",\n");
             }
+            StrListPushf(scratch, &list, "%*s}", indent, "");
+            result = StrJoin(arena, &list);
         }
     }
     
@@ -421,20 +423,233 @@ internal String MD_DumpJSON(Arena* arena, MD_Node* node, u64 indent)
 int main(void)
 {
     ScratchBegin(scratch);
-    String file = StrLit("code/test.json");
-    MD_ParseResult parse = MD_ParseText(scratch, file, OSReadFile(scratch, file));
-    String dump = MD_DumpJSON(scratch, parse.root->first, 0);
-    OSWriteFile(StrLit("code/out_test.mdesk"), dump);
-    Assert(parse.root->first == parse.root->last);
+    {
+        String file = StrLit("code/test.json");
+        MD_ParseResult parse = MD_ParseText(scratch, file, OSReadFile(scratch, file));
+        String dump = MD_DumpJSON(scratch, parse.root->first, 0);
+        OSWriteFile(StrLit("code/out_test.mdesk"), dump);
+        Assert(parse.root->first == parse.root->last);
+    }
     
-    String text = OSReadFile(scratch, StrLit("code/test.json"));
-    TokenArray array = JSON_TokenizeFromText(scratch, text);
-    JSON_Value value = JSON_ValueFromTokens (scratch, text, array);
-    OSWriteFile(StrLit("code/out_test.json"), JSON_StrFromValue(scratch, value, 0));
+    {
+        // int**** a[1][2][3]
+        // float** (**(*b[1])[2][3])[4]
+        // char (*(*c[3])())[5]
+        // char * const (*(* const d)[5])(int)
+        // int (*(*e)(const void *))[3];
+        // int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4]
+        // void func1( int ), * (func2)( int ), (*funcPtr)(void);
+        
+        String text = StrLit("struct A { int a; int b; };\n"
+                             "struct B"
+                             "{\n"
+                             "int array[10];\n"
+                             "char ** const * const ptr;"
+                             "int a1, a2;\n"
+                             "int* b1, b2, **** *** ** * b3;\n"
+                             "};\n"
+                             "typedef struct C C;\n"
+                             "struct C { char c[1024]; };\n"
+                             "typedef struct D { int a; } D;\n"
+                             "struct E { int a; };\n"
+                             "typedef struct { int a; } F;\n"
+                             "struct { int a; } G;\n"
+                             "struct H { int a; } myH;\n"
+                             "typedef struct X { int x; } Y;\n"
+                             "struct Z { struct { i32 a, ** * b; }; struct { float f; float f2[10]; }; struct H h; }\n"
+                             "struct W { struct { i32 a, ** * b; }; struct { float f; struct { char c[1024]; }; float f2[10]; }; b32 b; }\n"
+                             
+                             "union A { int a; int b; };\n"
+                             "union B"
+                             "{\n"
+                             "int array[10];\n"
+                             "char ** const * const ptr;"
+                             "int a1, a2;\n"
+                             "int* b1, b2, **** *** ** * b3;\n"
+                             "};\n"
+                             "typedef union C C;\n"
+                             "union C { char c[1024]; };\n"
+                             "typedef union D { int a; } D;\n"
+                             "union E { int a; };\n"
+                             "typedef union { int a; } F;\n"
+                             "union { int a; } G;\n"
+                             "union H { int a; } myH;\n"
+                             "typedef union X { int x; } Y;\n"
+                             "union Z { union { i32 a, ** * b; }; union { float f; float f2[10]; }; union H h; }\n"
+                             "union W { union { i32 a, ** * b; }; union { float f; union { char c[1024]; }; float f2[10]; }; b32 b; }\n"
+                             
+                             "enum A { FooA, BarA };\n"
+                             "typedef enum B { FooB } B;\n"
+                             "typedef enum C C; enum C { FooC };\n"
+                             "typedef enum { FooD, BarD = 10, } D;\n"
+                             "enum { FooE } E\n"
+                             "enum F { F1 = foo * bar / blah, F2 = {}, F3 = Func(&(Type){ .a = 100*100, .b = 0, }, baz), F4 = 100 }"
+                             );
+        
+        text = OSReadFile(scratch, StrLit("code/Base.h"));
+        CL_Node* root = CL_MDParseText(scratch, StrLit("test"), text);
+        
+        for (CL_Node* node = root->first; node != &cl_nilNode; node = node->next)
+        {
+            String name = node->name->string;
+            String base = node->base->string;
+            
+            char* typeLit = 0;
+            switch (node->type)
+            {
+                case CL_NodeType_Typedef:
+                {
+                    u64 ptrCount = CL_NodePtrCount(node);
+                    String ptr = ptrCount ? StrPushf(scratch, ", %llu", ptrCount) : (String){0};
+                    Outf("TypedefLit(%.*s, %.*s%.*s);\n\n", StrExpand(base), StrExpand(name), StrExpand(ptr));
+                } break;
+                
+                case CL_NodeType_Struct: typeLit = "Struct"; break;
+                case CL_NodeType_Union:  typeLit = "Union"; break;
+                case CL_NodeType_Enum:   typeLit = "Enum"; break;
+                case CL_NodeType_Proc:   typeLit = "Proc"; break;
+                
+                default: break;
+            }
+            
+            if (typeLit)
+            {
+                StringList members = {0};
+                b32 isProc = node->type == CL_NodeType_Proc;
+                
+                for (CL_Node* member = node->first; member != &cl_nilNode; member = member->next)
+                {
+                    String memberName = member->name->string;
+                    String memberType = member->base->string;
+                    u64 ptrCount = CL_NodePtrCount(member);
+                    
+                    if (node->type == CL_NodeType_Enum)
+                        StrListPushf(scratch, &members, "    EnumValue(%.*s, %.*s),\n",
+                                     StrExpand(name), StrExpand(memberName));
+                    else if (isProc)
+                        StrListPushf(scratch, &members, "    ArgLit(%.*s, %.*s, %.*s, %llu),\n",
+                                     StrExpand(name), StrExpand(memberType), StrExpand(memberName), ptrCount);
+                    else if (member->name->next->flags & MD_NodeFlag_HasBracketLeft)
+                        StrListPushf(scratch, &members, "    ArrayMember(%.*s, %.*s, %.*s),\n",
+                                     StrExpand(name), StrExpand(memberType), StrExpand(memberName));
+                    else
+                        StrListPushf(scratch, &members, "    MemberLit(%.*s, %.*s, %.*s, %llu),\n",
+                                     StrExpand(name), StrExpand(memberType), StrExpand(memberName), ptrCount);
+                }
+                
+                String body = StrJoin(scratch, &members);
+                if (isProc)
+                {
+                    if (members.nodeCount)
+                        Outf("ProcLit(%.*s, %.*s, %llu)\n{\n%.*s};\n\n",
+                             StrExpand(name), StrExpand(base), members.nodeCount, StrExpand(body));
+                    else
+                    {
+                        u64 ptrCount = CL_NodePtrCount(node);
+                        String ptr = ptrCount ? StrPushf(scratch, ", %llu", ptrCount) : (String){0};
+                        Outf("EmptyProc(%.*s, %.*s%.*s);\n\n", StrExpand(name), StrExpand(base), StrExpand(ptr));
+                    }
+                }
+                else
+                    Outf("%sLit(%.*s, %llu)\n{\n%.*s};\n\n", typeLit, StrExpand(name), members.nodeCount, StrExpand(body));
+            }
+        }
+    }
     
-    text = OSReadFile(scratch, StrLit("code/test.csv"));
-    StringTable table = CSV_TableFromStr(scratch, text);
-    OSWriteFile(StrLit("code/out_test.csv"), CSV_StrFromTable(scratch, table));
+    if (0)
+    {
+        String inputs[] = {
+            OSReadFile(scratch, StrLit("code/Base.h")),
+            StrLit("if (TweakB32(draw_ur_mom)) {\n"
+                   "f32 height = TweakF32(mom_height, 1f, 2f);\n"
+                   "EmbedFile(ur_mom_sprite, \"D:\\\\Documents\\\\Important\\\\my_mom.png\");\n"
+                   "DrawUrMom(height, ur_mom_sprite);\n"
+                   "}\n"),
+            StrLit("u64 a = 0, b = 0, c = a+++b; a+=+b;\n"
+                   "u64* ptr =&a; u64** dptr =&ptr;\n"
+                   "*ptr; **dptr; a&=*&a\n"),
+            StrLit("><<==++=>>->=.../**/?::%=%%"),
+        };
+        
+        StringList operators = StrList(scratch, ArrayExpand(String,
+                                                            StrLit("<"), StrLit("<<"), StrLit("<="), StrLit("<<="),
+                                                            StrLit(">"), StrLit(">>"), StrLit(">="), StrLit(">>="),
+                                                            StrLit("&"), StrLit("&&"), StrLit("&="),
+                                                            StrLit("|"), StrLit("||"), StrLit("|="),
+                                                            StrLit("+"), StrLit("++"), StrLit("+="),
+                                                            StrLit("-"), StrLit("--"), StrLit("-="),
+                                                            StrLit("*"), StrLit("*="), StrLit("/"), StrLit("/="),
+                                                            StrLit("!"), StrLit("!="), StrLit("^"), StrLit("^="),
+                                                            StrLit("%"), StrLit("%="), StrLit("="), StrLit("=="),
+                                                            StrLit("["), StrLit("]"),  StrLit("("), StrLit(")"),
+                                                            StrLit("{"), StrLit("}"),  StrLit(","), StrLit(";"),
+                                                            StrLit(":"), StrLit("?"),  StrLit("~"),
+                                                            StrLit("."), StrLit("->"), StrLit("...")));
+        
+        ForEach(i, ArrayCount(inputs))
+        {
+            String in = inputs[i];
+            TokenArray array = CL_TokenArrayFromStr(scratch, in);
+            
+            MetaTable table = CL_TableFromTokens(scratch, in, array);
+            ForEach(slotIdx, table.count)
+            {
+                MetaInfo info = table.v[slotIdx];
+                switch (info.flags)
+                {
+                    case MetaFlag_TweakB32:  Outf("TweakB32: %.*s\n", StrExpand(info.name)); break;
+                    case MetaFlag_TweakF32:  Outf("TweakF32: %.*s\n", StrExpand(info.name)); break;
+                    case MetaFlag_EmbedFile:
+                    {
+                        String path = {0};
+                        if (info.childs.v)
+                            path = info.childs.v[0].name;
+                        Outf("Embed: %.*s, Path: %.*s\n", StrExpand(info.name), StrExpand(path));
+                    } break;
+                }
+            }
+            
+            for (Token* token = array.tokens; token < array.tokens + array.count; ++token)
+            {
+                String lexeme = Substr(in, token->range.min, token->range.max);
+                
+                if (token->user & CL_TokenFlag_Symbol)
+                    Assert(StrCompareList(lexeme, &operators, 0));
+                
+                if (token->user & CL_TokenFlag_Identifier)
+                {
+                    if (StrCompare(lexeme, StrLit("TweakB32"), 0) || StrCompare(lexeme, StrLit("TweakF32"), 0))
+                    {
+                        String name = StrFromToken(in, token[2]);
+                        Outf("%.*s: %.*s\n", StrExpand(lexeme), StrExpand(name));
+                    }
+                    else if (StrCompare(lexeme, StrLit("EmbedFile"), 0))
+                    {
+                        String name = StrFromToken(in, token[2]);
+                        String path = StrFromToken(in, token[5]);
+                        path = StrTrim(path, StrLit("\""), 0);
+                        path = StrCEscape(scratch, path);
+                        Outf("EmbedFile: %.*s, Path: %.*s\n", StrExpand(name), StrExpand(path));
+                    }
+                }
+            }
+        }
+    }
+    
+    if (0)
+    {
+        String text = OSReadFile(scratch, StrLit("code/test.json"));
+        TokenArray array = JSON_TokenizeFromText(scratch, text);
+        JSON_Value value = JSON_ValueFromTokens (scratch, text, array);
+        OSWriteFile(StrLit("code/out_test.json"), JSON_StrFromValue(scratch, value, 0));
+    }
+    
+    if (0)
+    {
+        String text = OSReadFile(scratch, StrLit("code/test.csv"));
+        StringTable table = CSV_TableFromStr(scratch, text);
+        OSWriteFile(StrLit("code/out_test.csv"), CSV_StrFromTable(scratch, table));
+    }
     
     Outf("Done");
     

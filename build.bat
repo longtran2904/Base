@@ -65,7 +65,7 @@ if "%msvc%"=="1" (
 	:: --- unused flags ---
 	REM set warns=!warns! /wd4100 /wd4101
 	:: --- analyze flags ---
-	REM set warns=!warns! /analyze /wd28251
+	REM set warns=!warns! /analyze /wd28251 /wd28182 /wd6287 /wd6387
 
 	:: --- compile options ---
 	set opts=/FC /GR- /EHa- /nologo /Zi
@@ -87,8 +87,9 @@ if "%clang%"=="1" (
 IF NOT EXIST "fast_float.o" clang++ %lib_opts% %code%\code\dependencies\fast_float.cpp
 )
 
-
 :: --- Build Everything -------------------------------------------------------
+%code%\ctime -begin base.ctm
+
 del *.pdb > NUL 2> NUL
 del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
@@ -119,6 +120,7 @@ del *.ilk > NUL 2> NUL
 del *.exp > NUL 2> NUL
 del *.xml > NUL 2> NUL
 
+%code%\ctime -end base.ctm
 popd
 
 :: --- MSVC References --------------------------------------------------------
@@ -146,6 +148,7 @@ popd
 :: --- Analyzer Flags ---
 :: 6011 and 28182: derefernecing NULL pointer
 :: 6250 calling 'VirtualFree' without the MEM_RELEASE flag might cause address space leaks
+:: 6287 Redundant code
 :: 6334 sizeof operator applied to an expression with an operator may yield unexpected results
 :: 6387 invalid param value
 :: 28251 Inconsistent annotation for function (currently only reports WinMain entry function)
