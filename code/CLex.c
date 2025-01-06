@@ -80,6 +80,8 @@ global String CL_Qualifiers[] = {
     StrConst("extern"), StrConst("static"), // Storage Class Specifiers
 };
 
+#define MD_NodeMatch(node, str) StrCompare((node)->string, StrLit(str), 0)
+
 function b32 MD_NodeCompareArr(MD_Node* node, String* array, u64 count)
 {
     for (u64 i = 0; i < count; ++i)
@@ -132,20 +134,26 @@ function u64 CL_NodePtrCount(CL_Node* node)
 // TODO(long): The base node can be a qualifiers
 function MD_Node* CL_NodeSkipBase(MD_Node* node)
 {
-    u64 ptrCount = 0;
-    REPEAT:
-    while (node->flags & MD_NodeFlag_Symbol)
+    while (1)
     {
-        for (u64 i = 0; i < node->string.size; ++i, ++ptrCount)
-            if (node->string.str[i] != '*')
-                goto DONE;
+        b32 repeat = 0;
+        if (node->flags & MD_NodeFlag_Symbol)
+        {
+            for (u64 i = 0; i < node->string.size; ++i)
+                if (node->string.str[i] != '*')
+                    goto DONE;
+            repeat = 1;
+        }
+        else if (MD_NodeCompareArr(node, CL_Qualifiers, ArrayCount(CL_Qualifiers)))
+            repeat = 1;
+        
+        if (HasAnyFlags(node->flags, MD_NodeFlag_IsAfterSemicolon|MD_NodeFlag_IsAfterComma))
+            break;
+        if (md_node_is_nil(node->next))
+            break;
+        if (!repeat)
+            break;
         node = node->next;
-    }
-    
-    if (MD_NodeCompareArr(node, CL_Qualifiers, ArrayCount(CL_Qualifiers)))
-    {
-        node = node->next;
-        goto REPEAT;
     }
     
     DONE:
@@ -179,7 +187,7 @@ function CL_Node* CL_PushType(Arena* arena, CL_NodeType type, MD_NodeFlags flags
 {
     CL_Node* result = &cl_nilNode;
     
-    b32 isTypedef = StrCompare(node->prev->string, StrLit("typedef"), 0);
+    b32 isTypedef = MD_NodeMatch(node->prev, "typedef");
     MD_Node* typeName = node->next;
     MD_Node* typeBody = node->next->next;
     if ((typeName->flags & flags) && (typeBody->flags & MD_NodeFlag_Identifier) && isTypedef)
@@ -201,6 +209,153 @@ function CL_Node* CL_PushType(Arena* arena, CL_NodeType type, MD_NodeFlags flags
     return result;
 }
 
+typedef struct CL_ParseCtx CL_ParseCtx;
+struct CL_ParseCtx
+{
+    String data;
+    CL_Node* parent;
+    MD_Node* iter;
+    Arena* arena;
+};
+
+//function CL_Node* CL_ParseStmt(CL_ParseCtx* parse)
+//{
+//MD_Node* node = CL_CurrNode(parse);
+//if ((node->flags & MD_NodeFlag_Identifier) && !(node->flags & MD_NodeFlag_IsBeforeSemicolon) && !md_node_is_nil(node->next))
+//{
+//CL_Node* base = 0;
+//if (MD_NodeMatch(node, "typedef"))
+//CL_ParseTypedef(parse);
+//else if (MD_NodeMatch(node, "struct"))
+//base = CL_ParseStruct(parse);
+//else if (MD_NodeMatch(node, "union"))
+//base = CL_ParseUnion(parse);
+//else if (MD_NodeMatch(node, "enum"))
+//base = CL_ParseEnum(parse);
+//else
+//base = CL_ParseVarType(parse);
+
+//if (base)
+//{
+//MD_Node* name = CL_CurrNode(parse);
+//if ((name->flags & MD_NodeFlag_Identifier) && !(name->flags & MD_NodeFlag_IsAfterSemicolon))
+//{
+//if (body->flags & MD_NodeFlag_HasParenLeft)
+//{
+//CL_Node* proc = CL_ParseProc(context);
+//}
+
+//else if (MD_NodeMatch(name->next, "=") || (name->flags & MD_NodeFlag_IsBeforeSemicolon))
+//{
+//typeNode = CL_PushNode(arena, isTypedef ? CL_NodeType_Typedef : CL_NodeType_Decl, name, base, root);
+//while (!(name->flags & MD_NodeFlag_IsBeforeSemicolon) && !md_node_is_nil(name->next))
+//name = name->next;
+//node = name;
+//}
+//CL_PushNode(parse, type, name, base);
+//}
+//}
+//}
+//else
+//{
+//CL_Node* expr = CL_ParseExpr(arena, node, 1);
+//if (!CL_NodeIsNil(expr))
+//CL_PushChild(parent, expr);
+//}
+//}
+
+function MD_Node* CL_ParseDecl(Arena* arena, MD_Node* body, CL_Node* parent, b32 terminate)
+{
+    MD_Node* node = body->first;
+    b32 oldTerminate = terminate;
+    
+    for (MD_EachNode(member, (node->flags & MD_NodeFlag_Identifier) ? node : &md_nil_node))
+    {
+        REPEAT:
+        MD_NodeFlags flags = terminate ? MD_NodeFlag_IsBeforeSemicolon : MD_NodeFlag_IsBeforeComma;
+        MD_Node* memberType = member;
+        MD_Node* memberName = member->next;
+        
+        if (md_node_is_nil(memberName))
+            memberName = memberType;
+        
+        else if (MD_NodeCompareArr(memberType, ArrayExpand(String, StrLit("struct"), StrLit("union"))))
+        {
+            if (memberName->flags & MD_NodeFlag_HasBraceLeft)
+            {
+                if (memberName->flags & flags)
+                {
+                    member = memberName->first;
+                    terminate = 1;
+                    goto REPEAT;
+                }
+                //else TODO(long): Inline struct
+            }
+            
+            else if (memberName->flags & MD_NodeFlag_Identifier)
+            {
+                memberType = memberType->next;
+                memberName = memberName->next;
+            }
+            //else TODO(long): Error
+        }
+        
+        NEXT_MEMBER:
+        memberName = CL_NodeSkipBase(memberName);
+        if (memberName->flags & MD_NodeFlag_Identifier)
+        {
+            CL_PushNode(arena, CL_NodeType_Decl, memberName, memberType, parent);
+            PARSE_POSTFIX:
+            u64 arrayCount = 0;
+            while (memberName->next->flags & MD_NodeFlag_HasBracketLeft)
+            {
+                arrayCount++;
+                memberName = memberName->next;
+            }
+            
+            if (arrayCount > 1)
+            {
+                // TODO(long): Multi-dimensional array
+            }
+            
+            if (terminate && (memberName->flags & MD_NodeFlag_IsBeforeComma))
+            {
+                memberName = memberName->next;
+                goto NEXT_MEMBER;
+            }
+            
+            member = memberName;
+            while (!(member->next->flags & MD_NodeFlag_AfterFromBefore(flags)) && !md_node_is_nil(member->next))
+                member = member->next;
+            
+            while (member->parent != body)
+            {
+                if (md_node_is_nil(member->next))
+                    member = member->parent;
+                else
+                    break;
+            }
+            
+            if (member->parent == body)
+                terminate = oldTerminate;
+        }
+        
+        else if (!terminate && ((memberName->flags & MD_NodeFlag_IsAfterComma) || md_node_is_nil(memberName->next)))
+        {
+            CL_PushNode(arena, CL_NodeType_Decl, &md_nil_node, memberType, parent);
+            goto PARSE_POSTFIX;
+        }
+        
+        else
+        {
+            // TODO(long): Error if false
+            // NOTE(long): MD_NodeFlag_HasParenLeft means this is a complex declaration
+        }
+    }
+    
+    return node;
+}
+
 function CL_Node* CL_MDParseText(Arena* arena, String filename, String text)
 {
     CL_Node* root = CL_PushNode(arena, 0, &md_nil_node, &md_nil_node, 0);
@@ -211,23 +366,7 @@ function CL_Node* CL_MDParseText(Arena* arena, String filename, String text)
     {
         CL_Node* typeNode = 0;
         
-        // NOTE(long): This doesn't parse types (struct/union/enum) or functions. Those are parsed later.
-        if (StrCompare(node->string, StrLit("typedef"), 0))
-        {
-            MD_Node* base = node->next;
-            if ((base->flags & MD_NodeFlag_Identifier) && !MD_NodeCompareArr(base, typeKeywords, ArrayCount(typeKeywords)))
-            {
-                MD_Node* name = CL_NodeSkipBase(base->next);
-                
-                if (name->flags & MD_NodeFlag_Identifier && !(name->next->flags & MD_NodeFlag_HasParenLeft))
-                {
-                    typeNode = CL_PushNode(arena, CL_NodeType_Typedef, name, base, root);
-                    node = name;
-                }
-            }
-        }
-        
-        else if (StrCompare(node->string, StrLit("enum"), 0))
+        if (MD_NodeMatch(node, "enum"))
         {
             typeNode = CL_PushType(arena, CL_NodeType_Enum, MD_NodeFlag_HasBraceLeft, node, root);
             MD_Node* firstMember = typeNode->body->first;
@@ -241,118 +380,50 @@ function CL_Node* CL_MDParseText(Arena* arena, String filename, String text)
             }
         }
         
-        else if (StrCompare(node->string, StrLit("union"), 0))
+        else if (MD_NodeMatch(node, "union"))
         {
             typeNode = CL_PushType(arena, CL_NodeType_Union, MD_NodeFlag_HasBraceLeft, node, root);
-            goto PARSE_BODY;
+            CL_ParseDecl(arena, typeNode->body, typeNode, 1);
         }
         
-        else if (StrCompare(node->string, StrLit("struct"), 0))
+        else if (MD_NodeMatch(node, "struct"))
         {
             typeNode = CL_PushType(arena, CL_NodeType_Struct, MD_NodeFlag_HasBraceLeft, node, root);
-            
-            PARSE_BODY:
-            MD_Node* typeBody = typeNode->body;
-            MD_Node* firstMember = typeBody->first;
-            
-            if (firstMember->flags & MD_NodeFlag_Identifier)
-            {
-                for (MD_EachNode(member, firstMember))
-                {
-                    REPEAT:
-                    MD_Node* memberType = member;
-                    MD_Node* memberName = member->next;
-                    
-                    if (MD_NodeCompareArr(memberType, ArrayExpand(String, StrLit("struct"), StrLit("union"))))
-                    {
-                        if (memberName->flags & MD_NodeFlag_HasBraceLeft)
-                        {
-                            if (memberName->flags & MD_NodeFlag_IsBeforeSemicolon)
-                            {
-                                member = memberName->first;
-                                goto REPEAT;
-                            }
-                            //else TODO(long): Inline struct
-                        }
-                        
-                        else if (memberName->flags & MD_NodeFlag_Identifier)
-                        {
-                            memberType = memberType->next;
-                            memberName = memberName->next;
-                        }
-                        //else TODO(long): Error
-                    }
-                    
-                    NEXT_MEMBER:
-                    memberName = CL_NodeSkipBase(memberName);
-                    if (memberName->flags & MD_NodeFlag_Identifier)
-                    {
-                        CL_PushNode(arena, CL_NodeType_Decl, memberName, memberType, typeNode);
-                        u64 arrayCount = 0;
-                        while (memberName->next->flags & MD_NodeFlag_HasBracketLeft)
-                        {
-                            arrayCount++;
-                            memberName = memberName->next;
-                        }
-                        
-                        if (arrayCount > 1)
-                        {
-                            // TODO(long): Multi-dimensional array
-                        }
-                        
-                        if (memberName->flags & MD_NodeFlag_IsBeforeComma)
-                        {
-                            memberName = memberName->next;
-                            goto NEXT_MEMBER;
-                        }
-                        
-                        member = memberName;
-                        while (!(member->next->flags & MD_NodeFlag_IsAfterSemicolon) && !md_node_is_nil(member->next))
-                            member = member->next;
-                        
-                        while (member->parent != typeBody)
-                        {
-                            if (md_node_is_nil(member->next))
-                                member = member->parent;
-                            else
-                                break;
-                        }
-                    }
-                    else
-                    {
-                        // TODO(long): Error if false
-                        // NOTE(long): MD_NodeFlag_HasParenLeft means this is a complex declaration
-                    }
-                }
-            }
+            CL_ParseDecl(arena, typeNode->body, typeNode, 1);
         }
         
-        // TODO(long): declaration
-        //else if ((node->flags & MD_NodeFlag_Identifier) && (node->next->flags & MD_NodeFlag_Identifier) &&
-        //(HasAnyFlags(node->prev->flags, MD_NodeFlag_HasBraceRight|MD_NodeFlag_IsBeforeSemicolon) || 
-        //md_node_is_nil(node->prev)))
-        //{
-        //}
-        
-        else if ((node->flags & MD_NodeFlag_Identifier) && (node->next->flags & MD_NodeFlag_HasParenLeft) /*&&
-                 ((node->next->flags & MD_NodeFlag_IsBeforeSemicolon) || (node->next->next->flags & MD_NodeFlag_HasBraceLeft))*/)
+        else if (node->flags & MD_NodeFlag_Identifier)
         {
-            typeNode = CL_PushType(arena, CL_NodeType_Proc, MD_NodeFlag_HasParenLeft, node->prev, root);
-            MD_Node* firstArg = typeNode->body->first;
-            
-            if (!md_node_is_nil(firstArg->next))
+            MD_Node* base = node;
+            b32 isTypedef = 0;
+            if (MD_NodeMatch(node, "typedef"))
             {
-                for (MD_EachNode(arg, firstArg))
+                isTypedef = 1;
+                base = node->next;
+            }
+            
+            if (MD_NodeCompareArr(base, typeKeywords, ArrayCount(typeKeywords)))
+                continue;
+            
+            MD_Node* name = CL_NodeSkipBase(base->next);
+            if (name->flags & MD_NodeFlag_Identifier)
+            {
+                MD_Node* body = name->next;
+                if ((body->flags & MD_NodeFlag_HasParenLeft) &&
+                    HasAnyFlags(body->next->flags, MD_NodeFlag_IsAfterSemicolon|MD_NodeFlag_HasBraceLeft))
                 {
-                    if (arg->flags & MD_NodeFlag_Identifier)
-                    {
-                        MD_Node* argType = arg;
-                        arg = CL_NodeSkipBase(arg->next);
-                        
-                        b32 has_name = (arg->flags & MD_NodeFlag_Identifier) && !(arg->flags & MD_NodeFlag_IsAfterComma);
-                        CL_PushNode(arena, CL_NodeType_Decl, has_name ? arg : &md_nil_node, argType, typeNode);
-                    }
-                    else break;
+                    typeNode = CL_PushNode(arena, CL_NodeType_Proc, name, base, root);
+                    typeNode->body = body;
+                    if (!md_node_is_nil(body->first->next))
+                        CL_ParseDecl(arena, body, typeNode, 0);
+                }
+                
+                else if (MD_NodeMatch(name->next, "=") || (name->flags & MD_NodeFlag_IsBeforeSemicolon))
+                {
+                    typeNode = CL_PushNode(arena, isTypedef ? CL_NodeType_Typedef : CL_NodeType_Decl, name, base, root);
+                    while (!(name->flags & MD_NodeFlag_IsBeforeSemicolon) && !md_node_is_nil(name->next))
+                        name = name->next;
+                    node = name;
                 }
             }
         }

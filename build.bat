@@ -32,7 +32,7 @@ if "%clang%"=="1" (
 	:: --- unused flags ---
 	set warns=!warns! -Wno-unused-local-typedef -Wno-unused-function
 	:: --- Microsoft extensions ---
-	set warns=!warns! -Wno-microsoft-enum-forward-reference -Wno-microsoft-string-literal-from-predefined
+	set warns=!warns! -Wno-microsoft-enum-forward-reference -Wno-microsoft-string-literal-from-predefined -Wno-microsoft-anon-tag
 	:: --- GNU extensions ---
 	set warns=!warns! -Wno-gnu-null-pointer-arithmetic
 
