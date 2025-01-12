@@ -432,13 +432,21 @@ int main(void)
     }
     
     {
-        // int**** a[1][2][3]
-        // float** (**(*b[1])[2][3])[4]
-        // char (*(*c[3])())[5]
-        // char * const (*(* const d)[5])(int)
+        // int**** a[1][2][3];
+        // float** (**(*b[1])[2][3])[4];
+        // char (*(*c[3])())[5];
+        // char * const (*(* const d)[5])(int);
         // int (*(*e)(const void *))[3];
-        // int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4]
+        // int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4];
         // void func1( int ), * (func2)( int ), (*funcPtr)(void);
+        // int (*(*foo1)(void))[3], (*foo2(void))[3];
+        // int bar1(int[]), bar3(char arg(double)), bar4(int(void)), bar5(const int[10]);
+        
+        // MSVC and cdecl.org complained about these, while Clang doesn't
+        // int pointerInArray(int[*]);
+        // int specifier1InArray(int [static 10]);
+        // int specifier2InArray(int[const volatile]);
+        // _Atomic unsigned long long int const volatile *restrict const foo[10];
         
         String text = StrLit("struct A { int a; int b; };\n"
                              "struct B"
@@ -485,10 +493,32 @@ int main(void)
                              "enum { FooE } E\n"
                              "enum F { F1 = foo * bar / blah, F2 = {}, F3 = Func(&(Type){ .a = 100*100, .b = 0, }, baz), F4 = 100 }"
                              );
-        
         text = OSReadFile(scratch, StrLit("code/Base.h"));
-        CL_Node* root = CL_MDParseText(scratch, StrLit("test"), text);
         
+#if 1
+        MD_Node* root = MD_ParseStrC(scratch, text);
+        MD_DebugTree(root);
+        
+        for (MD_EachNode(node, root->first))
+        {
+            if (md_node_has_tag(node, StrLit("struct"), 0) || md_node_has_tag(node, StrLit("union"), 0))
+            {
+                StringList members = {0};
+                if (!md_node_is_nil(node->first))
+                {
+                    Assert(node->first->flags & MD_NodeFlag_HasBraceLeft);
+                    for (MD_EachNode(child, node->first->first))
+                    {
+                        
+                    }
+                }
+                
+                String body = StrJoin(scratch, &members);
+                Outf("StructLit(%.*s, %llu)\n{\n%.*s};\n\n", StrExpand(node->string), members.nodeCount, StrExpand(body));
+            }
+        }
+#else
+        CL_Node* root = CL_MDParseText(scratch, StrLit("test"), text);
         for (CL_Node* node = root->first; node != &cl_nilNode; node = node->next)
         {
             String name = node->name->string;
@@ -554,6 +584,7 @@ int main(void)
                     Outf("%sLit(%.*s, %llu)\n{\n%.*s};\n\n", typeLit, StrExpand(name), members.nodeCount, StrExpand(body));
             }
         }
+#endif
     }
     
     if (0)
@@ -590,8 +621,8 @@ int main(void)
         {
             String in = inputs[i];
             TokenArray array = CL_TokenArrayFromStr(scratch, in);
-            
             MetaTable table = CL_TableFromTokens(scratch, in, array);
+            
             ForEach(slotIdx, table.count)
             {
                 MetaInfo info = table.v[slotIdx];
@@ -611,26 +642,10 @@ int main(void)
             
             for (Token* token = array.tokens; token < array.tokens + array.count; ++token)
             {
-                String lexeme = Substr(in, token->range.min, token->range.max);
-                
                 if (token->user & CL_TokenFlag_Symbol)
-                    Assert(StrCompareList(lexeme, &operators, 0));
-                
-                if (token->user & CL_TokenFlag_Identifier)
                 {
-                    if (StrCompare(lexeme, StrLit("TweakB32"), 0) || StrCompare(lexeme, StrLit("TweakF32"), 0))
-                    {
-                        String name = StrFromToken(in, token[2]);
-                        Outf("%.*s: %.*s\n", StrExpand(lexeme), StrExpand(name));
-                    }
-                    else if (StrCompare(lexeme, StrLit("EmbedFile"), 0))
-                    {
-                        String name = StrFromToken(in, token[2]);
-                        String path = StrFromToken(in, token[5]);
-                        path = StrTrim(path, StrLit("\""), 0);
-                        path = StrCEscape(scratch, path);
-                        Outf("EmbedFile: %.*s, Path: %.*s\n", StrExpand(name), StrExpand(path));
-                    }
+                    String lexeme = Substr(in, token->range.min, token->range.max);
+                    Assert(StrCompareList(lexeme, &operators, 0));
                 }
             }
         }
