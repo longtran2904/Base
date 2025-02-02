@@ -34,7 +34,6 @@ readonly global const String OS_names[] =
 
 readonly global const String Month_names[] =
 {
-    StrConst("None"),
     StrConst("Jan"),
     StrConst("Feb"),
     StrConst("Mar"),
@@ -51,7 +50,6 @@ readonly global const String Month_names[] =
 
 readonly global const String Day_names[] =
 {
-    StrConst("None"),
     StrConst("Sunday"),
     StrConst("Monday"),
     StrConst("Tuesday"),
@@ -63,9 +61,26 @@ readonly global const String Day_names[] =
 
 //~ long: Math Functions
 
+//- long: Bit Functions
+// https://stackoverflow.com/a/76705994
+#if COMPILER_CL || (COMPILER_CLANG && OS_WIN)
+function u32 __ctz32(u32 x) { u32 result; _BitScanForward  (&result, x); return result; }
+function u64 __ctz64(u64 x) { u32 result; _BitScanForward64(&result, x); return result; }
+function u32 __clz32(u32 x) { return __lzcnt  (x); }
+function u64 __clz64(u64 x) { return __lzcnt64(x); }
+#else
+function u32 __ctz32(u32 x) { return (__builtin_ctz  (x)); }
+function u64 __ctz64(u64 x) { return (__builtin_ctzll(x)); }
+function u32 __clz32(u32 x) { return (__builtin_clz  (x)); }
+function u64 __clz64(u64 x) { return (__builtin_clzll(x)); }
+#endif
+
+function u32 clz32(u32 x) { return x ? __clz32(x) : 32; }
+function u64 clz64(u64 x) { return x ? __clz64(x) : 64; }
+function u32 ctz32(u32 x) { return x ? __ctz32(x) : 32; }
+function u64 ctz64(u64 x) { return x ? __ctz64(x) : 64; }
+
 #include <math.h>
-#include <xmmintrin.h>
-#include <emmintrin.h>
 
 //- long: Trigonometric Functions
 #ifndef EXTRA_PRECISION
@@ -197,15 +212,17 @@ function f64 Abs_f64(f64 x)
 }
 
 //- long: Scalar Functions
-#ifdef __SSE4__
+#ifdef __SSE4_1__
+#include <smmintrin.h>
+
 function f32 Round_f32(f32 x)
 {
-    return _mm_cvtss_f32(_mm_round_ss(_mm_set_ss(x), _MM_FROUND_TO_NEAREST_INT|_MM_FROUND_NO_EXC))
+    return _mm_cvtss_f32(_mm_round_ss((__m128){0}, _mm_set_ss(x), _MM_FROUND_TO_NEAREST_INT|_MM_FROUND_NO_EXC));
 }
 
 function f32 Trunc_f32(f32 x)
 {
-    return _mm_cvtss_f32(_mm_round_ss(_mm_set_ss(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
+    return _mm_cvtss_f32(_mm_round_ss((__m128){0}, _mm_set_ss(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
 }
 
 function f32 Floor_f32(f32 x)
@@ -220,24 +237,27 @@ function f32 Ceil_f32(f32 x)
 
 function f64 Round_f64(f64 x)
 {
-    return _mm_cvtsd_f64(_mm_round_sd(_mm_set_sd(x), _MM_FROUND_TO_NEAREST_INT|_MM_FROUND_NO_EXC))
+    return _mm_cvtsd_f64(_mm_round_sd((__m128d){0}, _mm_set_sd(x), _MM_FROUND_TO_NEAREST_INT|_MM_FROUND_NO_EXC));
 }
 
 function f64 Trunc_f64(f64 x)
 {
-    return _mm_cvtsd_f64(_mm_round_sd(_mm_set_sd(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
+    return _mm_cvtsd_f64(_mm_round_sd((__m128d){0}, _mm_set_sd(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
 }
 
 function f64 Floor_f64(f64 x)
 {
-    return _mm_cvtsd_f64(_mm_floor_sd((__m128){0}, _mm_set_sd(x)));
+    return _mm_cvtsd_f64(_mm_floor_sd((__m128d){0}, _mm_set_sd(x)));
 }
 
 function f64 Ceil_f64(f64 x)
 {
-    return _mm_cvtsd_f64(_mm_ceil_sd((__m128){0}, _mm_set_sd(x)));
+    return _mm_cvtsd_f64(_mm_ceil_sd((__m128d){0}, _mm_set_sd(x)));
 }
+
 #elif defined(__SSE2__)
+#include <emmintrin.h>
+
 #define ROUND_F32(x, ...) \
     __m128 f = _mm_set_ss(x); \
     __m128 r = _mm_cvtepi32_ps(_mm_cvttps_epi32(f)); /*r = (f32)(i32)f*/ \
@@ -1429,18 +1449,19 @@ function b32 ChrCompare(char a, char b, StringMatchFlags flags)
 
 function b32 StrCompare(String a, String b, StringMatchFlags flags)
 {
-    if (a.size == b.size || (flags & MatchStr_RightSloppy))
+    b32 result = a.size == b.size || (flags & MatchStr_RightSloppy);
+    if (result)
     {
-        u64 size = Min(a.size, b.size);
         if (a.str != b.str)
-            for (u64 i = 0; i < size; ++i)
+        {
+            u64 size = Min(a.size, b.size);
+            for (u64 i = 0; i < size && result; ++i)
                 if (!ChrCompare(a.str[i], b.str[i], flags))
-                    return false;
-        
-        return true;
+                    result = 0;
+        }
     }
     
-    return false;
+    return result;
 }
 
 function b32 ChrCompareArr(char chr, String arr, StringMatchFlags flags)
@@ -1697,12 +1718,14 @@ function String StrWriteToStr(String src, u64 srcOffset, String dst, u64 dstOffs
 }
 
 //- long: Unicode Functions
+// NOTE(long): The standard now recommends replacing each error with the replacement character
+// https://en.wikipedia.org/wiki/UTF-8#Error_handling
 #define InvalidRune 0xFFFD
-#define InvalidDecoder (StringDecode){ InvalidRune, 2 }
+#define InvalidDecoder (StringDecode){ InvalidRune, 1 }
 
 function StringDecode StrDecodeUTF8(u8* str, u64 cap)
 {
-    local u8 length[] = {
+    local const u8 length[] = {
         1, 1, 1, 1, // 0xxxx
         1, 1, 1, 1,
         1, 1, 1, 1,
@@ -1714,8 +1737,8 @@ function StringDecode StrDecodeUTF8(u8* str, u64 cap)
         4,          // 11110
         0,          // 11111
     };
-    local u8 firstByteMask[] = { 0, 0x7F, 0x1F, 0x0F, 0x07 };
-    local u8 finalShift[] = { 0, 18, 12, 6, 0 };
+    local const u8 firstByteMask[] = { 0, 0x7F, 0x1F, 0x0F, 0x07 };
+    local const u8 finalShift[] = { 0, 18, 12, 6, 0 };
     
     StringDecode result = {0};
     if (cap > 0)
@@ -1741,10 +1764,10 @@ function StringDecode StrDecodeUTF8(u8* str, u64 cap)
             result = (StringDecode){cp, l};
             
             // NOTE(long): Accumulate the various error conditions
-            local u32 mins[] = { 4194304, 0, 128, 2048, 65536 };
-            result.error |= (cp < mins[l]) ? DecodeError_Overlong : 0; // non-canonical encoding
-            result.error |= ((cp >> 11) == 0x1b) ? DecodeError_Surrogate : 0;
-            result.error |= (cp > 0x10FFFF) ? DecodeError_OutOfRange : 0;
+            local const u32 mins[] = { 4194304, 0, 128, 2048, 65536 };
+            result.error |= (cp < mins[l]) * DecodeError_Overlong; // non-canonical encoding
+            result.error |= ((cp >> 11) == 0x1b) * DecodeError_Surrogate;
+            result.error |= (cp > 0x10FFFF) * DecodeError_OutOfRange;
             
             u8 cbits = 0; // top two bits of each tail byte
             switch (l)
@@ -1754,7 +1777,8 @@ function StringDecode StrDecodeUTF8(u8* str, u64 cap)
                 case 2: cbits |= ((str[1] & 0xC0) >> 6);
                 default: break;
             }
-            result.error |= (cbits == 0x2A) ? DecodeError_InvalidBits : 0;
+            
+            result.error |= (cbits == 0x2A) * DecodeError_InvalidBits;
         }
     }
     else result.error = DecodeError_EOF;
@@ -1809,7 +1833,7 @@ function u32 StrEncodeUTF8(u8* dst, u32 codepoint)
         size = 3;
     }
     
-    else if (codepoint < (1 << 21))
+    else if (codepoint < 0x10FFFF)
     {
         dst[0] = 0xF0 | (u8)(codepoint >> 18);
         dst[1] = 0x80 | ((codepoint >> 12) & 0x3F);
@@ -1820,6 +1844,7 @@ function u32 StrEncodeUTF8(u8* dst, u32 codepoint)
     
     else
     {
+        StaticAssert(InvalidRune < 0x10FFFF);
         codepoint = InvalidRune;
         goto CP16;
     }
@@ -1831,9 +1856,11 @@ function u32 StrEncodeWide(u16* dst, u32 codepoint)
     u32 size;
     if (codepoint < 0x10000)
     {
+        BMP: // Basic Multilingual Plane
         dst[0] = (u16)codepoint;
         size = 1;
     }
+    
     else if (codepoint < 0x10FFFF)
     {
         u32 cpj = codepoint - 0x10000;
@@ -1841,10 +1868,12 @@ function u32 StrEncodeWide(u16* dst, u32 codepoint)
         dst[1] = (cpj & 0x3FF) + 0xDC00;
         size = 2;
     }
+    
     else
     {
-        dst[0] = InvalidRune;
-        size = 1;
+        StaticAssert(InvalidRune < 0x10FFFF);
+        codepoint = InvalidRune;
+        goto BMP;
     }
     return size;
 }
@@ -1854,8 +1883,8 @@ function u32 StrEncodeWide(u16* dst, u32 codepoint)
 
 function String32 Str32FromStr(Arena* arena, String str)
 {
-    u64 expectedSize = str.size;
-    u32* memory = PushArrayNZ(arena, u32, expectedSize + 1);
+    u64 maxSize = str.size;
+    u32* memory = PushArrayNZ(arena, u32, maxSize + 1);
     
     u32* dptr = memory;
     Str8Stream(str, ptr, opl)
@@ -1871,14 +1900,14 @@ function String32 Str32FromStr(Arena* arena, String str)
     *dptr = 0;
     
     u64 size = (u64)(dptr - memory);
-    ArenaPop(arena, (expectedSize - size) * sizeof(*memory));
+    ArenaPop(arena, (maxSize - size) * sizeof(*memory));
     return (String32){ memory, size };
 }
 
 function String16 Str16FromStr(Arena* arena, String str)
 {
-    u64 expectedSize = str.size;
-    u16* memory = PushArrayNZ(arena, u16, expectedSize + 1);
+    u64 maxSize = str.size;
+    u16* memory = PushArrayNZ(arena, u16, maxSize + 1);
     
     u16* dptr = memory;
     Str8Stream(str, ptr, opl)
@@ -1894,14 +1923,14 @@ function String16 Str16FromStr(Arena* arena, String str)
     *dptr = 0;
     
     u64 size = (u64)(dptr - memory);
-    ArenaPop(arena, (expectedSize - size) * sizeof(*memory));
+    ArenaPop(arena, (maxSize - size) * sizeof(*memory));
     return (String16){ memory, size };
 }
 
 function String StrFromStr32(Arena* arena, String32 str)
 {
-    u64 expectedSize = str.size*4;
-    u8* memory = PushArrayNZ(arena, u8, expectedSize + 1);
+    u64 maxSize = str.size*4;
+    u8* memory = PushArrayNZ(arena, u8, maxSize + 1);
     
     u8* dptr = memory;
     Str32Stream(str, ptr, opl)
@@ -1913,27 +1942,29 @@ function String StrFromStr32(Arena* arena, String32 str)
     *dptr = 0;
     
     u64 size = (u64)(dptr - memory);
-    ArenaPop(arena, (expectedSize - size) * sizeof(*memory));
+    ArenaPop(arena, (maxSize - size) * sizeof(*memory));
     return Str(memory, size);
 }
 
 function String StrFromStr16(Arena* arena, String16 str)
 {
-    u64 expectedSize = str.size*2;
-    u8* memory = PushArrayNZ(arena, u8, expectedSize + 1);
+    // NOTE(long): UTF-16 starts to encode with 2 units at the same time UTF8 starts to encode with 4 (0x01000-0x10FFFF)
+    // This means that a single unit in UTF-16 can be converted to at most three units in UTF-8
+    u64 maxSize = str.size*3;
+    u8* memory = PushArrayNZ(arena, u8, maxSize + 1);
     
     u8* dptr = memory;
     Str16Stream(str, ptr, opl)
     {
         StringDecode decode = StrDecodeWide(ptr, (u64)(opl - ptr));
         u32 encSize = StrEncodeUTF8(dptr, decode.codepoint);
-        ptr++;
+        ptr += decode.size;
         dptr += encSize;
     }
     *dptr = 0;
     
     u64 size = (u64)(dptr - memory);
-    ArenaPop(arena, (expectedSize - size) * sizeof(*memory));
+    ArenaPop(arena, (maxSize - size) * sizeof(*memory));
     return Str(memory, size);
 }
 
@@ -2140,7 +2171,7 @@ function String StrFromI64(Arena* arena, i64 x, u32 radix)
 
 //~ long: CLI Parsing
 
-function CmdLine CmdLineFromStrList(Arena* arena, StringList* args)
+function CmdLine CmdLineFromList(Arena* arena, StringList* args)
 {
     // NOTE(long): If the user types: myprogram.exe --foo -- a- // \' "abc, cde" /, \:a,b"d::"a
     // Then args will be: `myprogram.exe`, `--foo`, `--`, `a-`, `//`, `\'`, `abc, cde`, `\:a,bd::a`
@@ -2150,30 +2181,38 @@ function CmdLine CmdLineFromStrList(Arena* arena, StringList* args)
     CmdLine result = {0};
     result.programName = args->first->string;
     
-    b32 pashthrough = 0;
-    for (StringNode* node = args->first->next,* next = 0; node != 0; node = next)
+    b32 passthrough = 0, isOptArg = 0;
+    for (StringNode* node = args->first->next; node != 0; node = node->next)
     {
-        next = node->next;
+        Assert(!(passthrough && isOptArg));
         String str = node->string;
+        // NOTE(long): If the user types in "", the OS will turn it into an empty string.
+        // I just skip it for now, but this can be trivially handled if needed.
+        if (str.size == 0)
+            continue;
         
-        // NOTE(long): `--foo`, `-bar`, and `/baz` are options while `abc` is an input
-        // All arguments after a single "--" (with no trailing string) will be considered as inputs.
-        // So "myprogram.exe --a /b foo -- abc --def" will have 2 options (a, b) and 3 inputs (foo, abc, --def)
-        b32 isOption = !pashthrough && node->string.size > 0;
+        b32 isOption = !passthrough && str.size > 0;
         if (isOption)
         {
-            char c = node->string.str[0];
-            b32 isDashDash = StrCompare(node->string, StrLit("--"), MatchStr_RightSloppy);
-            if (isDashDash)
+            u8 c = str.str[0];
+            
+            // NOTE(long): "myprogram.exe abc --foo -bar def /baz 123 456"
+            // `--foo`, `-bar`, and `/baz` are options while `abc` is an input
+            // `def` is an argument for option `-bar`, while `123` and `456` are arguments for option `/baz`
+            // All arguments after a single "--" (with no trailing string) will be considered as inputs.
+            // So "myprogram.exe --a /b foo -- abc --def" will have 2 options (a, b) and 2 inputs (abc, --def)
+            // `foo` will be an argument for `/b`
+            if (StrCompare(str, StrLit("--"), MatchStr_RightSloppy))
             {
-                if (node->string.size == 2)
+                if (str.size == 2)
                 {
-                    pashthrough = 1;
+                    passthrough = 1;
+                    isOptArg = 0;
                     continue;
                 }
-                
                 str = StrSkip(str, 2);
             }
+            
             else if (c == '-' || c == '/')
                 str = StrSkip(str, 1);
             else
@@ -2182,53 +2221,49 @@ function CmdLine CmdLineFromStrList(Arena* arena, StringList* args)
         
         if (isOption)
         {
-            b32 hasArgs = 0;
-            String optName, argStr;
+            isOptArg = 0;
+            i64 argPos = StrFindArr(str, StrLit(":="), 0);
+            String optName = StrPrefix(str, argPos);
+            StringList optArgs = {0};
+            
+            if (argPos >= 0)
             {
-                i64 argPos = StrFindArr(str, StrLit(":="), 0);
-                hasArgs = argPos >= 0;
-                optName = StrPrefix(str, argPos);
-                argStr  = StrSkip(str, argPos+1);
+                String argStr = StrSkip(str, argPos+1);
+                isOptArg = argStr.size == 0 || argStr.str[argStr.size-1] == ',';
+                StringList argList = StrSplit(arena, argStr, StrLit(","), 0);
+                StrListConcatIP(&optArgs, &argList);
             }
             
-            StringList optArgs = {0};
-            if (hasArgs)
-            {
-                for (StringNode* n = node; n; n = n->next)
-                {
-                    next = n->next;
-                    
-                    StringList argList = StrSplit(arena, n == node ? argStr : n->string, StrLit(","), 0);
-                    for (StringNode* subArg = argList.first; subArg; subArg = subArg->next)
-                        StrListPush(arena, &optArgs, subArg->string);
-                    
-                    b32 last_is_comma = n->string.size && n->string.str[n->string.size - 1] == ',';
-                    b32 next_is_arg   = n == node && argStr.size == 0;
-                    if (!last_is_comma && !next_is_arg)
-                        break;
-                }
-            }
             else if (StrCompare(StrPostfix(str, 2), StrLit("--"), 0))
             {
                 StrListPush(arena, &optArgs, StrLit("--"));
                 optName = StrChop(str, 2);
             }
+            
             else if (StrCompare(StrPostfix(str, 1), StrLit("-"), 0))
             {
                 StrListPush(arena, &optArgs, StrLit("-"));
                 optName = StrChop(str, 1);
             }
             
-            CmdLinePushOpt(arena, &result.opts, optName)->values = optArgs;
+            CmdLineOpt* option = CmdOptPush(arena, &result.opts, optName);
+            option->values = optArgs;
         }
-        else
-            StrListPush(arena, &result.inputs, node->string);
+        
+        else if (isOptArg)
+        {
+            StringList optArgs = StrSplit(arena, str, StrLit(","), 0);
+            StrListConcatIP(&result.opts.last->values, &optArgs);
+            isOptArg = str.str[str.size-1] == ',';
+        }
+        
+        else StrListPush(arena, &result.inputs, str);
     }
     
     return result;
 }
 
-function CmdLineOpt* CmdLinePushOpt(Arena* arena, CmdLineOptList* list, String name)
+function CmdLineOpt* CmdOptPush(Arena* arena, CmdLineOptList* list, String name)
 {
     CmdLineOpt* opt = PushStruct(arena, CmdLineOpt);
     opt->name = name;
@@ -2237,12 +2272,24 @@ function CmdLineOpt* CmdLinePushOpt(Arena* arena, CmdLineOptList* list, String n
     return opt;
 }
 
-function CmdLineOpt* CmdLineOptFromStr(CmdLine* cmd, String name, StringMatchFlags flags)
+function CmdLineOpt* CmdOptLookup(CmdLine* cmd, String name, StringMatchFlags flags)
 {
     for (CmdLineOpt* opt = cmd->opts.first; opt; opt = opt->next)
         if (StrCompare(opt->name, name, flags))
             return opt;
     return 0;
+}
+
+function b32 CmdHasOpt(CmdLine* cmd, String name)
+{
+    CmdLineOpt* opt = CmdOptLookup(cmd, name, 0);
+    return opt != 0;
+}
+
+function b32 CmdHasArg(CmdLine* cmd, String name)
+{
+    CmdLineOpt* opt = CmdOptLookup(cmd, name, 0);
+    return opt->values.nodeCount != 0;
 }
 
 //- long: C-Syntax Functions
@@ -3236,52 +3283,71 @@ struct W32FileIter
     W32FileIter* next;
     String path;
     HANDLE handle;
-    WIN32_FIND_DATAW findData; // WIN32_FIND_DATAA is 320 bytes while WIN32_FIND_DATAW is 592 bytes
+    u8* buffer;
+    FILE_ID_EXTD_DIR_INFO* info;
 };
 StaticAssert(ArrayCount(MemberOf(OSFileIter, v)) >= sizeof(W32FileIter), w32fileiter);
-
 #define W32GetIter(iter) ((W32FileIter*)(iter)->v)
 
-function void W32FileIterInit(W32FileIter* iter, String path)
+#define FILE_ITER_BUFFER_SIZE KB(64)
+function b32 W32FileIterInit(Arena* arena, W32FileIter* iter, String path)
 {
-    ScratchBlock(scratch)
+    b32 result = 0;
+    W32WidePath(wpath, path, iter->handle = CreateFileW(wpath.str, FILE_LIST_DIRECTORY,
+                                                        FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+                                                        NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0));
+    iter->path = path;
+    
+    if (ALWAYS(iter->handle != INVALID_HANDLE_VALUE))
     {
-        iter->path = path;
-        String16 wpath = Str16FromStr(scratch, StrJoin3(scratch, path, StrLit("\\*")));
-        iter->handle = FindFirstFileW(wpath.str, &iter->findData);
-        Assert(iter->handle != INVALID_HANDLE_VALUE);
+        TempArena temp = TempBegin(arena);
+        iter->buffer = PushArray(arena, u8, FILE_ITER_BUFFER_SIZE);
+        if (ALWAYS(GetFileInformationByHandleEx(iter->handle, FileIdExtdDirectoryRestartInfo,
+                                                iter->buffer, FILE_ITER_BUFFER_SIZE)))
+        {
+            result = 1;
+            iter->info = (FILE_ID_EXTD_DIR_INFO*)iter->buffer;
+        }
+        else TempEnd(temp);
     }
+    
+    return result;
+}
+
+function OSFileIter FileIterInit(Arena* arena, String path, OSFileIterFlags flags)
+{
+    OSFileIter result = { .flags = flags };
+    W32FileIterInit(arena, W32GetIter(&result), path);
+    return result;
 }
 
 function void W32FileIterEnd(W32FileIter* iter)
 {
     if (iter->handle != 0 && iter->handle != INVALID_HANDLE_VALUE)
-        FindClose(iter->handle);
+        CloseHandle(iter->handle);
 }
 
-function OSFileIter FileIterInit(String path, OSFileIterFlags flags)
+function void FileIterEnd(OSFileIter* iter)
 {
-    OSFileIter result = { .flags = flags };
-    W32FileIterInit(W32GetIter(&result), path);
-    return result;
+    W32FileIterEnd(W32GetIter(iter));
 }
 
 function b32 FileIterNext(Arena* arena, OSFileIter* iter)
 {
-    b32 result = false;
+    b32 result = 0;
     W32FileIter* w32Iter = W32GetIter(iter);
     
     if (w32Iter->handle != 0 && w32Iter->handle != INVALID_HANDLE_VALUE)
     {
         while (!(iter->flags & FileIterFlag_Done))
         {
-            WIN32_FIND_DATAW* data = &w32Iter->findData;
-            DWORD attributes = data->dwFileAttributes;
-            WCHAR* fileName = data->cFileName;
-            String subdir = {0};
+            FILE_ID_EXTD_DIR_INFO* info = w32Iter->info;
+            ULONG attributes = info->FileAttributes;
+            String16 fileName = Str16(info->FileName, info->FileNameLength/2);
             
             // Check for . and ..
-            b32 emit = fileName[0] != '.' || (fileName[1] != 0 && !(fileName[1] == '.' && fileName[2] == 0));
+            b32 emit = fileName.str[0] != '.' || (fileName.size > 1 && !(fileName.str[1] == '.' && fileName.size == 2));
+            b32 recursive = 0;
             
             if (emit)
             {
@@ -3290,65 +3356,82 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter)
                 
                 else if (attributes & FILE_ATTRIBUTE_DIRECTORY)
                 {
-                    if (iter->flags & FileIterFlag_Recursive)
-                    {
-                        // NOTE(long): Must do this before FindNextFile because it will overwrite fileName
-                        // Also, StrPushf doesn't work with WCHAR
-                        String16 name16 = Str16FromWStr(fileName);
-                        String name = StrFromStr16(arena, name16);
-                        subdir = StrPushf(arena, "%.*s\\%.*s", StrExpand(w32Iter->path), StrExpand(name));
-                    }
-                    
-                    if (iter->flags & FileIterFlag_SkipFolders)
-                        emit = 0;
+                    recursive = iter->flags & FileIterFlag_Recursive;
+                    emit = !(iter->flags & FileIterFlag_SkipFolders);
                 }
                 
                 else if (iter->flags & FileIterFlag_SkipFiles)
                     emit = 0;
             }
             
-            // Do the emit if we saved one earlier.
             // NOTE(long): Must do this before FindNextFile because it will overwrite data and fileName
+            if (emit || recursive)
+            {
+                iter->name = StrFromStr16(arena, fileName);
+                iter->path = w32Iter->path;
+            }
+            
             if (emit)
             {
-                result = true;
-                iter->path = w32Iter->path;
-                String16 name = Str16FromWStr(fileName);
-                iter->name = StrFromStr16(arena, name);
-                
                 iter->props = (FileProperties)
                 {
-                    .size = ((u64)data->nFileSizeHigh << 32) | (u64)data->nFileSizeLow,
+                    .size = ((u64)info->EndOfFile.HighPart << 32) | info->EndOfFile.LowPart,
                     .flags = W32FilePropertyFlagsFromAttributes(attributes),
                     .access = W32AccessFromAttributes(attributes),
-                    .createTime = W32DenseTimeFromFileTime(&data->ftCreationTime),
-                    .modifyTime = W32DenseTimeFromFileTime(&data->ftLastWriteTime),
+                    
+                    // TODO(long): Does type-punning work?
+                    .createTime = W32DenseTimeFromFileTime((FILETIME*)&info->CreationTime),
+                    .modifyTime = W32DenseTimeFromFileTime((FILETIME*)&info->LastWriteTime),
                 };
             }
             
-            // Increment the iter
-            b32 done = !FindNextFileW(w32Iter->handle, &w32Iter->findData);
-            
             // Recursively iterate all the files and subfolders
-            if (subdir.size)
+            if (recursive)
             {
+                TempArena temp = TempBegin(arena);
                 W32FileIter* next = PushStruct(arena, W32FileIter);
                 *next = *w32Iter;
-                W32FileIterInit(w32Iter, subdir);
                 w32Iter->next = next;
-            }
-            
-            // Exit
-            if (done)
-            {
-                if (w32Iter->next)
+                w32Iter->buffer = 0;
+                
+                String subdir = StrPushf(arena, "%.*s\\%.*s", StrExpand(iter->path), StrExpand(iter->name));
+                if (!W32FileIterInit(arena, w32Iter, subdir))
                 {
-                    W32FileIterEnd(w32Iter);
-                    *w32Iter = *w32Iter->next;
+                    *w32Iter = *next;
+                    TempEnd(temp);
+                    goto REP;
                 }
-                else iter->flags |= FileIterFlag_Done;
             }
             
+            // Increment the iter
+            else
+            {
+                REP:
+                if (w32Iter->info->NextEntryOffset != 0) // Go to next file
+                    w32Iter->info = (FILE_ID_EXTD_DIR_INFO*)((u8*)w32Iter->info+w32Iter->info->NextEntryOffset);
+                
+                else
+                {
+                    w32Iter->info = (FILE_ID_EXTD_DIR_INFO*)w32Iter->buffer;
+                    // Check whether there are more files to fetch.
+                    if (!GetFileInformationByHandleEx(w32Iter->handle, FileIdExtdDirectoryInfo,
+                                                      w32Iter->buffer, FILE_ITER_BUFFER_SIZE))
+                    {
+                        ALWAYS(GetLastError() == ERROR_NO_MORE_FILES);
+                        
+                        if (w32Iter->next)
+                        {
+                            // Pop and repeat
+                            W32FileIterEnd(w32Iter);
+                            *w32Iter = *w32Iter->next;
+                            goto REP;
+                        }
+                        else iter->flags |= FileIterFlag_Done;
+                    }
+                }
+            }
+            
+            result |= emit;
             if (emit)
                 break;
         }
@@ -3356,11 +3439,7 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter)
     
     return result;
 }
-
-function void FileIterEnd(OSFileIter* iter)
-{
-    W32FileIterEnd(W32GetIter(iter));
-}
+#undef FILE_ITER_BUFFER_SIZE
 
 //~ long: Libraries
 

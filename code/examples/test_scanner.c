@@ -432,6 +432,55 @@ int main(void)
     }
     
     {
+        String data = OSReadFile(scratch, StrLit("code/examples/test_parser.c"));
+        TokenArray array = CL_TokenArrayFromStr(scratch, data);
+        CL_ParseResult parse = CL_ParseFromTokens(scratch, data, array);
+        
+        CL_Node* node = parse.root->body.first;
+        u64 indent = 0;
+        
+        REP:
+        Outf("%*s%.*s\n", indent * 2, "", StrExpand(node->string));
+        for (CL_Node* base = node->reference; !CL_IsNil(base); base = base->reference)
+        {
+            Outf("%.*s", StrExpand(base->string));
+            
+            for (CL_Node* tag = base->tags.first; !CL_IsNil(tag); tag = tag->next)
+            {
+                if (CL_IsNil(tag->prev))
+                    Outf(" (");
+                Outf("%.*s", StrExpand(tag->string));
+                Outf(CL_IsNil(tag->next) ? ")" : ", ");
+            }
+            
+            Outf(CL_IsNil(base->reference) ? "\n" : " -> ");
+        }
+        
+        CL_Node* old = node;
+        if (!CL_IsNil(node->body.first))
+        {
+            node = node->body.first;
+            indent++;
+        }
+        else if (!CL_IsNil(node->next))
+        {
+            node = node->next;
+        }
+        else for (CL_Node* parent = node->parent; !CL_IsNil(parent); parent = parent->parent)
+        {
+            indent--;
+            if (!CL_IsNil(parent->next))
+            {
+                node = parent->next;
+                break;
+            }
+        }
+        
+        if (node != old)
+            goto REP;
+    }
+    
+    {
         // int**** a[1][2][3];
         // float** (**(*b[1])[2][3])[4];
         // char (*(*c[3])())[5];
@@ -447,6 +496,11 @@ int main(void)
         // int specifier1InArray(int [static 10]);
         // int specifier2InArray(int[const volatile]);
         // _Atomic unsigned long long int const volatile *restrict const foo[10];
+        
+        // NOTE(long): Ambiguous
+        // foo * bar;
+        // foo(bar); foo(*bar); foo(*bar[5]);
+        // foo (*(*bar)[5])(baz);
         
         String text = StrLit("struct A { int a; int b; };\n"
                              "struct B"
@@ -495,7 +549,7 @@ int main(void)
                              );
         text = OSReadFile(scratch, StrLit("code/Base.h"));
         
-#if 1
+#if 0
         MD_Node* root = MD_ParseStrC(scratch, text);
         MD_DebugTree(root);
         
@@ -517,7 +571,9 @@ int main(void)
                 Outf("StructLit(%.*s, %llu)\n{\n%.*s};\n\n", StrExpand(node->string), members.nodeCount, StrExpand(body));
             }
         }
-#else
+#endif
+        
+#if 0
         CL_Node* root = CL_MDParseText(scratch, StrLit("test"), text);
         for (CL_Node* node = root->first; node != &cl_nilNode; node = node->next)
         {

@@ -27,42 +27,99 @@ enum
 
 //~ long: Node Types
 
-typedef enum CL_NodeType CL_NodeType;
-enum CL_NodeType
-{
-    CL_NodeType_Nil,
-    
-    CL_NodeType_Struct,
-    CL_NodeType_Enum,
-    CL_NodeType_Union,
-    CL_NodeType_Typedef,
-    CL_NodeType_Proc,
-    
-    CL_NodeType_Decl,
-    CL_NodeType_Value,
-    
-    CL_NodeType_Tag,
-    CL_NodeType_Body,
-};
+typedef Flags64 CL_NodeFlags;
+
+#define CL_NodeFlag_File  (1ULL << 0)
+#define CL_NodeFlag_Error (1ULL << 1)
+
+#define CL_NodeFlag_Decl (1ULL << 4)
+#define CL_NodeFlag_Expr (1ULL << 5)
+#define CL_NodeFlag_Stmt (1ULL << 6)
+//#define CL_NodeFlag_Macro (1ULL << 7)
+
+#define CL_NodeFlag_Brack (1ULL <<  8)
+#define CL_NodeFlag_Brace (1ULL <<  9)
+#define CL_NodeFlag_Paren (1ULL << 10)
+
+#define CL_NodeFlag_Identifier (1ULL << 11)
+#define CL_NodeFlag_Numeric    (1ULL << 12)
+#define CL_NodeFlag_CharLit    (1ULL << 13)
+#define CL_NodeFlag_String     (1ULL << 14)
+#define CL_NodeFlag_Symbol     (1ULL << 15)
+
+#define CL_NodeFlags_TypeKeyword (0x3 << 16)
+#define CL_NodeFlag_Struct (1ULL << 16)
+#define CL_NodeFlag_Union  (1ULL << 17)
+#define CL_NodeFlag_Enum   (1ULL << 18)
+
+#define CL_NodeFlags_Leaf    (0x7F << 19)
+#define CL_NodeFlag_Void     (1ULL << 19)
+#define CL_NodeFlag_Char     (1ULL << 20)
+#define CL_NodeFlag_Short    (1ULL << 21)
+#define CL_NodeFlag_Int      (1ULL << 22)
+#define CL_NodeFlag_Long     (1ULL << 23)
+#define CL_NodeFlag_Float    (1ULL << 24)
+#define CL_NodeFlag_Double   (1ULL << 25)
+
+#define CL_NodeFlag_Signed   (1ULL << 26)
+#define CL_NodeFlag_Unsigned (1ULL << 27)
+//#define CL_NodeFlag_Complex (1ULL << 28)
+//#define CL_NodeFlag_Imaginary (1ULL << 29)
+
+#define CL_NodeFlags_Qualifier (0xF << 32)
+#define CL_NodeFlag_Const    (1ULL << 32)
+#define CL_NodeFlag_Volatile (1ULL << 33)
+#define CL_NodeFlag_Restrict (1ULL << 34)
+#define CL_NodeFlag_Atomic   (1ULL << 35)
+
+#define CL_NodeFlags_Specifier (0x2FF << 36)
+#define CL_NodeFlag_Typedef     (1ULL << 36)
+#define CL_NodeFlag_Constexpr   (1ULL << 37)
+#define CL_NodeFlag_Auto        (1ULL << 38)
+#define CL_NodeFlag_Register    (1ULL << 39)
+#define CL_NodeFlag_Static      (1ULL << 40)
+#define CL_NodeFlag_Extern      (1ULL << 41)
+#define CL_NodeFlag_Inline      (1ULL << 42)
+#define CL_NodeFlag_ThreadLocal (1ULL << 43)
+#define CL_NodeFlag_Noreturn    (1ULL << 44)
+#define CL_NodeFlag_Alignas     (1ULL << 45)
 
 typedef struct CL_Node CL_Node;
+typedef struct CL_NodeList CL_NodeList;
+
+struct CL_NodeList
+{
+    CL_Node* first;
+    CL_Node* last;
+    u64 count;
+};
+
 struct CL_Node
 {
     CL_Node* next;
     CL_Node* prev;
     CL_Node* parent;
-    CL_Node* first;
-    CL_Node* last;
+    CL_Node* reference;
     
-    MD_Node* base;
-    MD_Node* name;
-    MD_Node* body;
-    CL_NodeType type;
+    CL_NodeList tags;
+    CL_NodeList args;
+    CL_NodeList body;
+    
+    String string;
+    CL_NodeFlags flags;
+    u64 offset;
 };
 
 CL_Node cl_nilNode = {
-    &cl_nilNode, &cl_nilNode, &cl_nilNode, &cl_nilNode, &cl_nilNode,
-    &md_nil_node, &md_nil_node, &md_nil_node,
+    &cl_nilNode, &cl_nilNode, &cl_nilNode, &cl_nilNode,
+    { &cl_nilNode, &cl_nilNode, 0 }, { &cl_nilNode, &cl_nilNode, 0 }, { &cl_nilNode, &cl_nilNode, 0 },
+};
+
+typedef struct CL_ParseResult CL_ParseResult;
+struct CL_ParseResult
+{
+    CL_Node* root;
+    CL_NodeList errors;
 };
 
 //~ long: Meta Info Types
@@ -357,9 +414,8 @@ EnumLit(OS, 5)
     EnumValue(OS, OS_Count),
 };
 
-EnumLit(Month, 14)
+EnumLit(Month, 13)
 {
-    EnumValue(Month, Month_None),
     EnumValue(Month, Month_Jan),
     EnumValue(Month, Month_Feb),
     EnumValue(Month, Month_Mar),
@@ -375,9 +431,8 @@ EnumLit(Month, 14)
     EnumValue(Month, Month_Count),
 };
 
-EnumLit(Day, 9)
+EnumLit(Day, 12)
 {
-    EnumValue(Day, Day_None),
     EnumValue(Day, Day_Sunday),
     EnumValue(Day, Day_Monday),
     EnumValue(Day, Day_Tuesday),

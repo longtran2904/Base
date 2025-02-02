@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 #define LONG_TEST_IMPLEMENTATION
-#define LT_ASSERT(x) Assert(x)
+#define LT_ASSERT(x) Stmnt(if (IsDebuggerPresent() && !(x)) AssertBreak();)
 #include "LongTest.h"
 
 global i32 snapshot;
@@ -76,12 +76,11 @@ int main(void)
         TestResult(StrCompare(GetEnumStr(OS,             CURRENT_OS_NUMBER), StrLit(      CURRENT_OS_NAME), 0));
         TestResult(StrCompare(GetEnumStr(Arch,         CURRENT_ARCH_NUMBER), StrLit(    CURRENT_ARCH_NAME), 0));
         
-#define CheckDefinedArray(arr, size) StaticAssert(ArrayCount(arr) == (size) + 1)
-        CheckDefinedArray(Day_names, 7);
-        CheckDefinedArray(Month_names, 12);
-        CheckDefinedArray(Compiler_names, 3);
-        CheckDefinedArray(Arch_names, 4);
-        CheckDefinedArray(OS_names, 3);
+        StaticAssert(ArrayCount(Day_names) == 7);
+        StaticAssert(ArrayCount(Month_names) == 12);
+        StaticAssert(ArrayCount(Compiler_names) == 3 + 1);
+        StaticAssert(ArrayCount(Arch_names) == 4 + 1);
+        StaticAssert(ArrayCount(OS_names) == 3 + 1);
         
         i32 foo[100];
         for (i32 i = 0; i < ArrayCount(foo); ++i)
@@ -518,6 +517,81 @@ int main(void)
         }
     }
     
+    TEST("CLI Parsing")
+    {
+        // abc --foo -bar def /baz 123 456
+        StringList args1 = StrList(arena, ArrayExpand(String, StrLit("myprogram.exe"),
+                                                      StrLit("abc"), StrLit("--foo"), StrLit("-bar"),
+                                                      StrLit("def"), StrLit("/baz"), StrLit("123"), StrLit("456")));
+        CmdLine cmd = CmdLineFromList(arena, &args1);
+        TestResult(StrCompare(cmd.programName, StrLit("myprogram.exe"), 0));
+        
+        TestResult(StrCompare(cmd.inputs.first->string, StrLit("abc"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->string, StrLit("def"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->next->string, StrLit("123"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->next->next->string, StrLit("456"), 0));
+        
+        TestResult(StrCompare(cmd.opts.first->name, StrLit("foo"), 0));
+        TestResult(StrCompare(cmd.opts.first->next->name, StrLit("bar"), 0));
+        TestResult(StrCompare(cmd.opts.first->next->next->name, StrLit("baz"), 0));
+        
+        // --a /b foo -- abc --def
+        StringList args2 = StrList(arena, ArrayExpand(String, StrLit("myprogram"),
+                                                      StrLit("--a"), StrLit("/b"), StrLit("foo"),
+                                                      StrLit("--"), StrLit("abc"), StrLit("--def")));
+        cmd = CmdLineFromList(arena, &args2);
+        TestResult(StrCompare(cmd.programName, StrLit("myprogram"), 0));
+        
+        TestResult(StrCompare(cmd.inputs.first->string, StrLit("foo"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->string, StrLit("abc"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->next->string, StrLit("--def"), 0));
+        
+        TestResult(StrCompare(cmd.opts.first->name, StrLit("a"), 0));
+        TestResult(StrCompare(cmd.opts.first->next->name, StrLit("b"), 0));
+        
+        // --foo -- a- // \' "abc, cde" /, \:a,b"d::"a
+        StringList args3 = StrList(arena, ArrayExpand(String, StrLit("build\\myprogram.exe"),
+                                                      StrLit("--foo"), StrLit("--"), StrLit("a-"),
+                                                      StrLit("//"), StrLit("\\'"), StrLit("abc, cde"),
+                                                      StrLit("/,"), StrLit("\\:a,bd::a")));
+        cmd = CmdLineFromList(arena, &args3);
+        TestResult(StrCompare(cmd.programName, StrLit("build\\myprogram.exe"), 0));
+        
+        TestResult(StrCompare(cmd.inputs.first->string, StrLit("a-"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->string, StrLit("//"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->next->string, StrLit("\\'"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->next->next->string, StrLit("abc, cde"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->next->next->next->string, StrLit("/,"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->next->next->next->next->string, StrLit("\\:a,bd::a"), 0));
+        
+        TestResult(StrCompare(cmd.opts.first->name, StrLit("foo"), 0));
+        
+        // -arg: ,,,, , abc,def, 1, 2, 3 bar -a ,,, ,, --b=123, /456
+        StringList args4 = StrList(arena, ArrayExpand(String, StrLit("Path/To/My/Program/myprogram"),
+                                                      StrLit("-arg:"), StrLit(",,,,"), StrLit(","),
+                                                      StrLit(","), StrLit("abc,def,"), StrLit("1,"), StrLit("2,"),
+                                                      StrLit("3"), StrLit("bar"), StrLit("-a"), StrLit(",,,"),
+                                                      StrLit(",,"), StrLit("--b=123,"), StrLit("/456")));
+        cmd = CmdLineFromList(arena, &args4);
+        TestResult(StrCompare(cmd.programName, StrLit("Path/To/My/Program/myprogram"), 0));
+        
+        TestResult(StrCompare(cmd.inputs.first->string, StrLit("bar"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->string, StrLit(",,,"), 0));
+        TestResult(StrCompare(cmd.inputs.first->next->next->string, StrLit(",,"), 0));
+        
+        TestResult(StrCompare(cmd.opts.first->name, StrLit("arg"), 0));
+        TestResult(StrCompare(cmd.opts.first->next->name, StrLit("a"), 0));
+        TestResult(StrCompare(cmd.opts.first->next->next->name, StrLit("b"), 0));
+        TestResult(StrCompare(cmd.opts.first->next->next->next->name, StrLit("456"), 0));
+        
+        TestResult(StrCompare(cmd.opts.first->values.first->string, StrLit("abc"), 0));
+        TestResult(StrCompare(cmd.opts.first->values.first->next->string, StrLit("def"), 0));
+        TestResult(StrCompare(cmd.opts.first->values.first->next->next->string, StrLit("1"), 0));
+        TestResult(StrCompare(cmd.opts.first->values.first->next->next->next->string, StrLit("2"), 0));
+        TestResult(StrCompare(cmd.opts.first->values.first->next->next->next->next->string, StrLit("3"), 0));
+        TestResult(StrCompare(CmdOptLookup(&cmd, StrLit("b"), 0)->values.first->string, StrLit("123"), 0));
+    }
+    
     TEST("Str -> I64")
     {
         TestResult(I64FromStr(StrLit(            "28"), 10, 0) == 28);
@@ -853,24 +927,6 @@ int main(void)
     
     TEST("Timer")
     {
-#if 0
-        for (u64 i = 0; i < 15; ++i)
-        {
-            u64 time = OSNowMS();
-            DateTime dt = OSNowUniTime();
-            
-            RNG rng;
-            OSGetEntropy(&rng, sizeof(rng));
-            i64 sleep = RandomRangeI32(rng, 20, 200);
-            OSSleepMS((u32)sleep);
-            u64 now = OSNowMS();
-            DateTime dtNow = OSNowUniTime();
-            TestResult(AbsI64((i64)(now - time) - sleep) <= ClampBot(sleep / 20, 4));
-            TestResult(dtNow.min == dt.min && dtNow.hour == dt.hour &&
-                       dtNow.day == dt.day && dtNow.mon == dt.mon && dtNow.year == dt.year);
-        }
-#endif
-        
         DateTime dates[] =
         {
             { .min = 24, .hour = 10, .day = 31, .mon =  1, .year = 2024, },

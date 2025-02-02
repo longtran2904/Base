@@ -43,6 +43,7 @@ if "%clang%"=="1" (
 
 	:: --- compile options ---
 	set opts=-fno-exceptions -fno-cxx-exceptions -fno-async-exceptions -fno-rtti -fno-rtti-data -g3 -fms-compatibility -fms-extensions
+	set opts=!opts! -march=native
 	if "%asan%"=="1" set opts=!opts! -fsanitize=address
 	if "%release%"=="1" set opts=!opts! -O2
 
@@ -69,6 +70,7 @@ if "%msvc%"=="1" (
 
 	:: --- compile options ---
 	set opts=/FC /GR- /EHa- /nologo /Zi
+	set opts=!opts! /arch:AVX2  & :: MSVC doesn't have an equivalent to -march=native
 	if "%asan%"=="1" set opts=!opts! /fsanitize=address /JMC
 	if "%release%"=="1" set opts=!opts! /O2
 
@@ -94,14 +96,16 @@ del *.pdb > NUL 2> NUL
 del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
 
+%compile% %opts% %warns% %code%\code\examples\lloc.c         %out%lloc.exe         %linker% %links%
 %compile% %opts% %warns% %code%\code\examples\test_scanner.c %out%test_scanner.exe %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\test_base.c    %out%test_base.exe    %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\test_base.c    %out%test_base.exe    %linker% %links%
 %compile% %opts% %warns% %code%\code\examples\demo_gfx.c     %out%demo_gfx.exe     %linker% %links%
 %compile% %opts% %warns% %code%\code\examples\demo.c         %out%demo.exe         %linker% %links%
 %compile% %opts% %warns% %code%\code\Metamain.c              %out%metagen.exe      %linker% %links%
 %compile% %opts% %warns% %code%\code\examples\TestDLL.c      %out%TestDLL.dll %dll% %linker% %links%
 
-:: %compile% %opts% %warns% %code%\code\examples\glob.c      %out%glob.exe      %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\print_args.c %out%args.exe %linker% %links%
+%compile% %opts% %warns% %code%\code\examples\glob.c %out%glob.exe      %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\test_glob.c %linker% %links%
 :: %compile% %opts% %warns% %code%\code\retired\D3D11_Example.c %out%d3d11_exp %linker% %links%
 :: %compile% %opts% %warns% %code%\code\retired\LongCompressor.c %out%compressor %linker% %links%

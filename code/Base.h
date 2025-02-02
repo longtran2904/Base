@@ -126,14 +126,27 @@
 
 // NOTE(long): While GCC and Clang have predefined macros for SSE, MSVC doesn't
 // https://stackoverflow.com/questions/18563978/detect-the-availability-of-sse-sse2-instruction-set-in-visual-studio
-#if ARCH_X64
-#define __SSE2__ //SSE2 x64
+// MSVC also doesn't have a way to check for SSE3/SSSE3/SSE4.1/SSE4.2 but if you have AVX then you also have them
+#if __AVX__
+#define __SSE3__ 1
+#define __SSSE3__ 1
+#define __SSE4_1__ 1
+#define __SSE4_2__ 1
+#elif ARCH_X64
+#define __SSE2__ 1 //SSE2 x64
 #elif _M_IX86_FP == 2
-#define __SSE2__ //SSE2 x32
+#define __SSE2__ 1 //SSE2 x32
 #elif _M_IX86_FP == 1
-#define __SSE__  //SSE x32
+#define __SSE__ 1 //SSE x32
 #else
 #error You must have at least SSE1
+#endif
+
+#if __SSE3__
+#define __SSE2__ 1
+#endif
+#if __SSE2__
+#define __SSE__ 1
 #endif
 
 #else // TODO(long): verify this works on clang and gcc
@@ -147,6 +160,13 @@
 #define ARCH_ARM64 1
 #else
 #error Missing ARCH detection
+#endif
+
+// NOTE(long): To get a list of all the predefined macros that the compiler uses, use this:
+// `echo | clang -dM -E -` (You can also add `-march=native`)
+// https://stackoverflow.com/questions/2658461/what-predefined-macro-can-i-use-to-detect-clang
+#ifndef __SSE__
+#error You must have at least SSE1
 #endif
 #endif
 
@@ -839,8 +859,6 @@ enum OS
 typedef enum Month Month;
 enum Month
 {
-    Month_None,
-    
     Month_Jan,
     Month_Feb,
     Month_Mar,
@@ -860,8 +878,6 @@ enum Month
 typedef enum Day Day;
 enum Day
 {
-    Day_None,
-    
     Day_Sunday,
     Day_Monday,
     Day_Tuesday,
@@ -1101,6 +1117,21 @@ struct StringDecode
 #define Str32Stream(str, ptr, opl) for (u32 *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
 
 //~ long: Math Functions
+
+//- long: Bit Functions
+// ctz/BitScanForward  - LSB -> MSB
+// clz/BitScanBackward - MSB -> LSB
+// Non-zero
+function u32 __clz32(u32 x);
+function u64 __clz64(u64 x);
+function u32 __ctz32(u32 x);
+function u64 __ctz64(u64 x);
+
+// Any
+function u32 clz32(u32 x);
+function u64 clz64(u64 x);
+function u32 ctz32(u32 x);
+function u64 ctz64(u64 x);
 
 //- long: Large Type Functions
 #define U128(v0, v1) ((u128){ v0, v1 })
@@ -1472,11 +1503,11 @@ function String StrSkipUntil(String str, String arr, StringMatchFlags flags);
 #define StrStartsWith(str, val, flags) (StrCompare( StrPrefix((str), (val).size), (val), (flags)))
 #define   StrEndsWith(str, val, flags) (StrCompare(StrPostfix((str), (val).size), (val), (flags)))
 
-#define StrFindChr(str, chr, flags) StrFindArr((str), StrLit(chr), (flags))
+#define StrFindChr(str, chr) StrFindArr((str), StrLit(chr), 0)
 #define StrContainsChr(str, chr) (StrFindArr((str), StrLit(chr), 0) > -1)
 #define StrContainsStr(str, val) (StrFindStr((str), (val), 0) > -1)
-#define StrContainsNums(str) (StrFindChr((str), Digits, 0) > -1)
-#define StrContainsChrs(str) (StrFindChr((str), Characters, 0) > -1)
+#define StrContainsNums(str) (StrFindChr((str), Digits) > -1)
+#define StrContainsChrs(str) (StrFindChr((str), Characters) > -1)
 
 //- long: Path Helpers
 
@@ -1577,9 +1608,13 @@ struct CmdLine
     CmdLineOptList opts;
 };
 
-function CmdLine CmdLineFromStrList(Arena* arena, StringList* args);
-function CmdLineOpt* CmdLinePushOpt(Arena* arena, CmdLineOptList* list, String name);
-function CmdLineOpt* CmdLineOptFromStr(CmdLine* cmd, String name, StringMatchFlags flags);
+// https://nullprogram.com/blog/2020/08/01/
+function CmdLine CmdLineFromList(Arena* arena, StringList* args);
+function CmdLineOpt* CmdOptPush(Arena* arena, CmdLineOptList* list, String name);
+function CmdLineOpt* CmdOptLookup(CmdLine* cmd, String name, StringMatchFlags flags);
+
+function b32 CmdHasOpt(CmdLine* cmd, String name); // -name -> true
+function b32 CmdHasArg(CmdLine* cmd, String name); // -name:arg -> true
 
 //~ long: Logs/Errors
 
@@ -1757,10 +1792,10 @@ struct OSFileIter
 
 // TODO(long): Make these work with volume
 // NOTE(long): The path passed in must have the same lifetime as OSFileIter
-function OSFileIter FileIterInit(String path, OSFileIterFlags flags);
+function OSFileIter FileIterInit(Arena* arena, String path, OSFileIterFlags flags);
 function b32 FileIterNext(Arena* arena, OSFileIter* iter);
 function void FileIterEnd(OSFileIter* iter);
-#define FileIterBlock(arena, iterName, path, ...) for (OSFileIter iterName = FileIterInit(path, (__VA_ARGS__ + 0)); \
+#define FileIterBlock(arena, iterName, path, ...) for (OSFileIter iterName = FileIterInit(arena, path, (__VA_ARGS__ + 0)); \
                                                        FileIterNext(arena, &iterName) ? 1 : (FileIterEnd(&iterName), 0);)
 // @CONSIDER(long): FileIterPush/Pop
 
