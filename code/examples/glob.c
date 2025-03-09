@@ -3,7 +3,7 @@
 #endif
 
 #if !GLOB_STATIC_LIB
-//#define ENABLE_ASSERT 0
+#define ENABLE_ASSERT 0
 #endif
 
 #include "Base.h"
@@ -519,6 +519,7 @@ int main(i32 argc, char** argv)
                     u64 now = OSNowMS();
                     DWORD start = WaitForMultipleObjects(ENTRY_COUNT, events, 0, INFINITE);
                     loadFileMs += OSNowMS() - now;
+                    
                     for (u64 i = start; i < ENTRY_COUNT; ++i)
                     {
                         OVERLAPPED* overlapped = readsOverlapped + i;

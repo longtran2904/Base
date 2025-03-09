@@ -50,6 +50,7 @@ function Marker* MarkerPushNumber(Scanner* scanner, i64 user, String exponents)
 
 function Marker* MarkerPushOpsCombine(Scanner* scanner, i64 user, String symbols, u8 postfixSymbol, b32 matchTwice)
 {
+    //c 2^5 + 2^13
     Marker* result = ScannerPushMark(scanner, user, symbols, MarkerFlag_MatchArray|MarkerFlag_PostfixStr);
     result->escapes[0] = postfixSymbol;
     if (matchTwice)
@@ -272,6 +273,7 @@ internal b32 MarkerMatchEnd(Scanner* scanner, Marker* marker, u64* outSize)
     return result;
 }
 
+// TODO(long): Clean this up
 function Token ScannerNext(Scanner* scanner)
 {
     Token result = {0};
@@ -292,8 +294,8 @@ function Token ScannerNext(Scanner* scanner)
             {
                 ScannerAdvance(scanner, size);
                 if (node->marker.flags & MarkerFlag_PostfixStr)
-                    if (!ScannerParse(scanner, StrFromChr(node->marker.escapes[0]), 0))
-                        goto CLEANUP;
+                    if (ScannerParse(scanner, StrFromChr(node->marker.escapes[0]), 0))
+                        result.flags |= ScanResultFlag_TokenHasPostfix;
                 
                 marker = &node->marker;
                 user = node->user;

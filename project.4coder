@@ -54,15 +54,20 @@ commands = {
         .win = "build\\demo_gfx.exe",
         .linux = "build/demo_gfx.exe",
         .mac = "build/demo_gfx.exe", },
+    .parser = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
+        .win = "build\\test_scanner.exe",
+        .linux = "build/test_scanner.exe",
+        .mac = "build/test_scanner.exe", },
 };
 fkey_command = {
     .F1 = "build",
     .F2 = "build_release",
     .F3 = "build_clang",
     .F4 = "build_clang_release",
-    .F5 = "test",
-    .F6 = "demo",
-    .F7 = "demo_gfx"
+    .F5 = "parser",
+    //.F5 = "test",
+    //.F6 = "demo",
+    //.F7 = "demo_gfx"
 };
 
 reference_paths =

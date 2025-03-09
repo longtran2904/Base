@@ -59,20 +59,34 @@ readonly global const String Day_names[] =
     StrConst("Saturday"),
 };
 
-//~ long: Math Functions
+//~ long: Built-in Functions
 
-//- long: Bit Functions
-// https://stackoverflow.com/a/76705994
-#if COMPILER_CL || (COMPILER_CLANG && OS_WIN)
+#if COMPILER_CL || (COMPILER_CLANG && OS_WIN) // https://stackoverflow.com/a/76705994
+#include <intrin.h> // __movsb, __lzcnt, _BitScanForward, _popcnt
+
 function u32 __ctz32(u32 x) { u32 result; _BitScanForward  (&result, x); return result; }
 function u64 __ctz64(u64 x) { u32 result; _BitScanForward64(&result, x); return result; }
 function u32 __clz32(u32 x) { return __lzcnt  (x); }
 function u64 __clz64(u64 x) { return __lzcnt64(x); }
 #else
+
+//- long: Bit Counting
 function u32 __ctz32(u32 x) { return (__builtin_ctz  (x)); }
 function u64 __ctz64(u64 x) { return (__builtin_ctzll(x)); }
 function u32 __clz32(u32 x) { return (__builtin_clz  (x)); }
 function u64 __clz64(u64 x) { return (__builtin_clzll(x)); }
+
+function u16 __popcnt16(u16 x) { return (u16)__builtin_popcount  (x); }
+function u32 __popcnt  (u32 x) { return      __builtin_popcount  (x); }
+function u64 __popcnt64(u64 x) { return      __builtin_popcountll(x); }
+
+//- long: REP MOV
+// https://hero.handmade.network/forums/code-discussion/t/157-memory_bandwidth_+_implementing_memcpy
+#define INLINE_ASM(ins) __asm__ __volatile__(ins : "+D"(dst), "+S"(src), "+c"(size) : : "memory")
+
+function void __movsb(void* dst, const void* src, uptr size) { INLINE_ASM("rep movsb"); }
+function void __movsd(void* dst, const void* src, uptr size) { INLINE_ASM("rep movsl"); }
+function void __movsq(void* dst, const void* src, uptr size) { INLINE_ASM("rep movsq"); }
 #endif
 
 function u32 clz32(u32 x) { return x ? __clz32(x) : 32; }
@@ -80,7 +94,7 @@ function u64 clz64(u64 x) { return x ? __clz64(x) : 64; }
 function u32 ctz32(u32 x) { return x ? __ctz32(x) : 32; }
 function u64 ctz64(u64 x) { return x ? __ctz64(x) : 64; }
 
-#include <math.h>
+//~ long: Math Functions
 
 //- long: Trigonometric Functions
 #ifndef EXTRA_PRECISION
@@ -127,6 +141,8 @@ internal f64 CosPi64(f64 x)
     x -= (x > PI_F64) * (2 * PI_F64);
     return SinTurn64(x);
 }
+
+#include <math.h>
 
 function f32 Sin_f32(f32 x) { return sinf(x); }
 function f32 Cos_f32(f32 x) { return cosf(x); }
@@ -215,45 +231,18 @@ function f64 Abs_f64(f64 x)
 #ifdef __SSE4_1__
 #include <smmintrin.h>
 
-function f32 Round_f32(f32 x)
-{
-    return _mm_cvtss_f32(_mm_round_ss((__m128){0}, _mm_set_ss(x), _MM_FROUND_TO_NEAREST_INT|_MM_FROUND_NO_EXC));
-}
+// NOTE(long): _mm_floor/ceil_ss is just macro that expand into _MM_FROUND_TO_NEG/POS_INF|_MM_FROUND_NO_EXC
+#define ROUND_F32(x, flags) _mm_cvtss_f32(_mm_round_ss((__m128){0}, _mm_set_ss(x), flags))
+function f32 Round_f32(f32 x) { return ROUND_F32(x, _MM_FROUND_TO_NEAREST_INT|_MM_FROUND_NO_EXC); }
+function f32 Trunc_f32(f32 x) { return ROUND_F32(x,        _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC); }
+function f32 Floor_f32(f32 x) { return ROUND_F32(x,     _MM_FROUND_TO_NEG_INF|_MM_FROUND_NO_EXC); }
+function f32  Ceil_f32(f32 x) { return ROUND_F32(x,     _MM_FROUND_TO_POS_INF|_MM_FROUND_NO_EXC); }
 
-function f32 Trunc_f32(f32 x)
-{
-    return _mm_cvtss_f32(_mm_round_ss((__m128){0}, _mm_set_ss(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
-}
-
-function f32 Floor_f32(f32 x)
-{
-    return _mm_cvtss_f32(_mm_floor_ss((__m128){0}, _mm_set_ss(x)));
-}
-
-function f32 Ceil_f32(f32 x)
-{
-    return _mm_cvtss_f32(_mm_ceil_ss((__m128){0}, _mm_set_ss(x)));
-}
-
-function f64 Round_f64(f64 x)
-{
-    return _mm_cvtsd_f64(_mm_round_sd((__m128d){0}, _mm_set_sd(x), _MM_FROUND_TO_NEAREST_INT|_MM_FROUND_NO_EXC));
-}
-
-function f64 Trunc_f64(f64 x)
-{
-    return _mm_cvtsd_f64(_mm_round_sd((__m128d){0}, _mm_set_sd(x), _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC));
-}
-
-function f64 Floor_f64(f64 x)
-{
-    return _mm_cvtsd_f64(_mm_floor_sd((__m128d){0}, _mm_set_sd(x)));
-}
-
-function f64 Ceil_f64(f64 x)
-{
-    return _mm_cvtsd_f64(_mm_ceil_sd((__m128d){0}, _mm_set_sd(x)));
-}
+#define ROUND_F64(x, flags) _mm_cvtsd_f64(_mm_round_sd((__m128d){0}, _mm_set_sd(x), flags))
+function f64 Round_f64(f64 x) { return ROUND_F64(x, _MM_FROUND_TO_NEAREST_INT|_MM_FROUND_NO_EXC); }
+function f64 Trunc_f64(f64 x) { return ROUND_F64(x,        _MM_FROUND_TO_ZERO|_MM_FROUND_NO_EXC); }
+function f64 Floor_f64(f64 x) { return ROUND_F64(x,     _MM_FROUND_TO_NEG_INF|_MM_FROUND_NO_EXC); }
+function f64  Ceil_f64(f64 x) { return ROUND_F64(x,     _MM_FROUND_TO_POS_INF|_MM_FROUND_NO_EXC); }
 
 #elif defined(__SSE2__)
 #include <emmintrin.h>
@@ -265,14 +254,6 @@ function f64 Ceil_f64(f64 x)
     __m128 m = _mm_cmpgt_ss(_mm_set1_ps(0x1p31f), _mm_andnot_ps(_mm_set1_ps(-0.f), f)); \
     r = _mm_or_ps(_mm_and_ps(m, r), _mm_andnot_ps(m, f)); /*if (!(2**31 > abs(f))) r = f;*/ \
     x = _mm_cvtss_f32(r)
-
-#define ROUND_F64(x, ...) \
-    __m128d f = _mm_set_sd(x); \
-    __m128d r = _mm_cvtsi64_sd((__m128d){0}, _mm_cvttsd_si64(f)); /*r = (f64)(i64)f*/ \
-    __VA_ARGS__; \
-    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63), _mm_andnot_pd(_mm_set1_pd(-0.), f)); \
-    r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); /*if (!(2**63 > abs(f))) r = f;*/ \
-    x = _mm_cvtsd_f64(r);
 
 function f32 Round_f32(f32 x)
 {
@@ -302,6 +283,14 @@ function f32 Ceil_f32(f32 x)
     return x;
 }
 
+#define ROUND_F64(x, ...) \
+    __m128d f = _mm_set_sd(x); \
+    __m128d r = _mm_cvtsi64_sd((__m128d){0}, _mm_cvttsd_si64(f)); /*r = (f64)(i64)f*/ \
+    __VA_ARGS__; \
+    __m128d m = _mm_cmpgt_sd(_mm_set1_pd(0x1p63), _mm_andnot_pd(_mm_set1_pd(-0.), f)); \
+    r = _mm_or_pd(_mm_and_pd(m, r), _mm_andnot_pd(m, f)); /*if (!(2**63 > abs(f))) r = f;*/ \
+    x = _mm_cvtsd_f64(r);
+
 function f64 Round_f64(f64 x)
 {
     __m128d f = _mm_set_sd(x);
@@ -329,10 +318,9 @@ function f64 Ceil_f64(f64 x)
     ROUND_F64(x, r = _mm_add_sd(r, _mm_and_pd(_mm_cmpgt_sd(f, r), _mm_set1_pd(1.)))); // if (f > r) r += 1
     return x;
 }
-
+#endif
 #undef ROUND_F32
 #undef ROUND_F64
-#endif
 
 function f32 Sqrt_f32(f32 x) { return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(x))); }
 function f64 Sqrt_f64(f64 x) { return _mm_cvtsd_f64(_mm_sqrt_sd((__m128d){0}, _mm_set_sd(x))); }
@@ -2073,7 +2061,11 @@ function u64 U64FromStr(String str, u32 radix, b32* error)
             {
                 u8 symbol = symbols[str.str[i]];
                 if (symbol >= radix)
+                {
+                    *error = 1;
                     goto END;
+                }
+                
                 x = x * radix + symbol;
             }
         }
@@ -2658,6 +2650,9 @@ BufferUninterleave(Arena *arena, void *in,
 ////////////////////////////////////////////////////////////////
 //-/////////////////////////////////////////////////////////////
 
+// TODO(long): Abstract out all the INVALID_HANDLE_VALUE check
+
+#if OS_WIN
 // NOTE(long): 28301: annotations weren't found at the first declaration of a given function
 // I have zero idea what this warning does but it keep reports something stupid in winnt.h
 // winnt.h(3454) : warning C28301: No annotations for first declaration of '_mm_clflush'. See <no file>(0). 
@@ -2688,7 +2683,9 @@ function void* OSReserve(u64 size)
 
 function void* OSCommit(void* ptr, u64 size)
 {
-    void* result = VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE)/* != 0*/;
+    // NOTE(long): https://devblogs.microsoft.com/oldnewthing/20151008-00/?p=91411
+    // MEM_COMMIT with a NULL ptr is unspecified, but Windows typically let it slide
+    void* result = VirtualAlloc(ptr, size, MEM_COMMIT|(ptr ? 0 : MEM_RESERVE), PAGE_READWRITE);
     if (!result)
     {
         DEBUG(error, DWORD error = GetLastError());
@@ -2723,6 +2720,7 @@ function void OSRelease(void* ptr)
 global u64 win32TicksPerSecond = 0;
 global StringList win32CmdLine = {0};
 global HINSTANCE win32Instance = {0};
+global SysInfo win32SysInfo = {0};
 
 global Arena* win32PermArena = {0};
 global String win32BinaryPath = {0};
@@ -2786,6 +2784,102 @@ BeforeMain(BaseInit)
     
     win32PermArena = ArenaMake();
     ScratchBegin(scratch);
+    
+    SYSTEM_INFO sysInfo = {0};
+    GetNativeSystemInfo(&sysInfo);
+    
+    //- Processor Arch
+    switch (sysInfo.wProcessorArchitecture)
+    {
+        case PROCESSOR_ARCHITECTURE_AMD64: win32SysInfo.arch = Arch_X64;   break;
+        case PROCESSOR_ARCHITECTURE_INTEL: win32SysInfo.arch = Arch_X86;   break;
+        case PROCESSOR_ARCHITECTURE_ARM:   win32SysInfo.arch = Arch_ARM;   break;
+        case PROCESSOR_ARCHITECTURE_ARM64: win32SysInfo.arch = Arch_ARM64; break;
+        
+        case PROCESSOR_ARCHITECTURE_IA64:
+        case PROCESSOR_ARCHITECTURE_UNKNOWN:
+        default: win32SysInfo.arch = Arch_None;  break;
+    }
+    
+    //- TODO(long): IsProcessorFeaturePresent to setup isaMask
+    //PF_ARM_64BIT_LOADSTORE_ATOMIC
+    //PF_ARM_DIVIDE_INSTRUCTION_AVAILABLE
+    //PF_ARM_EXTERNAL_CACHE_AVAILABLE
+    //PF_ARM_FMAC_INSTRUCTIONS_AVAILABLE
+    //PF_ARM_VFP_32_REGISTERS_AVAILABLE
+    //PF_3DNOW_INSTRUCTIONS_AVAILABLE
+    //PF_CHANNELS_ENABLED
+    //PF_COMPARE_EXCHANGE_DOUBLE
+    //PF_COMPARE_EXCHANGE128
+    //PF_COMPARE64_EXCHANGE128
+    //PF_FASTFAIL_AVAILABLE
+    //PF_FLOATING_POINT_EMULATED
+    //PF_FLOATING_POINT_PRECISION_ERRATA
+    //PF_MMX_INSTRUCTIONS_AVAILABLE
+    //PF_NX_ENABLED
+    //PF_PAE_ENABLED
+    //PF_RDTSC_INSTRUCTION_AVAILABLE
+    //PF_RDWRFSGSBASE_AVAILABLE
+    //PF_SECOND_LEVEL_ADDRESS_TRANSLATION
+    //PF_SSE3_INSTRUCTIONS_AVAILABLE
+    //PF_SSSE3_INSTRUCTIONS_AVAILABLE
+    //PF_SSE4_1_INSTRUCTIONS_AVAILABLE
+    //PF_SSE4_2_INSTRUCTIONS_AVAILABLE
+    //PF_AVX_INSTRUCTIONS_AVAILABLE
+    //PF_AVX2_INSTRUCTIONS_AVAILABLE
+    //PF_AVX512F_INSTRUCTIONS_AVAILABLE
+    //PF_VIRT_FIRMWARE_ENABLED
+    //PF_XMMI_INSTRUCTIONS_AVAILABLE
+    //PF_XMMI64_INSTRUCTIONS_AVAILABLE
+    //PF_XSAVE_ENABLED
+    //PF_ARM_V8_INSTRUCTIONS_AVAILABLE
+    //PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE
+    //PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE
+    //PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE
+    //PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE UDOT
+    //PF_ARM_V83_JSCVT_INSTRUCTIONS_AVAILABLE
+    //PF_ARM_V83_LRCPC_INSTRUCTIONS_AVAILABLE
+    
+    //- Virtual Address
+    win32SysInfo.pageSize = sysInfo.dwPageSize;
+    win32SysInfo.allocGranularity = sysInfo.dwAllocationGranularity;
+    win32SysInfo.addressRange.min = IntFromPtr(sysInfo.lpMinimumApplicationAddress);
+    win32SysInfo.addressRange.max = IntFromPtr(sysInfo.lpMaximumApplicationAddress);
+    
+    //- Core/Thread Count
+    {
+        DWORD length = 0;
+        GetLogicalProcessorInformationEx(RelationProcessorCore, 0, &length);
+        void* buffer = ArenaPush(scratch, length);
+        
+        if (GetLogicalProcessorInformationEx(RelationProcessorCore, buffer, &length))
+        {
+            DWORD size;
+            for (u8* ptr = buffer,* end = ptr + length; ptr < end; ptr += size)
+            {
+                SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX* info = (void*)ptr;
+                size = info->Size;
+                
+                if (ALWAYS(info->Relationship == RelationProcessorCore))
+                {
+                    win32SysInfo.coreCount++;
+                    // NOTE(long): You can also use GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)
+                    // https://devblogs.microsoft.com/oldnewthing/20200824-00/?p=104116
+                    // Sadly, I still need to do all of this to get the core count
+                    for (WORD i = 0; i < info->Processor.GroupCount; ++i)
+                        win32SysInfo.threadCount += (u16)__popcnt64(info->Processor.GroupMask[i].Mask);
+                }
+            }
+        }
+    }
+    
+    //- Machine Name
+    {
+        u16 buffer[MAX_COMPUTERNAME_LENGTH + 1] = {0};
+        DWORD size = MAX_COMPUTERNAME_LENGTH + 1;
+        if (GetComputerNameW(buffer, &size))
+            win32SysInfo.machineName = StrFromStr16(win32PermArena, Str16(buffer, size));
+    }
     
     //- Setup binary path
     {
@@ -2954,6 +3048,18 @@ function u64 OSNowMS(void)
     return result;
 }
 
+function u64 OSNowUS(void)
+{
+    u64 result = 0;
+    LARGE_INTEGER perfCounter = {0};
+    if (QueryPerformanceCounter(&perfCounter))
+    {
+        u64 ticks = ((u64)perfCounter.HighPart << 32) | perfCounter.LowPart;
+        result = ticks * Million(1) / win32TicksPerSecond;
+    }
+    return result;
+}
+
 function DateTime OSNowUniTime(void)
 {
     SYSTEMTIME systemTime = {0};
@@ -3026,10 +3132,8 @@ internal String W32ReadFile(Arena* arena, HANDLE file)
 // https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
 #define CONSOLE_INTERNAL_BUFFER_SIZE KB(8)
 
-function String OSReadConsole(Arena* arena, i32 handle)
+function HANDLE W32GetStdHandle(i32 handle)
 {
-    String result = {0};
-    
     DWORD handles[] =
     {
         0,
@@ -3040,7 +3144,15 @@ function String OSReadConsole(Arena* arena, i32 handle)
     if (NEVER(!InRange(handle, 0, 3)))
         handle = 0;
     
-    HANDLE file = GetStdHandle(handles[handle]);
+    HANDLE result = GetStdHandle(handles[handle]);
+    return result;
+}
+
+function String OSReadConsole(Arena* arena, i32 handle)
+{
+    String result = {0};
+    
+    HANDLE file = W32GetStdHandle(handle);
     if (file != INVALID_HANDLE_VALUE)
     {
         DWORD fileType = GetFileType(file);
@@ -3087,20 +3199,9 @@ function b32 OSWriteConsole(i32 handle, String data)
 {
     b32 result = 0;
     
-    DWORD handles[] =
-    {
-        0,
-        STD_INPUT_HANDLE,
-        STD_OUTPUT_HANDLE,
-        STD_ERROR_HANDLE,
-    };
-    if (NEVER(!InRange(handle, 0, 3)))
-        handle = 0;
-    
-    HANDLE file = GetStdHandle(handles[handle]);
+    HANDLE file = W32GetStdHandle(handle);
     if (file != INVALID_HANDLE_VALUE)
     {
-        StaticAssert(sizeof(DWORD) == sizeof(i32));
         DWORD writeAmount = ALWAYS(data.size <= MAX_I32) ? (DWORD)data.size : MAX_I32;
         DWORD actualWrite = 0;
         result = WriteFile(file, data.str, writeAmount, &actualWrite, 0);
@@ -3108,6 +3209,46 @@ function b32 OSWriteConsole(i32 handle, String data)
     }
     
     return result;
+}
+
+// https://learn.microsoft.com/en-us/windows/console/clearing-the-screen
+function void OSClearConsole(i32 handle)
+{
+    HANDLE console = W32GetStdHandle(handle);
+    if (console == INVALID_HANDLE_VALUE)
+        return;
+    
+    // Get the number of character cells in the current buffer.
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (!GetConsoleScreenBufferInfo(console, &csbi))
+        return;
+    
+    // Scroll the rectangle of the entire buffer.
+    SMALL_RECT scrollRect = {
+        .Left = 0,
+        .Top = 0,
+        .Right = csbi.dwSize.X,
+        .Bottom = csbi.dwSize.Y,
+    };
+    
+    // Scroll it upwards off the top of the buffer with a magnitude of the entire height.
+    COORD scrollTarget;
+    scrollTarget.X = 0;
+    scrollTarget.Y = (SHORT)(0 - csbi.dwSize.Y);
+    
+    // Fill with empty spaces with the buffer's default text attribute.
+    CHAR_INFO fill;
+    fill.Char.UnicodeChar = TEXT(' ');
+    fill.Attributes = csbi.wAttributes;
+    
+    // Do the scroll
+    ScrollConsoleScreenBuffer(console, &scrollRect, NULL, scrollTarget, &fill);
+    
+    // Move the cursor to the top left corner too.
+    csbi.dwCursorPosition.X = 0;
+    csbi.dwCursorPosition.Y = 0;
+    
+    SetConsoleCursorPosition(console, csbi.dwCursorPosition);
 }
 
 //~ long: File Handling
@@ -3509,3 +3650,45 @@ function String OSGetClipboard(Arena *arena)
     }
     return result;
 }
+
+//~ long: System Info
+
+function SysInfo OSGetSysInfo(void)
+{
+    return win32SysInfo;
+}
+
+//~ NOTE(long): Processes/Threads
+
+// https://learn.microsoft.com/en-us/windows/win32/procthread/creating-processes
+function b32 OSExec(String command, i32* code)
+{
+    b32 result = 0;
+    PROCESS_INFORMATION pi = {0};
+    
+    STARTUPINFO si = { .cb = sizeof(STARTUPINFO) };
+    // NOTE(long): You can set hStdError/Output/Input and dwFlags to redirect std handles
+    // https://github.com/tsoding/nob.h/blob/f019011fd9ac28646d72fad27f2bc52c43e53eca/nob.h#L829
+    
+    ScratchBlock(scratch)
+    {
+        String cmd = StrPushf(scratch, "cmd.exe /C %.*s", StrExpand(command));
+        
+        if (ALWAYS(CreateProcess(NULL, /*no module name*/
+                                 cmd.str,
+                                 NULL, NULL, FALSE, /*no inheritance*/
+                                 0,
+                                 NULL, NULL, /*use parent's enviroment and path*/
+                                 &si, &pi)))
+        {
+            WaitForSingleObject(pi.hProcess, INFINITE);
+            result = code ? GetExitCodeProcess(pi.hProcess, code) : 1;
+            
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
+    }
+    
+    return result;
+}
+#endif

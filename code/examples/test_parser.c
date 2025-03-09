@@ -1,190 +1,203 @@
 int a = 10;
 int b = 100;
-char d = 50;
 float c = 10000;
+char d = 50;
 
-// int pointerInArray(int[*]);
-// int specifier1InArray(int [static 10]);
-// int specifier2InArray(int[const volatile]);
+int e1, * e2, ** *** * e3;
+int* f1 = 0, f2, *** * f3 = 1, f4;
+
+Foo*** var;
+
+Foo foo(i32 a, f32 b, Foo c, Foo array[], Bar* ptr);
+Bar* bar(Bar* blah, Foo foo);
+
+int*[5];
+
+int (*funcPtr)();
+
+int pointerInArray(int[*]);
+int specifier1InArray(int [static 10]);
+int specifier2InArray(int[const volatile]);
 _Atomic unsigned long long int const volatile *restrict const foo[10][20][50];
+const int* volatile bar;
 
-int**** a[1][2][3];
-//float** (**(*b[1])[2][3])[4];
-//char (*(*c[3])())[5];
-//char * const (*(* const d)[5])(int);
-//int (*(*e)(const void *))[3];
-//int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4];
-//void func1( int ), * (func2)( int ), (*funcPtr)(void);
-//int (*(*foo1)(void))[3], (*foo2(void))[3];
-//int bar1(int[]), bar3(char arg(double)), bar4(int(void)), bar5(const int[10]);
+int*** const * a[1][2][3];
+float** (**(*b[1])[2][3])[4];
+char (*(*c[3])())[5];
+char * const (*(* const d)[5])(int);
+int (*(*e)(const void *))[3];
+int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4];
+void func1( int ), * (func2)( int ), (*funcPtr)(void);
+int (*(*foo1)(void))[3], (*foo2(void))[3];
+int bar1(int[]), bar2(char arg1(double), int arg2(int arg, float), Foo** arg3 = foo), bar3(int(void)), bar4(const int[10]);
 
-//struct AStruct
-//{
-//int a;
-//int b;
-//};
+struct AStruct
+{
+    int a;
+    int b;
+};
 
-//struct BStruct
-//{
-//int array[10];
-//char ** const * const ptr;
-//int a1, a2;
-//int* b1, b2, **** *** ** * b3;
-//};
+struct BStruct
+{
+    int array[10];
+    char ** const * const ptr;
+    int a1, a2;
+    int* b1, b2, **** *** ** * b3;
+};
 
-//typedef struct CStruct CStruct;
-//struct CStruct
-//{
-//char c[1024];
-//};
+typedef struct CStruct CStruct;
+struct CStruct
+{
+    char c[1024];
+};
 
-//typedef struct DStruct
-//{
-//int a;
-//} DStruct;
+typedef struct DStruct
+{
+    int a;
+} DStruct;
 
-//struct EStruct
-//{
-//int a;
-//};
+struct EStruct
+{
+    int a;
+};
 
-//typedef struct
-//{
-//int a;
-//} FStruct;
+typedef struct
+{
+    int a;
+} FStruct;
 
-//struct
-//{
-//int a;
-//} GStruct;
+struct
+{
+    int a;
+} myGStruct, ***myGPtr;
 
-//struct HStruct
-//{
-//int a;
-//} myHStruct;
+struct HStruct
+{
+    int a;
+}** const myHStruct = 0, myPtr;
 
-//typedef struct XStruct
-//{
-//int x;
-//} YStruct;
+typedef struct XStruct
+{
+    int x;
+} YStruct;
 
-//struct ZStruct
-//{
-//struct
-//{
-//i32 a, ** * b;
-//};
-//struct
-//{
-//float f;
-//float f2[10];
-//};
-//struct HStruct h;
-//};
+struct ZStruct
+{
+    struct
+    {
+        i32 a, ** * b;
+    };
+    struct
+    {
+        float f;
+        float f2[10];
+    };
+    struct HStruct h;
+};
 
-//struct WStruct
-//{
-//struct
-//{
-//i32 a, ** * b;
-//};
+struct WStruct
+{
+    struct
+    {
+        i32 a, ** * b;
+    };
+    
+    struct
+    {
+        float f;
+        struct
+        {
+            char c[1024];
+        };
+        float f2[10];
+    };
+    
+    b32 d;
+} wVar1, **wVar2;
 
-//struct
-//{
-//float f;
-//struct
-//{
-//char c[1024];
-//};
-//float f2[10];
-//};
+union AUnion
+{
+    int a;
+    int b;
+};
 
-//b32 d;
-//};
+union BUnion
+{
+    int array[10];
+    char ** const * const ptr;
+    int a1, a2;
+    int* b1, b2, **** *** ** * b3;
+};
 
-//union AUnion
-//{
-//int a;
-//int b;
-//};
+typedef union CUnion CUnion;
+union CUnion
+{
+    char c[1024];
+};
 
-//union BUnion
-//{
-//int array[10];
-//char ** const * const ptr;
-//int a1, a2;
-//int* b1, b2, **** *** ** * b3;
-//};
+typedef union DUnion
+{
+    int a;
+} DUnion;
 
-//typedef union CUnion CUnion;
-//union CUnion
-//{
-//char c[1024];
-//};
+union EUnion
+{
+    int a;
+};
 
-//typedef union DUnion
-//{
-//int a;
-//} DUnion;
+typedef union
+{
+    int a;
+} FUnion;
 
-//union EUnion
-//{
-//int a;
-//};
+union
+{
+    int a;
+} GUnion;
 
-//typedef union
-//{
-//int a;
-//} FUnion;
+union HUnion
+{
+    int a;
+} myHUnion;
 
-//union
-//{
-//int a;
-//} GUnion;
+typedef union XUnion
+{
+    int x;
+} YUnion;
 
-//union HUnion
-//{
-//int a;
-//} myHUnion;
+union ZUnion
+{
+    union
+    {
+        i32 a, ** * b;
+    };
+    union
+    {
+        float f;
+        float f2[10];
+    };
+    union HUnion h;
+};
 
-//typedef union XUnion
-//{
-//int x;
-//} YUnion;
-
-//union ZUnion
-//{
-//union
-//{
-//i32 a, ** * b;
-//};
-//union
-//{
-//float f;
-//float f2[10];
-//};
-//union HUnion h;
-//};
-
-//union WUnion
-//{
-//union
-//{
-//i32 a, ** * b;
-//};
-
-//union
-//{
-//float f;
-//union
-//{
-//char c[1024];
-//};
-//float f2[10];
-//};
-
-//b32 d;
-//};
+union WUnion
+{
+    union
+    {
+        i32 a, ** * b;
+    };
+    
+    union
+    {
+        float f;
+        union
+        {
+            char c[1024];
+        };
+        float f2[10];
+    };
+    
+    b32 d;
+};
 
 //enum AEnum { FooA, BarA };
 //typedef enum BEnum { FooB } BEnum;

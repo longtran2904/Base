@@ -126,11 +126,8 @@
 
 // NOTE(long): While GCC and Clang have predefined macros for SSE, MSVC doesn't
 // https://stackoverflow.com/questions/18563978/detect-the-availability-of-sse-sse2-instruction-set-in-visual-studio
-// MSVC also doesn't have a way to check for SSE3/SSSE3/SSE4.1/SSE4.2 but if you have AVX then you also have them
+// MSVC also doesn't have a way to check for SSE3/SSSE3/SSE4.1/SSE4.2 so checking for AVX is a dirty hack
 #if __AVX__
-#define __SSE3__ 1
-#define __SSSE3__ 1
-#define __SSE4_1__ 1
 #define __SSE4_2__ 1
 #elif ARCH_X64
 #define __SSE2__ 1 //SSE2 x64
@@ -142,6 +139,15 @@
 #error You must have at least SSE1
 #endif
 
+#if __SSE4_2__
+#define __SSE4_1__ 1
+#endif
+#if __SSE4_1__
+#define __SSSE3__ 1
+#endif
+#if __SSSE3__
+#define __SSE3__ 1
+#endif
 #if __SSE3__
 #define __SSE2__ 1
 #endif
@@ -149,7 +155,7 @@
 #define __SSE__ 1
 #endif
 
-#else // TODO(long): verify this works on clang and gcc
+#else
 #if defined(__amd64__)
 #define ARCH_X64 1
 #elif defined(__i386__)
@@ -390,7 +396,7 @@
 #define UNUSED(x) ((void)(x))
 #define DEBUG(x, ...) Stmnt(__VA_ARGS__; UNUSED(x))
 #define EXIT() Stmnt(if (0) return)
-// TODO(long): Redesign DEBUG and DebugReturn. Add NotImplemented and Unreachable
+// TODO(long): Redesign UNUSED, DEBUG, and DebugReturn. Add NotImplemented and Unreachable
 
 #define DebugPrint(str) OSWriteConsole(OS_STD_ERR, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " str))
 #define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
@@ -418,7 +424,7 @@
 // @UB(long): Clang complains about these
 #define IntFromPtr(p) (uptr)((char*)p - (char*)0)
 #define PtrFromInt(n) (void*)((char*)0 + (n))
-#define PtrAdd(ptr, offset) ((u8*)(ptr) + (offset))
+#define PtrAdd(ptr, offset) (void*)((u8*)(ptr) + (offset))
 
 #define MemberOf(T, m) (((T*)0)->m)
 #define OffsetOf(T, m) IntFromPtr(&MemberOf(T, m))
@@ -445,7 +451,7 @@
 
 #define ForEach(name, count) for (i32 name = 0; name < (count); ++name)
 #define ForBack(name, count) for (i32 name = (count)-1; name >= 0; --name)
-#define DeferBlock(begin, end) for (i32 UNIQUE(_i_) = ((begin), 0); UNIQUE(_i_) == 0; (UNIQUE(_i_) += 1), (end))
+#define DeferBlock(begin, end) for (i32 UNIQUE(_i_) = ((begin), 0); UNIQUE(_i_) == 0; ++UNIQUE(_i_), (end))
 
 #define ArrayCount(a) (sizeof(a)/sizeof(*(a)))
 #define ArrayExpand(type, ...) (type[]){ __VA_ARGS__ }, ArrayCount(((type[]){ __VA_ARGS__ }))
@@ -466,6 +472,14 @@
 #define ClampTop(value, max) Min(value, max)
 #define ClampBot(value, min) Max(value, min)
 #define Clamp(value, min, max) ClampBot(ClampTop(value, max), min)
+
+// NOTE(long): Rounding up/down to the next/prev power of two
+// https://jameshfisher.com/2018/03/30/round-up-power-2/
+// The ((~x+1) & 31) (or (-x & 31) to ignore warnings) is a safe (A >> (32 - x)) shift
+// https://nrk.neocities.org/notes#c-safe-bitwise-rotation
+#define RoundUpPow2(x) (1 << ((~clz32((x)-1)+1) & 31)) // or (1 << (32 - clz32(x-1)))
+#define RoundDownPow2(x) (1 << (31 - clz32(x-1)))
+// @CONSIDER(long): 64-bit version
 
 #define AlignUpPow2(x, p) (((x) + (p) - 1)&~((p) - 1))
 #define AlignDownPow2(x, p) ((x) &~ ((p) - 1))
@@ -596,7 +610,7 @@ typedef  __UINT16_TYPE__ u16;
 typedef  __UINT32_TYPE__ u32;
 typedef  __UINT64_TYPE__ u64;
 typedef  __INTPTR_TYPE__ iptr;
-typedef __UINTPTR_TYPE__ uptr;
+typedef __UINTPTR_TYPE__ uptr; // NOTE(long): size_t is uptr
 
 StaticAssert(sizeof(i8 ) == 1,  CheckI8Size);
 StaticAssert(sizeof(i16) == 2, CheckI16Size);
@@ -1116,11 +1130,12 @@ struct StringDecode
 #define Str16Stream(str, ptr, opl) for (u16 *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
 #define Str32Stream(str, ptr, opl) for (u32 *ptr = (str).str, *opl = (str).str + (str).size; ptr < opl;)
 
-//~ long: Math Functions
+//~ long: Built-in Functions
 
-//- long: Bit Functions
+//- long: Bit Counting
 // ctz/BitScanForward  - LSB -> MSB
 // clz/BitScanBackward - MSB -> LSB
+
 // Non-zero
 function u32 __clz32(u32 x);
 function u64 __clz64(u64 x);
@@ -1132,6 +1147,18 @@ function u32 clz32(u32 x);
 function u64 clz64(u64 x);
 function u32 ctz32(u32 x);
 function u64 ctz64(u64 x);
+
+// 1-Bit Counting
+u16 __popcnt16(u16 x);
+u32 __popcnt  (u32 x);
+u64 __popcnt64(u64 x);
+
+//- long: REP MOV
+function void __movsb(unsigned char *, unsigned char const *, size_t);
+function void __movsd(unsigned long *, unsigned long const *, size_t);
+function void __movsq(unsigned long long *, unsigned long long const *, size_t);
+
+//~ long: Math Functions
 
 //- long: Large Type Functions
 #define U128(v0, v1) ((u128){ v0, v1 })
@@ -1344,7 +1371,7 @@ function void ArenaAlignNZ(Arena* arena, u32 alignment);
 #define ArenaStack(name, size) u8 UNIQUE(_buffer)[(size) + sizeof(Arena)] = {0}; \
     Arena* name = BufferFromMem(UNIQUE(_buffer), sizeof(UNIQUE(_buffer)))
 #define ArenaPos(arena) ((arena)->curr->basePos + (arena)->curr->pos)
-#define ArenaPtr(arena) PtrAdd((arena), (arena)->pos)
+#define ArenaPtr(arena) (u8*)PtrAdd((arena), (arena)->pos)
 
 #define   PushBuffer(arena, size)     (String){ ArenaPush  ((arena), (size)), (size) }
 #define PushBufferNZ(arena, size)     (String){ ArenaPushNZ((arena), (size)), (size) }
@@ -1582,7 +1609,8 @@ function String StrCEscape(Arena* arena, String str);
 function i64 I64FromStrC(String str, b32* error);
 function u64 U64FromStrC(String str, b32* error);
 
-//~ long: CLI Parsing
+//~ long: CLI Functions
+// Conventions: https://nullprogram.com/blog/2020/08/01/
 
 typedef struct CmdLineOpt CmdLineOpt;
 struct CmdLineOpt
@@ -1608,7 +1636,6 @@ struct CmdLine
     CmdLineOptList opts;
 };
 
-// https://nullprogram.com/blog/2020/08/01/
 function CmdLine CmdLineFromList(Arena* arena, StringList* args);
 function CmdLineOpt* CmdOptPush(Arena* arena, CmdLineOptList* list, String name);
 function CmdLineOpt* CmdOptLookup(CmdLine* cmd, String name, StringMatchFlags flags);
@@ -1721,6 +1748,8 @@ function u64 Hash64 (u8* values, u64 count);
 ////////////////////////////////////////////////////////////////
 //-/////////////////////////////////////////////////////////////
 
+// @CONSIDER(long): A generic or layer-specific hanle type
+
 //~ long: OS Setup
 
 function StringList OSSetArgs(int argc, char **argv);
@@ -1747,6 +1776,9 @@ enum
 
 function String OSReadConsole(Arena* arena, i32 handle);
 function b32   OSWriteConsole(i32 handle, String data);
+
+#define OS_CLS() OSClearConsole(OS_STD_OUT)
+function void OSClearConsole(i32 handle);
 
 //~ long: File Handling
 
@@ -1795,8 +1827,11 @@ struct OSFileIter
 function OSFileIter FileIterInit(Arena* arena, String path, OSFileIterFlags flags);
 function b32 FileIterNext(Arena* arena, OSFileIter* iter);
 function void FileIterEnd(OSFileIter* iter);
-#define FileIterBlock(arena, iterName, path, ...) for (OSFileIter iterName = FileIterInit(arena, path, (__VA_ARGS__ + 0)); \
-                                                       FileIterNext(arena, &iterName) ? 1 : (FileIterEnd(&iterName), 0);)
+
+#define FileIterBlock(arena, iterName, path, ...) \
+    for (OSFileIter iterName = FileIterInit(arena, path, (__VA_ARGS__ + 0)); \
+         FileIterNext(arena, &iterName) ? 1 : (FileIterEnd(&iterName), 0);)
+
 // @CONSIDER(long): FileIterPush/Pop
 
 //~ TODO(long): Streaming/Buffering/Overlapping
@@ -1814,11 +1849,18 @@ function String OSGetTempDir(void);
 //~ long: Time
 
 function void OSSleepMS(u32 ms);
-function u64  OSNowMS(void);
+function  u64 OSNowMS(void);
+function  u64 OSNowUS(void);
 
 function DateTime OSNowUniTime(void);
 function DateTime OSToLocTime(DateTime universalTime);
 function DateTime OSToUniTime(DateTime localTime);
+
+#define TIME_BLOCK(name, end) \
+    for (u64 name = OSNowMS(), UNIQUE(i)=0; !UNIQUE(i); ++UNIQUE(i), (name=OSNowMS()-name), (end))
+
+#define TIME_BLOCK_US(name, end) \
+    for (u64 name = OSNowUS(), UNIQUE(i)=0; !UNIQUE(i); ++UNIQUE(i), (name=OSNowUS()-name), (end))
 
 //~ long: Libraries
 
@@ -1838,12 +1880,48 @@ function void OSGetEntropy(void* data, u64 size);
 
 //~ long: Clipboard
 
-// TODO(long): Clipboard for images/files
-// TODO(long): Clip
 function void   OSSetClipboard(String string);
 function String OSGetClipboard(Arena *arena);
 
+// TODO(long): Clipboard for images/files
+
+//~ long: System info
+
+typedef struct SysInfo SysInfo;
+struct SysInfo
+{
+    Arch arch;
+    Flags32 isaMask;
+    
+    u16 coreCount;
+    u16 threadCount;
+    
+    u32 pageSize;
+    u32 allocGranularity;
+    r1u64 addressRange;
+    
+    String machineName;
+};
+
+function SysInfo OSGetSysInfo(void);
+
 //~ TODO(long): Processes/Threads
+
+#define OS_SYS(cmd) OSExec(StrLit(cmd), 0)
+function i32 OSExec(String command, i32* code);
+// TODO(long): OSExecEx where you can redirect std handles and switch between sync vs async
+
+//ReadFileAsync
+//WriteFileAsync
+//OSIsFileCompleted <- Maybe CloseHandle here?
+
+//OSCreateSemaphore
+//OSCreateMutex // either CreateMutex or InitializeCriticalSection (like RAD debugger)
+
+//OSCloseHandle
+
+//OSWaitForHandle
+//OSWaitForHandles
 
 //~ TODO(long): Network/Sockets/IPC
 

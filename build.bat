@@ -96,20 +96,22 @@ del *.pdb > NUL 2> NUL
 del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
 
-%compile% %opts% %warns% %code%\code\examples\lloc.c         %out%lloc.exe         %linker% %links%
 %compile% %opts% %warns% %code%\code\examples\test_scanner.c %out%test_scanner.exe %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\test_base.c    %out%test_base.exe    %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\demo_gfx.c     %out%demo_gfx.exe     %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\demo.c         %out%demo.exe         %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\TestDLL.c      %out%test.dll   %dll% %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\demo_gfx.c     %out%demo_gfx.exe     %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\demo.c         %out%demo.exe         %linker% %links%
 %compile% %opts% %warns% %code%\code\Metamain.c              %out%metagen.exe      %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\TestDLL.c      %out%TestDLL.dll %dll% %linker% %links%
 
-:: %compile% %opts% %warns% %code%\code\examples\print_args.c %out%args.exe %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\glob.c %out%glob.exe      %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\test_glob.c %linker% %links%
-:: %compile% %opts% %warns% %code%\code\retired\D3D11_Example.c %out%d3d11_exp %linker% %links%
-:: %compile% %opts% %warns% %code%\code\retired\LongCompressor.c %out%compressor %linker% %links%
-:: %compile% %opts% %warns% %code%\code\retired\Meta.c %out%Meta %linker% %links%
+:: %compile% %opts% %warns% %code%\code\retired\Meta.c           %out%Meta.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\code\retired\Meta.c           %out%Meta.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\lloc.c          %out%lloc.exe       %linker% %links%
+%compile% %opts% %warns% %code%\code\examples\glob.c          %out%glob.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\test_glob.c     %out%test_glob.exe  %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\bench_mem.c     %out%bench_mem.exe  %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\print_args.c    %out%args.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\code\retired\D3D11_Example.c  %out%d3d11_exp.exe  %linker% %links%
+:: %compile% %opts% %warns% %code%\code\retired\LongCompressor.c %out%compressor.exe %linker% %links%
 
 :: --- Cleanup Build ----------------------------------------------------------
 ren fast_float.obj fast_float.obj.temp > NUL 2> NUL

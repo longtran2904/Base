@@ -32,7 +32,9 @@ typedef Flags64 CL_NodeFlags;
 #define CL_NodeFlag_File  (1ULL << 0)
 #define CL_NodeFlag_Error (1ULL << 1)
 
-#define CL_NodeFlag_Decl (1ULL << 4)
+#define CL_NodeFlag_Decl (1ULL << 3)
+//#define CL_NodeFlag_Type (1ULL << 4)
+//#define CL_NodeFlag_Proc (1ULL << 5)
 #define CL_NodeFlag_Expr (1ULL << 5)
 #define CL_NodeFlag_Stmt (1ULL << 6)
 //#define CL_NodeFlag_Macro (1ULL << 7)
@@ -110,7 +112,7 @@ struct CL_Node
     u64 offset;
 };
 
-CL_Node cl_nilNode = {
+global readonly CL_Node cl_nilNode = {
     &cl_nilNode, &cl_nilNode, &cl_nilNode, &cl_nilNode,
     { &cl_nilNode, &cl_nilNode, 0 }, { &cl_nilNode, &cl_nilNode, 0 }, { &cl_nilNode, &cl_nilNode, 0 },
 };

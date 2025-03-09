@@ -434,38 +434,60 @@ int main(void)
     {
         String data = OSReadFile(scratch, StrLit("code/examples/test_parser.c"));
         TokenArray array = CL_TokenArrayFromStr(scratch, data);
-        CL_ParseResult parse = CL_ParseFromTokens(scratch, data, array);
+        for (u64 i = 0; i < array.count; ++i)
+        {
+            Token token = array.tokens[i];
+            Assert(NoFlags(token.user, CL_TokenFlag_Broken|CL_TokenFlag_Custom));
+            Assert(NoFlags(token.flags, ScanResultFlag_NoMatches|ScanResultFlag_TokenUnclosed));
+            if (token.flags & ScanResultFlag_EOF)
+                Assert(i == array.count-1);
+        }
         
+        CL_ParseResult parse = CL_ParseFromTokens(scratch, data, array);
         CL_Node* node = parse.root->body.first;
-        u64 indent = 0;
+        u32 indent = 0;
+        
+#define NodeExpand(node) StrExpand((node)->string.size ? (node)->string : StrLit("<unnamed>"))
         
         REP:
-        Outf("%*s%.*s\n", indent * 2, "", StrExpand(node->string));
+        Outf("%*s%.*s", indent * 2, "", NodeExpand(node));
+        
         for (CL_Node* base = node->reference; !CL_IsNil(base); base = base->reference)
         {
-            Outf("%.*s", StrExpand(base->string));
+            if (base == node->reference)
+                Outf(": ");
+            Outf("%.*s", NodeExpand(base));
             
             for (CL_Node* tag = base->tags.first; !CL_IsNil(tag); tag = tag->next)
             {
                 if (CL_IsNil(tag->prev))
                     Outf(" (");
-                Outf("%.*s", StrExpand(tag->string));
+                Outf("%.*s", NodeExpand(tag));
                 Outf(CL_IsNil(tag->next) ? ")" : ", ");
             }
             
-            Outf(CL_IsNil(base->reference) ? "\n" : " -> ");
+            if (!CL_IsNil(base->reference))
+                Outf(" -> ");
         }
+        Outf("\n");
         
         CL_Node* old = node;
-        if (!CL_IsNil(node->body.first))
+        if (!CL_IsNil(node->args.first))
+        {
+            Outf("%*s<args>:\n", indent * 2, "");
+            node = node->args.first;
+            indent++;
+        }
+        
+        else if (!CL_IsNil(node->body.first))
         {
             node = node->body.first;
             indent++;
         }
+        
         else if (!CL_IsNil(node->next))
-        {
             node = node->next;
-        }
+        
         else for (CL_Node* parent = node->parent; !CL_IsNil(parent); parent = parent->parent)
         {
             indent--;
@@ -476,6 +498,8 @@ int main(void)
             }
         }
         
+        if (indent == 0)
+            Outf("\n");
         if (node != old)
             goto REP;
     }
@@ -502,6 +526,7 @@ int main(void)
         // foo(bar); foo(*bar); foo(*bar[5]);
         // foo (*(*bar)[5])(baz);
         
+#if 0
         String text = StrLit("struct A { int a; int b; };\n"
                              "struct B"
                              "{\n"
@@ -549,7 +574,6 @@ int main(void)
                              );
         text = OSReadFile(scratch, StrLit("code/Base.h"));
         
-#if 0
         MD_Node* root = MD_ParseStrC(scratch, text);
         MD_DebugTree(root);
         
@@ -722,7 +746,7 @@ int main(void)
         OSWriteFile(StrLit("code/out_test.csv"), CSV_StrFromTable(scratch, table));
     }
     
-    Outf("Done");
+    Outf("\nDone");
     
     ScratchEnd(scratch);
     return 0;
