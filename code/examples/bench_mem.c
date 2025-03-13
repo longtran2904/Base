@@ -163,7 +163,7 @@ function void CopyWithAVXNoCache(u8* dst, u8* src, uptr size)
 //~ long: TEST SETUP
 
 global u32 SampleCount = 8;
-global u64 TestSize = GB(3ULL) >> 1; // 1.5 GiB
+global u64 TestSize = GiB(3ULL) >> 1; // 1.5 GiB
 global b32 Debug = 0;
 
 global u8* MemDst;
@@ -229,7 +229,7 @@ i32 main(i32 argc, char** argv)
                                         if (opt->values.nodeCount == 1) \
                                         { ParseNum(opt->values.first->string, max, stmt); })
             case 'c': ParseSingleNum(2048, SampleCount = (u32)num); break;
-            case 's': ParseSingleNum(KB(8),  TestSize =  MB(num)); break;
+            case 's': ParseSingleNum(KiB(8),  TestSize =  MiB(num)); break;
             
             case 'h':
             case '?':   help = 1; break;
@@ -289,7 +289,7 @@ i32 main(i32 argc, char** argv)
                            X("movsq          ", CopyWithRepMovsq); \
                            X("movsb unaligned", CopyWithRepMovsbUnaligned))
     
-    Outf("Initializing %.2f GiB of test data...", (f64)TestSize/(f64)GB(1));
+    Outf("Initializing %.2f GiB of test data...", DivF64(TestSize, GiB(1)));
     TIME_BLOCK(duration, Outf(" %.3fs\n", (f64)duration/1000.))
     {
         MemSrc = OSCommit(0, TestSize);
@@ -394,7 +394,7 @@ function void SetupThreads(u32 newThreadCount)
     // Assert(newThreadCount <= MAX_THREADS);
     if (TestSize % (512*newThreadCount))
         ERROR_EXIT("%.2f GiB is not a multiple of 512*%u: `-s` %% (`-t` * 512)\n",
-                   (f64)TestSize/(f64)GB(1), newThreadCount);
+                   DivF64(TestSize, GiB(1)), newThreadCount);
     ThreadCount = newThreadCount;
     
     if (newThreadCount > 1)
@@ -405,7 +405,7 @@ function void SetupThreads(u32 newThreadCount)
 function void CopyWithThreads(char* name, CopyFunc* func)
 {
     f64 speed = (f64)(SampleCount*TestSize);
-    TIME_BLOCK_US(duration, speed /= (f64)Thousand(duration))
+    TIME_BLOCK_US(duration, speed /= (f64)KB(duration))
     {
         for (u32 i = 0; i < SampleCount; ++i)
         {

@@ -1,5 +1,3 @@
-//#define MEM_DEFAULT_RESERVE_SIZE MB(64)
-
 #include "Base.h"
 #include "Base.c"
 #include <stdio.h>
@@ -71,7 +69,7 @@ int main(void)
     ScratchBegin(scratch);
     
     String fileName = StrLit("code/retired/MetaTest.txt");
-    String file = OSReadFile(scratch, fileName, true);
+    String file = OSReadFile(scratch, fileName);
     file.size += 1; // include the end of file
     
     file = StrReplace(scratch, file, StrLit("\\\n"), StrLit(""), 0);

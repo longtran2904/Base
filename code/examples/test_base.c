@@ -160,8 +160,8 @@ int main(void)
         StaticAssert(IsPow2OrZero(64) == 1);
         StaticAssert(IsPow2OrZero( 5) == 0);
         StaticAssert(IsPow2OrZero( 0) == 1);
-        StaticAssert(IsPow2OrZero(KB( 4)) == 1);
-        StaticAssert(IsPow2OrZero(KB(10)) == 0);
+        StaticAssert(IsPow2OrZero(KiB( 4)) == 1);
+        StaticAssert(IsPow2OrZero(KiB(10)) == 0);
     }
     
 #define IsNanF32(x) (InfOrNan_f32(x) && (x) != Inf_f32() && (x) != NegInf_f32())
@@ -392,8 +392,8 @@ int main(void)
         TestResult((debug = Abs_f32(Ln_f32(+2.0f) - .69314718f)) <= epsilon);
         TestResult(IsNanF32(Ln_f32(-1.0f)));
         
-        TestResult(Pow_f32(10.f,  9.0f) == (f32)Billion(1));
-        TestResult(Pow_f32(2.0f, 12.0f) == (f32)KB(4));
+        TestResult(Pow_f32(10.f,  9.0f) == (f32)GB(1));
+        TestResult(Pow_f32(2.0f, 12.0f) == (f32)KiB(4));
         TestResult(Pow_f32(2.0f, -1.0f) == 0.5f);
         TestResult(Pow_f32(0.0f, 10.0f) == 0.0f);
         TestResult(Pow_f32(1.0f, 10.0f) == 1.0f);
@@ -428,8 +428,8 @@ int main(void)
         TestResult((debug = Abs_f64(Ln_f64( +2.0) - .69314718)) <= epsilon);
         TestResult(IsNanF64(Ln_f64(-1.0)));
         
-        TestResult(Pow_f64(10.,  9.0) == (f64)Billion(1));
-        TestResult(Pow_f64(2.0, 12.0) == (f64)KB(4));
+        TestResult(Pow_f64(10.,  9.0) == (f64)GB(1));
+        TestResult(Pow_f64(2.0, 12.0) == (f64)KiB(4));
         TestResult(Pow_f64(2.0, -1.0) == 0.5);
         TestResult(Pow_f64(0.0, 10.0) == 0.0);
         TestResult(Pow_f64(1.0, 10.0) == 1.0);
@@ -794,7 +794,7 @@ int main(void)
     
     TEST("Buffer")
     {
-        u64 size = KB(64);
+        u64 size = KiB(64);
         u16* buffer = PushArrayNZ(arena, u16, size);
         for (u64 i = 0; i < size; ++i) // can't use u16 because of wrap around
             buffer[i] = (u16)i;

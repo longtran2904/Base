@@ -3,7 +3,7 @@
 #endif
 
 #if !GLOB_STATIC_LIB
-#define ENABLE_ASSERT 0
+//#define ENABLE_ASSERT 0
 #endif
 
 #include "Base.h"
@@ -212,90 +212,252 @@ enum
     Glob_CLI_Recursive = 1 << 5,
 };
 
-typedef struct FileEntry FileEntry;
-struct FileEntry
-{
-    FileEntry* next;
-    String path;
-    String data;
-    HANDLE file;
-};
-
+global u64 getHandleMs = 0;
 global u64 getFileMs = 0;
 global u64 loadFileMs = 0;
+global u64 globFileMs = 0;
 
 global String userPattern;
 global u64 matchCount;
 
-#define ENTRY_COUNT 64
-#define READ_ASYNC ENTRY_COUNT > 0
+function void GlobFile(String text, String file)
+{
+    TIME_BLOCK(duration, globFileMs += duration)
+    {
+        for (i64 index, row = 1; text.size; text = StrSkip(text, index + 1), ++row)
+        {
+            index = StrFindChr(text, "\n");
+            if (index < 0)
+                break;
+            if (index > 0 && text.str[index-1] == '\r')
+                index--;
+            
+            if (index > 0)
+            {
+                String line = StrPrefix(text, index);
+                if (glob(userPattern, line, 0))
+                {
+                    matchCount++;
+                    Outf("%.*s(%lld): %.*s\n", StrExpand(file), row, StrExpand(line));
+                }
+            }
+        }
+    }
+}
+
+#define READ_ASYNC 1
 
 // NOTE(long): Async reads are ~1.5x faster on my HDD drive, while ~3-5x faster on my SSD drive (~3GB tests)
 
 #if READ_ASYNC
-global FileEntry* fileEntries[ENTRY_COUNT];
-global Arena*     readsArena[ENTRY_COUNT];
-global OVERLAPPED readsOverlapped[ENTRY_COUNT];
-global u64        readsPending;
-StaticAssert(ENTRY_COUNT <= 64);
-
-b32 StartRead(FileEntry* entry)
+typedef struct FileEntry FileEntry;
+struct FileEntry
 {
-    u64 free = ~readsPending;
-    if (!free) // back pressure the requestor if we already have our max reads pending
-        return 0;
+    FileEntry* next;
+    Arena* arena;
     
-    u64 i = __ctz64(free);
-    if (i >= ENTRY_COUNT)
-        return 0;
+    String path;
+    String data;
     
-    OVERLAPPED* overlapped = readsOverlapped + i;
-    overlapped->Internal = 0;
-    overlapped->InternalHigh = 0;
-    overlapped->Pointer = 0;
-    
-    u64 now = OSNowMS();
+    HANDLE file;
+    OVERLAPPED overlapped;
+};
+
+global HANDLE iocp;
+
+function b32 ReadFileAsync(Arena* arena, FileEntry* entry)
+{
+    b32 result = 0;
     u64 len = entry->data.size;
-    u8* buffer = ArenaPush(readsArena[i], len);
     
-    DWORD bytes_read;
-    if (ReadFile(entry->file, buffer, (DWORD)len, &bytes_read, overlapped))
+    TIME_BLOCK(duration, loadFileMs += duration)
     {
-        Assert(bytes_read == len);
+        u8* buffer = 0;
+        if (CreateIoCompletionPort(entry->file, iocp, (ULONG_PTR)entry, 0))
+        {
+            DWORD bytesRead;
+            //buffer = ArenaPush(arena, len);
+            buffer = malloc(len);
+            
+            if (!buffer)
+                Errf("ERROR: \"%.*s\" is too big (%.2f MiB)\n", StrExpand(entry->path),
+                     DivF64(entry->data.size, MiB(1)));
+            else if (ReadFile(entry->file, buffer, (DWORD)len, &bytesRead, &entry->overlapped))
+                result = bytesRead == len;
+            else
+                result = GetLastError() == ERROR_IO_PENDING;
+        }
         
-        // even though we did everything async, we completed synchronously
-        // this can happen in Via if the data is already cached in memory
-        goto PUSH;
-    }
-    else
-    {
-        // either we are running async or we failed, so check the error code
-        Assert(GetLastError() == ERROR_IO_PENDING);
-        
-        PUSH:
-        entry->data.str = buffer;
-        readsPending |= 1ULL << i;
-        fileEntries[i] = entry;
+        if (result)
+        {
+            entry->data.str = buffer;
+            entry->arena = arena;
+        }
     }
     
-    loadFileMs += OSNowMS() - now;
-    //Outf("--%.*s--: %llu Bytes\n", StrExpand(path), len);
-    return 1;
+    return result;
+}
+
+function FileEntry* WaitForFile(void)
+{
+    FileEntry* entry = 0;
+    u64 startMs = OSNowMS();
+    if (!GetQueuedCompletionStatus(iocp, &(DWORD){0}, (PULONG_PTR)&entry, &(LPOVERLAPPED){0}, INFINITE))
+        Errf("\nERROR: Failed to wait for file\n");
+    loadFileMs += OSNowMS() - startMs;
+    return entry;
+}
+
+global HANDLE semaphore;
+//global FileEntry* volatile workEntry;
+global volatile u64 workCount;
+
+#include <stdlib.h>
+
+function DWORD WINAPI ThreadProc(LPVOID arg)
+{
+    UNUSED(arg);
+    
+    u64 oldCount = 0;
+    while (1)
+    {
+#if 1
+        FileEntry* entry = WaitForFile();
+        if (ALWAYS(entry))
+        {
+            GlobFile(entry->data, entry->path);
+            CloseHandle(entry->file);
+            free(entry->data.str);
+            u64 count = AtomicDec64(&workCount);
+            if (count != oldCount - 1)
+                Outf("Pending: %llu\n", count);
+            oldCount = count;
+        }
+        
+#else
+        WaitForSingleObject(semaphore, INFINITE);
+        u64 count = 0;
+        
+        for (FileEntry* entry = (FileEntry*)AtomicXch64(&workEntry, 0); entry; count++, entry = entry->next)
+        {
+            GlobFile(entry->data, entry->path);
+            CloseHandle(entry->file);
+            free(entry->data.str);
+            AtomicDec64(&workCount);
+        }
+        
+        if (count > maxCount)
+        {
+            maxCount = count;
+            Outf("Pop: %llu\n", count);
+        }
+#endif
+    }
+}
+
+function u64 ReadAndProcess(FileEntry* firstEntry, u64 desiredSize)
+{
+    //u64 swapCount = 0, popCount = 0;
+    //u64 currArena = 0, nextArena = 0;
+    //u64 totalSizes[2] = {0};
+    Arena* arenas[2] = { ArenaReserve(desiredSize, 1, 1), ArenaReserve(desiredSize, 1, 1) };
+    //u64 maxFileCount = 0;
+    u64 fileCount = 0;
+    
+    //PUSH_READ:
+    //u64 remainSize = ClampBot((i64)(desiredSize - totalSizes[currArena]), 0);
+    for (FileEntry* entry = firstEntry; entry /*&& totalSizes[nextArena] < remainSize*/; firstEntry = entry = entry->next)
+    {
+        if (ReadFileAsync(arenas[/*nextArena*/0], entry))
+        {
+            //totalSizes[nextArena] += entry->data.size;
+            fileCount++;
+            AtomicInc64(&workCount);
+        }
+    }
+    
+    /*if (fileCount > maxFileCount)
+    maxFileCount = fileCount;
+    
+    // Only true the first time
+    if (nextArena == currArena)
+    {
+    nextArena = 1;
+    Outf("Start Loads: %llu\n", fileCount);
+    }*/
+    
+#if 0
+    FileEntry* entry = WaitForFile();
+    if (ALWAYS(entry))
+    {
+        u64 entryIdx = arenas[currArena] == entry->arena ? currArena : nextArena;
+        totalSizes[entryIdx] -= entry->data.size;
+        if (totalSizes[entryIdx] == 0)
+        {
+            popCount++;
+            if (entryIdx == currArena)
+            {
+                swapCount++;
+                Swap(u64, currArena, nextArena);
+            }
+        }
+        
+        SLLAtomicPush(workEntry, entry);
+        AtomicInc64(&workCount);
+        ReleaseSemaphore(semaphore, 1, NULL);
+        
+        if (--fileCount)
+            goto PUSH_READ;
+        while (workEntry);
+    }
+    
+#elif 0
+    FileEntry* entry = WaitForFile();
+    if (ALWAYS(entry))
+    {
+        // Process file
+        fileCount--;
+        GlobFile(entry->data, entry->path);
+        CloseHandle(entry->file);
+        
+        u64 entryIdx = arenas[currArena] == entry->arena ? currArena : nextArena;
+        totalSizes[entryIdx] -= entry->data.size;
+        if (totalSizes[entryIdx] == 0)
+        {
+            ArenaPopTo(arenas[entryIdx], 0);
+            popCount++;
+            
+            if (entryIdx == currArena) // Swap when all reads are done
+            {
+                swapCount++;
+                Swap(u64, currArena, nextArena);
+            }
+        }
+        
+        // Is there any file still waiting? The firstEntry can be null because the loop checks for it.
+        if (fileCount)
+            goto PUSH_READ;
+    }
+#endif
+    
+    while (workCount);
+    //Outf("Swaps: %llu, Pops: %llu, Async: %llu, Work Count: %llu\n", swapCount, popCount, maxFileCount, totalFileCount);
+    Outf("Work Count: %llu\n", fileCount);
+    return arenas[0]->highWaterMark + arenas[1]->highWaterMark;
 }
 
 function void PushRead(Arena* arena, FileEntry** first, String path)
 {
-    u64 now = OSNowMS();
     HANDLE file = INVALID_HANDLE_VALUE;
-    W32WidePath(wpath, path, file = CreateFileW(wpath.str, GENERIC_READ, FILE_SHARE_READ, 0,
-                                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OVERLAPPED, 0));
-    if (file == INVALID_HANDLE_VALUE)
-        return;
-    
     u64 len = 0;
-    if (!(GetFileSizeEx(file, (PLARGE_INTEGER)&len) && InRange(len, 0, MAX_U32)))
-        return;
-    loadFileMs += OSNowMS() - now;
+    
+    TIME_BLOCK(duration, getHandleMs += duration)
+    {
+        W32WidePath(wpath, path, file = CreateFileW(wpath.str, GENERIC_READ, FILE_SHARE_READ, 0,
+                                                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OVERLAPPED, 0));
+        if (!(GetFileSizeEx(file, (PLARGE_INTEGER)&len) && InRange(len, 1, MAX_U32)))
+            return;
+    }
     
     FileEntry* entry = PushStruct(arena, FileEntry);
     SLLStackPush(*first, entry);
@@ -304,28 +466,6 @@ function void PushRead(Arena* arena, FileEntry** first, String path)
     entry->data.size = len;
 }
 #endif
-
-function void GlobFile(String text, String file)
-{
-    for (i64 index, row = 1; text.size; text = StrSkip(text, index + 1), ++row)
-    {
-        index = StrFindChr(text, "\n");
-        if (index < 0)
-            break;
-        if (index > 0 && text.str[index-1] == '\r')
-            index--;
-        
-        if (index > 0)
-        {
-            String line = StrPrefix(text, index);
-            if (glob(userPattern, line, 0))
-            {
-                matchCount++;
-                Outf("%.*s(%lld): %.*s\n", StrExpand(file), row, StrExpand(line));
-            }
-        }
-    }
-}
 
 int main(i32 argc, char** argv)
 {
@@ -376,16 +516,13 @@ int main(i32 argc, char** argv)
     ScratchBegin(scratch);
     
 #if READ_ASYNC
-    HANDLE events[ENTRY_COUNT];
-    for (u64 i = 0; i < ENTRY_COUNT; ++i)
-    {
-        readsArena[i] = ArenaReserve(GB(4ULL), 1, 0);
-        events[i] = CreateEvent(0, 0, 0, 0);
-        readsOverlapped[i].hEvent = events[i];
-    }
+    iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+    semaphore = CreateSemaphore(0, 0, 1, 0);
+    CreateThread(0, 0, ThreadProc, 0, 0, 0);
 #endif
     
     u64 ms = OSNowMS();
+    u64 desiredSize = MiB(256); // 150MB/s * 5ms
     
     StringList paths = {0};
     StringList errors = {0};
@@ -412,9 +549,28 @@ int main(i32 argc, char** argv)
                 case 'h':
                 case '?': flags |= Glob_CLI_Help; break;
                 
-                case 'f': flags = (flags|Glob_CLI_File) & ~Glob_CLI_Name; break;
-                case 'n': flags = (flags|Glob_CLI_Name) & ~Glob_CLI_File; break;
+                case 'f':
+                {
+                    invalid = 1;
+                    if (opt->values.nodeCount == 1)
+                    {
+                        u64 num = U64FromStr(opt->values.first->string, 10, 0);
+                        if (InRange(num, 1, KiB(8)))
+                        {
+                            desiredSize = MiB(num);
+                            goto FLAG_FILE;
+                        }
+                    }
+                    
+                    else if (opt->values.nodeCount == 0)
+                    {
+                        FLAG_FILE:
+                        invalid = 0;
+                        flags = (flags|Glob_CLI_File) & ~Glob_CLI_Name;
+                    }
+                } break;
                 
+                case 'n': flags = (flags|Glob_CLI_Name) & ~Glob_CLI_File; break;
                 case 'd': flags |= Glob_CLI_Debug; break;
                 case 'r': flags |= Glob_CLI_Recursive; break;
                 
@@ -450,8 +606,7 @@ int main(i32 argc, char** argv)
             if (!arg.size || StrIsChr(arg, '.'))
                 arg = currDir;
             
-            u64 now;
-            DeferBlock(now = OSNowMS(), getFileMs += OSNowMS() - now)
+            TIME_BLOCK(duration, getFileMs += duration)
             {
                 if (OSFileProperties(arg).flags & FilePropertyFlag_IsFolder)
                 {
@@ -496,7 +651,7 @@ int main(i32 argc, char** argv)
         
         if (!error)
         {
-            u64 fileCount = paths.nodeCount;
+            u64 memoryUsage = 0, smallCount = 0, smallSize = 0, bigCount = 0, bigSize = 0;
             
             if (flags & Glob_CLI_File)
             {
@@ -505,41 +660,44 @@ int main(i32 argc, char** argv)
                 StrListIter(&paths, path)
                     PushRead(scratch, &firstEntry, path->string);
                 
-                READ:
-                for (FileEntry* entry = firstEntry; entry; entry = entry->next)
+                if (firstEntry)
                 {
-                    if (StartRead(entry))
-                        firstEntry = entry->next;
-                    else
-                        break;
-                }
-                
-                while (readsPending)
-                {
-                    u64 now = OSNowMS();
-                    DWORD start = WaitForMultipleObjects(ENTRY_COUNT, events, 0, INFINITE);
-                    loadFileMs += OSNowMS() - now;
-                    
-                    for (u64 i = start; i < ENTRY_COUNT; ++i)
+                    FileEntry* firstBigEntry = 0,* last = 0;
+                    for (FileEntry* entry = firstEntry; entry; last = entry, entry = entry->next)
                     {
-                        OVERLAPPED* overlapped = readsOverlapped + i;
-                        if (!(readsPending & (1ULL << i))) continue;
-                        if (!HasOverlappedIoCompleted(overlapped)) continue;
+                        if (entry->data.size >= desiredSize)
+                        {
+                            if (last)
+                                last->next = entry->next;
+                            else
+                                firstEntry = entry->next;
+                            
+                            bigCount++;
+                            bigSize += entry->data.size;
+                            
+                            SLLStackPush(firstBigEntry, entry);
+                            entry = last;
+                        }
                         
-                        FileEntry* entry = fileEntries[i];
-                        DWORD bytes_read;
-                        ALWAYS(GetOverlappedResult(entry->file, overlapped, &bytes_read, 0));
-                        Assert(bytes_read == entry->data.size);
-                        
-                        // do whatever you want with the data
-                        GlobFile(entry->data, entry->path);
-                        ArenaPopTo(readsArena[i], 0);
-                        CloseHandle(entry->file);
-                        
-                        readsPending &= ~(1ULL << i);
-                        if (firstEntry)
-                            goto READ;
+                        else
+                        {
+                            smallCount++;
+                            smallSize += entry->data.size;
+                        }
                     }
+                    
+                    if (firstBigEntry)
+                    {
+                        if (last)
+                            last->next = firstBigEntry;
+                        else
+                            firstEntry = firstBigEntry;
+                    }
+                    
+                    u64 mb = MiB(1);
+                    Outf("Desired: %.2f MiB, Small: %llu Files (%.2f MiB), Big: %llu Files (%.2f MiB)\n",
+                         DivF64(desiredSize, mb), smallCount, DivF64(smallSize, mb), bigCount, DivF64(bigSize, mb));
+                    memoryUsage += ReadAndProcess(firstEntry, desiredSize);
                 }
 #else
                 StrListIter(&paths, path)
@@ -547,9 +705,9 @@ int main(i32 argc, char** argv)
                     String file = path->string;
                     TempBlock(temp, scratch)
                     {
-                        u64 now = OSNowMS();
-                        String text = OSReadFile(scratch, file);
-                        loadFileMs += OSNowMS() - now;
+                        String text;
+                        TIME_BLOCK(duration, loadFileMs += duration)
+                            text = OSReadFile(scratch, file);
                         GlobFile(text, file);
                     }
                 }
@@ -577,14 +735,16 @@ int main(i32 argc, char** argv)
             else
                 Outf("No matches found\n");
             
+            memoryUsage += scratch->highWaterMark;
             if (flags & Glob_CLI_Debug)
-                Outf("Memory Usage: %llu Bytes, File Count: %llu\n", scratch->highWaterMark, fileCount);
+                Outf("Memory Usage: %.3f MiB, File Count: %llu\n", DivF64(memoryUsage, MiB(1)), paths.nodeCount);
         }
     }
     
     ms = OSNowMS() - ms;
     if (flags & Glob_CLI_Debug)
-        Outf("Total: %llums, Get File: %llums, Load File: %llums\n", ms, getFileMs, loadFileMs);
+        Outf("Total: %llums, Get File: %llums, Get Handle: %llums, Load File: %llums, Glob File: %llums\n",
+             ms, getFileMs, getHandleMs, loadFileMs, globFileMs);
     
     ScratchEnd(scratch);
     return 0;

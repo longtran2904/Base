@@ -280,7 +280,7 @@
 #elif COMPILER_CLANG
 # define WarnPush(...) _Pragma("clang diagnostic push")
 # define WarnPop() _Pragma("clang diagnostic pop")
-# define WarnEnable(warn) _Pragma(Stringify(clang diagnostic warning warn))
+# define  WarnEnable(warn) _Pragma(Stringify(clang diagnostic warning warn))
 # define WarnDisable(warn) _Pragma(Stringify(clang diagnostic ignored warn))
 #else
 # error warnings are not modifiable in code for this compiler
@@ -363,6 +363,64 @@
 #error BeforeMain missing for this OS
 #endif
 
+// NOTE(long): Clang on Windows uses __atomic_* builtins rather than Interlocked* functions
+// because, unlike popcnt intrinsic, Clang doesn't automatically recognize these as builtins
+#if COMPILER_CL
+#include <intrin.h>
+#if ARCH_X64
+#define AtomicLoad64(x)       *((volatile u64*)(x))
+#define AtomicInc64(x)        InterlockedIncrement64((volatile i64*)(x))
+#define AtomicDec64(x)        InterlockedDecrement64((volatile i64*)(x))
+#define AtomicAdd64(x,c)      InterlockedAdd64((volatile i64*)(x), (c))
+#define AtomicXch64(x,c)      InterlockedExchange64((volatile i64*)(x),(c))
+#define AtomicCmpXch64(x,k,c) InterlockedCompareExchange64((volatile i64*)(x),(k),(c))
+
+#define AtomicLoad32(x)       *((volatile u32*)(x))
+#define AtomicInc32(x)        InterlockedIncrement((volatile LONG*)(x))
+#define AtomicDec32(x)        InterlockedDecrement((volatile LONG*)(x))
+#define AtomicAdd32(x,c)      InterlockedAdd((volatile LONG*)(x), (c))
+#define AtomicXch32(x,c)      InterlockedExchange((volatile LONG*)(x),(c))
+#define AtomicCmpXch32(x,k,c) InterlockedCompareExchange((volatile LONG*)(x),(k),(c))
+#else
+#error Atomic intrinsics not defined for this compiler / architecture combination.
+#endif
+
+// NOTE(long): https://gcc.gnu.org/onlinedocs/gcc/_005f_005fatomic-Builtins.html
+// "New code should always use the ‘__atomic’ builtins rather than the ‘__sync’ builtins"
+#elif COMPILER_CLANG || COMPILER_GCC
+#define AtomicLoad64(x)       __atomic_load_n    ((x),      __ATOMIC_SEQ_CST)
+#define AtomicInc64(x)        __atomic_add_fetch ((x), (1), __ATOMIC_SEQ_CST)
+#define AtomicDec64(x)        __atomic_sub_fetch ((x), (1), __ATOMIC_SEQ_CST)
+#define AtomicAdd64(x,c)      __atomic_add_fetch ((x), (c), __ATOMIC_SEQ_CST)
+#define AtomicXch64(x,c)      __atomic_exchange_n((x), (c), __ATOMIC_SEQ_CST)
+#define AtomicCmpXch64(x,k,c) ({ u64 UNIQUE(_new) = (c); \
+                                   __atomic_compare_exchange_n((x), &UNIQUE(_new), (k), \
+                                                               0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); \
+                                   UNIQUE(_new); })
+
+#define AtomicLoad32(x)       __atomic_load_n    ((x),      __ATOMIC_SEQ_CST)
+#define AtomicInc32(x)        __atomic_add_fetch ((x), (1), __ATOMIC_SEQ_CST)
+#define AtomicDec32(x)        __atomic_sub_fetch ((x), (1), __ATOMIC_SEQ_CST)
+#define AtomicAdd32(x,c)      __atomic_add_fetch ((x), (c), __ATOMIC_SEQ_CST)
+#define AtomicXch32(x,c)      __atomic_exchange_n((x), (c), __ATOMIC_SEQ_CST)
+#define AtomicCmpXch32(x,k,c) ({ u32 UNIQUE(_new) = (c); \
+                                   __atomic_compare_exchange_n((x), &UNIQUE(_new), (k), \
+                                                               0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); \
+                                   UNIQUE(_new); })
+#else
+#error Atomic intrinsics not defined for this compiler / architecture.
+#endif
+
+#if ARCH_SIZE == 64
+#define AtomicLoadPtr(x)       (void*)AtomicLoad64((x))
+#define AtomicXchPtr(x,c)      (void*)AtomicXch64((x), (i64)(c))
+#define AtomicCmpXchPtr(x,k,c) (void*)AtomicCmpXch64((i64*)(x), (i64)(k), (i64)(c))
+#else
+#define AtomicLoadPtr(x)       (void*)AtomicLoad32((x))
+#define AtomicXchPtr(x,c)      (void*)AtomicXch32((x), (i32)(c))
+#define AtomicCmpXchPtr(x,k,c) (void*)AtomicCmpXch32((i32*)(x), (i32)(k), (i32)(c))
+#endif
+
 //- long: ASAN Macros
 #if __SANITIZE_ADDRESS__
 #define ENABLE_SANITIZER 1
@@ -430,15 +488,15 @@
 #define OffsetOf(T, m) IntFromPtr(&MemberOf(T, m))
 #define MemberFromOffset(T, ptr, off) (*(T*)((u8*)(ptr) + (off)))
 
-#define KB(x) ((x) << 10)
-#define MB(x) ((x) << 20)
-#define GB(x) ((x) << 30)
-#define TB(x) ((x) << 40)
+#define KiB(x) ((x) << 10)
+#define MiB(x) ((x) << 20)
+#define GiB(x) ((x) << 30)
+#define TiB(x) ((x) << 40)
 
-#define Thousand(x) ((x)*1000)
-#define Million(x)  ((x)*1000000llu)
-#define Billion(x)  ((x)*1000000000llu)
-#define Trillion(x) ((x)*1000000000000llu)
+#define KB(x) ((x)*1000)
+#define MB(x)  ((x)*1000000llu)
+#define GB(x)  ((x)*1000000000llu)
+#define TB(x) ((x)*1000000000000llu)
 
 #define MagicP(T,x,s) ((T)(x) << (s))
 #define MagicU32(a,b,c,d) (MagicP(U32,a,0) | MagicP(U32,b,8) | MagicP(U32,c,16) | MagicP(U32,d,24))
@@ -491,6 +549,11 @@
 #define UnLerp(a, b, x) (((x) - (a))/((b) - (a)))
 #define GetSign(n) ((n) > 0 ? 1 : ((n) < 0 ? -1 : 0))
 #define GetUnsigned(n) ((n) >= 0 ? 1 : -1)
+
+#define DivF32(a, b) ((f32)(a)/(f32)(b))
+#define MulF32(a, b) ((f32)(a)*(f32)(b))
+#define DivF64(a, b) ((f64)(a)/(f64)(b))
+#define MulF64(a, b) ((f64)(a)*(f64)(b))
 
 //- long: String Macros
 #define IsControl(c) (c < ' ' || c == MAX_I8)
@@ -569,6 +632,7 @@
 
 #define SLLStackPush_N(f, n, next) ((n)->next=(f), (f)=(n))
 #define SLLStackPush(f, n) SLLStackPush_N(f, n, next)
+#define SLLAtomicPush(f, n) do { (n)->next = (f); } while (AtomicCmpXchPtr(&(f), (n), (n)->next) != (void*)(n)->next)
 
 #define SLLStackPop_N(f, next) ((f)==0 ? 0 :((f)=(f)->next))
 #define SLLStackPop(f) SLLStackPop_N(f, next)
@@ -985,27 +1049,27 @@ struct TempArena
 };
 
 // TODO(long): Make sure Mac (specifically M1/2/3) is the same
-#define ARCH_PAGE_SIZE KB(4)
+#define ARCH_PAGE_SIZE KiB(4)
 #if OS_WIN
-#define ARCH_ALLOC_GRANULARITY KB(64)
+#define ARCH_ALLOC_GRANULARITY KiB(64)
 #else
-#define ARCH_ALLOC_GRANULARITY KB(4)
+#define ARCH_ALLOC_GRANULARITY KiB(4)
 #endif
 
 #define SCRATCH_POOL_COUNT 2
 
 // @RECONSIDER(long): Rather than constants, arenas can take runtime values and these just become default values
 #ifndef MEM_DEFAULT_RESERVE_SIZE
-#define MEM_DEFAULT_RESERVE_SIZE MB(64)
+#define MEM_DEFAULT_RESERVE_SIZE MiB(64)
 #endif
 #ifndef MEM_COMMIT_BLOCK_SIZE
-#define MEM_COMMIT_BLOCK_SIZE KB(8)
+#define MEM_COMMIT_BLOCK_SIZE KiB(8)
 #endif
 #ifndef MEM_DEFAULT_ALIGNMENT
 #define MEM_DEFAULT_ALIGNMENT sizeof(uptr)
 #endif
 #ifndef MEM_INITIAL_COMMIT
-#define MEM_INITIAL_COMMIT KB(8)
+#define MEM_INITIAL_COMMIT KiB(8)
 #endif
 
 #ifndef MEM_POISON_SIZE

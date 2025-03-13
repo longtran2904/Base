@@ -235,7 +235,7 @@ function Token GetToken(Lexer* lexer)
             }
         } break;
         
-        case '//': { Error(lexer, "The input file contains a standalone backslash!"); } break;
+        case '\\': { Error(lexer, "The input file contains a standalone backslash!"); } break;
         
         default:
         {
@@ -248,20 +248,20 @@ function Token GetToken(Lexer* lexer)
                     {
                         // NOTE: hexadecimal constant
                         AdvanceChars(lexer, 1);
-                        AdvanceUntil(lexer, StrLit(Stringify(HexadecimalDigits)), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
+                        AdvanceUntil(lexer, StrLit(HexadecimalDigits), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
 #if COMPILER_CL
                     else if (ChrCompareNoCase(lexer->at[0], 'b'))
                     {
                         // NOTE: MSVC's binary extension
                         AdvanceChars(lexer, 1);
-                        AdvanceUntil(lexer, StrLit(Stringify(Binary)), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
+                        AdvanceUntil(lexer, StrLit(Binary), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
 #endif
                     else
                     {
                         // NOTE: octal constant
-                        AdvanceUntil(lexer, StrLit(Stringify(OctalDigits)), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
+                        AdvanceUntil(lexer, StrLit(OctalDigits), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
                     goto INTEGER_SUFFIX;
                 }
@@ -269,7 +269,7 @@ function Token GetToken(Lexer* lexer)
                 else
                 {
                     // NOTE: decimal constant
-                    AdvanceUntil(lexer, StrLit(Stringify(Digits)), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
+                    AdvanceUntil(lexer, StrLit(Digits), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     
                     b32 isFloat = false;
                     if (ChrCompare(lexer->at[0], '.', 0))
@@ -277,7 +277,7 @@ function Token GetToken(Lexer* lexer)
                         FLOATING_CONSTANT:
                         isFloat = true;
                         AdvanceChars(lexer, 1);
-                        AdvanceUntil(lexer, StrLit(Stringify(Digits)), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
+                        AdvanceUntil(lexer, StrLit(Digits), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
                     
                     if (ChrCompareNoCase(lexer->at[0], 'e'))
@@ -290,7 +290,7 @@ function Token GetToken(Lexer* lexer)
                     if (isFloat)
                     {
                         result.type = MetaTokenType_Constant_Float;
-                        AdvanceUntil(lexer, StrLit(Stringify(Concat(Digits, fl))), StringMatchFlags_NoCase|StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
+                        AdvanceUntil(lexer, StrLit(Digits"fl"), StringMatchFlags_NoCase|StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
                     else
                     {
@@ -560,6 +560,7 @@ function void ParseDeclaration(Parser* parser, DeclarationType declType, MetaInf
                 typeInfo = FindMetaType(parser->table, typeName);
             }
         } break;
+        default: break;
     }
     
     if (typeInfo)

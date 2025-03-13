@@ -62,7 +62,9 @@ readonly global const String Day_names[] =
 //~ long: Built-in Functions
 
 #if COMPILER_CL || (COMPILER_CLANG && OS_WIN) // https://stackoverflow.com/a/76705994
-#include <intrin.h> // __movsb, __lzcnt, _BitScanForward, _popcnt
+// NOTE(long): Because Clang on Windows uses __atomic_* builtins rather than Interlocked* functions
+// It may not include intrin.h
+#include <intrin.h>
 
 function u32 __ctz32(u32 x) { u32 result; _BitScanForward  (&result, x); return result; }
 function u64 __ctz64(u64 x) { u32 result; _BitScanForward64(&result, x); return result; }
@@ -647,6 +649,15 @@ function void ArenaRelease(Arena* arena)
     }
 }
 
+function void* ArenaPush(Arena* arena, u64 size)
+{
+    void* result = ArenaPushNZ(arena, size);
+#if !BASE_ZERO_ON_POP
+    ZeroMem(result, size);
+#endif
+    return result;
+}
+
 function void* ArenaPushNZ(Arena* arena, u64 size)
 {
     void* result = 0;
@@ -731,7 +742,7 @@ function void ArenaPopTo(Arena* arena, u64 pos)
 {
     Arena* current = arena->curr;
     u64 currPos = current->basePos + current->pos;
-    NEVER(pos > currPos);
+    Assert(pos <= currPos);
     if (pos < currPos)
     {
         u64 clampedPos = ClampBot(pos, sizeof(Arena));
@@ -800,15 +811,6 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         AsanPoison(ptr, current->commitPos - newPos);
         current->pos = newPos;
     }
-}
-
-function void* ArenaPush(Arena* arena, u64 size)
-{
-    void* result = ArenaPushNZ(arena, size);
-#if !BASE_ZERO_ON_POP
-    ZeroMem(result, size);
-#endif
-    return result;
 }
 
 internal void ArenaPoison(Arena* arena, u64 size)
@@ -2383,7 +2385,7 @@ function u64 U64FromStrC(String str, b32* error)
 
 //~ long: Logs/Errors
 
-#define PRINT_INTERNAL_BUFFER_SIZE KB(4)
+#define PRINT_INTERNAL_BUFFER_SIZE KiB(4)
 
 CHECK_PRINTF_FUNC(1) function void Outf(CHECK_PRINTF char* fmt, ...)
 {
@@ -2414,8 +2416,7 @@ CHECK_PRINTF_FUNC(1) function void Outf(CHECK_PRINTF char* fmt, ...)
             }
         }
         
-        b32 result = OSWriteConsole(OS_STD_OUT, msg);
-        ALWAYS(result);
+        ALWAYS(OSWriteConsole(OS_STD_OUT, msg));
         if (extra)
             OSDecommit(extra, size);
     }
@@ -2431,9 +2432,7 @@ CHECK_PRINTF_FUNC(1) function void Errf(CHECK_PRINTF char* fmt, ...)
     {
         if (NEVER(size > PRINT_INTERNAL_BUFFER_SIZE))
             size = PRINT_INTERNAL_BUFFER_SIZE;
-        
-        b32 result = OSWriteConsole(OS_STD_ERR, Str(buffer, size));
-        ALWAYS(result);
+        ALWAYS(OSWriteConsole(OS_STD_ERR, Str(buffer, size)));
     }
     va_end(args);
 }
@@ -2486,7 +2485,7 @@ threadvar LOG_Thread logThread = {0};
 void BASE_SHARABLE(LogBeginEx)(LogInfo info)
 {
     if (!logThread.arena)
-        logThread.arena = ArenaReserve(KB(64), 1, 1);
+        logThread.arena = ArenaReserve(KiB(64), 1, 1);
     LOG_List* list = PushStruct(logThread.arena, LOG_List);
     *list = (LOG_List){ .arena = logThread.arena->curr, .info = info };
     SLLStackPush(logThread.stack, list);
@@ -2802,43 +2801,6 @@ BeforeMain(BaseInit)
     }
     
     //- TODO(long): IsProcessorFeaturePresent to setup isaMask
-    //PF_ARM_64BIT_LOADSTORE_ATOMIC
-    //PF_ARM_DIVIDE_INSTRUCTION_AVAILABLE
-    //PF_ARM_EXTERNAL_CACHE_AVAILABLE
-    //PF_ARM_FMAC_INSTRUCTIONS_AVAILABLE
-    //PF_ARM_VFP_32_REGISTERS_AVAILABLE
-    //PF_3DNOW_INSTRUCTIONS_AVAILABLE
-    //PF_CHANNELS_ENABLED
-    //PF_COMPARE_EXCHANGE_DOUBLE
-    //PF_COMPARE_EXCHANGE128
-    //PF_COMPARE64_EXCHANGE128
-    //PF_FASTFAIL_AVAILABLE
-    //PF_FLOATING_POINT_EMULATED
-    //PF_FLOATING_POINT_PRECISION_ERRATA
-    //PF_MMX_INSTRUCTIONS_AVAILABLE
-    //PF_NX_ENABLED
-    //PF_PAE_ENABLED
-    //PF_RDTSC_INSTRUCTION_AVAILABLE
-    //PF_RDWRFSGSBASE_AVAILABLE
-    //PF_SECOND_LEVEL_ADDRESS_TRANSLATION
-    //PF_SSE3_INSTRUCTIONS_AVAILABLE
-    //PF_SSSE3_INSTRUCTIONS_AVAILABLE
-    //PF_SSE4_1_INSTRUCTIONS_AVAILABLE
-    //PF_SSE4_2_INSTRUCTIONS_AVAILABLE
-    //PF_AVX_INSTRUCTIONS_AVAILABLE
-    //PF_AVX2_INSTRUCTIONS_AVAILABLE
-    //PF_AVX512F_INSTRUCTIONS_AVAILABLE
-    //PF_VIRT_FIRMWARE_ENABLED
-    //PF_XMMI_INSTRUCTIONS_AVAILABLE
-    //PF_XMMI64_INSTRUCTIONS_AVAILABLE
-    //PF_XSAVE_ENABLED
-    //PF_ARM_V8_INSTRUCTIONS_AVAILABLE
-    //PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE
-    //PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE
-    //PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE
-    //PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE UDOT
-    //PF_ARM_V83_JSCVT_INSTRUCTIONS_AVAILABLE
-    //PF_ARM_V83_LRCPC_INSTRUCTIONS_AVAILABLE
     
     //- Virtual Address
     win32SysInfo.pageSize = sysInfo.dwPageSize;
@@ -3043,7 +3005,7 @@ function u64 OSNowMS(void)
     if (QueryPerformanceCounter(&perfCounter))
     {
         u64 ticks = ((u64)perfCounter.HighPart << 32) | perfCounter.LowPart;
-        result = ticks * Thousand(1) / win32TicksPerSecond;
+        result = ticks * KB(1) / win32TicksPerSecond;
     }
     return result;
 }
@@ -3055,7 +3017,7 @@ function u64 OSNowUS(void)
     if (QueryPerformanceCounter(&perfCounter))
     {
         u64 ticks = ((u64)perfCounter.HighPart << 32) | perfCounter.LowPart;
-        result = ticks * Million(1) / win32TicksPerSecond;
+        result = ticks * MB(1) / win32TicksPerSecond;
     }
     return result;
 }
@@ -3130,7 +3092,7 @@ internal String W32ReadFile(Arena* arena, HANDLE file)
 // NOTE(long): CRT seems to be using 4KB for fgets internal buffer size
 // But `cmd.exe` allows up to 8KB - 1 characters, so I use that instead
 // https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
-#define CONSOLE_INTERNAL_BUFFER_SIZE KB(8)
+#define CONSOLE_INTERNAL_BUFFER_SIZE KiB(8)
 
 function HANDLE W32GetStdHandle(i32 handle)
 {
@@ -3430,7 +3392,7 @@ struct W32FileIter
 StaticAssert(ArrayCount(MemberOf(OSFileIter, v)) >= sizeof(W32FileIter), w32fileiter);
 #define W32GetIter(iter) ((W32FileIter*)(iter)->v)
 
-#define FILE_ITER_BUFFER_SIZE KB(64)
+#define FILE_ITER_BUFFER_SIZE KiB(64)
 function b32 W32FileIterInit(Arena* arena, W32FileIter* iter, String path)
 {
     b32 result = 0;
@@ -3439,12 +3401,12 @@ function b32 W32FileIterInit(Arena* arena, W32FileIter* iter, String path)
                                                         NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0));
     iter->path = path;
     
-    if (ALWAYS(iter->handle != INVALID_HANDLE_VALUE))
+    if (iter->handle != INVALID_HANDLE_VALUE)
     {
         TempArena temp = TempBegin(arena);
         iter->buffer = PushArray(arena, u8, FILE_ITER_BUFFER_SIZE);
-        if (ALWAYS(GetFileInformationByHandleEx(iter->handle, FileIdExtdDirectoryRestartInfo,
-                                                iter->buffer, FILE_ITER_BUFFER_SIZE)))
+        if (GetFileInformationByHandleEx(iter->handle, FileIdExtdDirectoryRestartInfo,
+                                         iter->buffer, FILE_ITER_BUFFER_SIZE))
         {
             result = 1;
             iter->info = (FILE_ID_EXTD_DIR_INFO*)iter->buffer;
@@ -3558,7 +3520,7 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter)
                     if (!GetFileInformationByHandleEx(w32Iter->handle, FileIdExtdDirectoryInfo,
                                                       w32Iter->buffer, FILE_ITER_BUFFER_SIZE))
                     {
-                        ALWAYS(GetLastError() == ERROR_NO_MORE_FILES);
+                        Assert(GetLastError() == ERROR_NO_MORE_FILES);
                         
                         if (w32Iter->next)
                         {

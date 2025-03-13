@@ -109,7 +109,7 @@ int main(void)
         }
     }
     
-    OSCommit(arena, KB(4));
+    OSCommit(arena, KiB(4));
     
     DEMO("Log")
     {
@@ -213,7 +213,7 @@ int main(void)
                 iter.name = StrJoin3(arena, iter.name, StrLit(","));
             
             Outf("%s %-17.*s Created: %.*s, Date modified: %.*s, Size: %6.2f KB\n", isFolder ? "Dir: " : "File:",
-                 StrExpand(iter.name), StrExpand(createTime), StrExpand(modifyTime), (f64)size / KB(1));
+                 StrExpand(iter.name), StrExpand(createTime), StrExpand(modifyTime), (f64)size / KiB(1));
         }
         
         Outf("\n");

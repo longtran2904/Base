@@ -1,5 +1,3 @@
-#define MEM_DEFAULT_RESERVE_SIZE MB(64)
-
 #include "Base.h"
 #include "Base.c"
 #include "LongGFX.h"
@@ -17,9 +15,12 @@ Arena* stbArena;
 #define STBI_MALLOC(sz) ArenaPushNZ(stbArena, sz)
 #define STBI_REALLOC_SIZED(p, oldsz, newsz) CopyMem(ArenaPushNZ(stbArena, newsz), p, oldsz)
 
-MSVC(WarnDisable(6262))
+WarnPush(0)
+WarnDisable("-Wdouble-promotion")
+WarnDisable("-Wunused-variable")
+WarnDisable("-Wimplicit-int-conversion")
 #include "stb_image.h"
-MSVC(WarnEnable(6262))
+WarnPop()
 
 #define CHANNEL_COUNT 4
 
@@ -54,7 +55,7 @@ function Image LoadImageFromFile(Arena* arena, String file, u32 blockSize)
         stbArena = scratch;
         
         i32 channelCount = 0;
-        String data = OSReadFile(scratch, file, false);
+        String data = OSReadFile(scratch, file);
         u8* pixels = stbi_load_from_memory(data.str, (i32)data.size, &result.width, &result.height, &channelCount, 4);
         //Assert(channelCount == CHANNEL_COUNT);
         
@@ -143,7 +144,7 @@ function u8* HashBlockPattern(PatternTable* table, u8* pattern)
 int main(int argc, char** argv)
 {
     OSSetArgs(argc, argv);
-    Arena* arena = ArenaReserve(GB(1), MEM_DEFAULT_ALIGNMENT, 0);
+    Arena* arena = ArenaReserve(GiB(1), MEM_DEFAULT_ALIGNMENT, 0);
     
     StringList args = OSGetArgs();;
     if (args.nodeCount != 2)
@@ -158,7 +159,7 @@ int main(int argc, char** argv)
     u32 total = 0;
     
     String path = args.first->next->string;
-    PatternTable totalTable = CreateTable(arena, MB(1), BLOCK_SIZE);
+    PatternTable totalTable = CreateTable(arena, MiB(1), BLOCK_SIZE);
     FileIterBlock(arena, iter, path)
     {
         ScratchBlock(scratch)
@@ -184,7 +185,7 @@ int main(int argc, char** argv)
             totalCount++;
             totalBlocks += table.usedBlocks;
             total += blockCount;
-            f32 rate = table.usedBlocks/(f32)blockCount;
+            f64 rate = DivF64(table.usedBlocks, blockCount);
             if (table.usedBlocks < minBlock)
             {
                 minBlock = table.usedBlocks;
@@ -197,8 +198,8 @@ int main(int argc, char** argv)
     }
     
     Outf("\n");
-    Outf("MIN: %.*s: %u, %f\n", StrExpand(minName), minBlock, minBlock / (f32)minBlockSize);
-    Outf("AVG: %f, %f\n", totalBlocks / (f32)totalCount, totalBlocks / (f32)total);
+    Outf("MIN: %.*s: %u, %f\n", StrExpand(minName), minBlock, DivF64(minBlock, minBlockSize));
+    Outf("AVG: %f, %f\n", DivF64(totalBlocks, totalCount), DivF64(totalBlocks, total));
     Outf("Total pattern used: %u/%u\n", totalTable.usedBlocks, totalTable.maxBlockCount);
     return 0;
 }
