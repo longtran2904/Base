@@ -368,19 +368,25 @@
 #if COMPILER_CL
 #include <intrin.h>
 #if ARCH_X64
-#define AtomicLoad64(x)       *((volatile u64*)(x))
+#define AtomicLoad64(x)       (*(volatile u64*)(x))
 #define AtomicInc64(x)        InterlockedIncrement64((volatile i64*)(x))
 #define AtomicDec64(x)        InterlockedDecrement64((volatile i64*)(x))
 #define AtomicAdd64(x,c)      InterlockedAdd64((volatile i64*)(x), (c))
+#define AtomicSub64(x,c)      InterlockedAdd64((volatile i64*)(x), -(i64)(c))
 #define AtomicXch64(x,c)      InterlockedExchange64((volatile i64*)(x),(c))
 #define AtomicCmpXch64(x,k,c) InterlockedCompareExchange64((volatile i64*)(x),(k),(c))
 
-#define AtomicLoad32(x)       *((volatile u32*)(x))
-#define AtomicInc32(x)        InterlockedIncrement((volatile LONG*)(x))
-#define AtomicDec32(x)        InterlockedDecrement((volatile LONG*)(x))
-#define AtomicAdd32(x,c)      InterlockedAdd((volatile LONG*)(x), (c))
-#define AtomicXch32(x,c)      InterlockedExchange((volatile LONG*)(x),(c))
-#define AtomicCmpXch32(x,k,c) InterlockedCompareExchange((volatile LONG*)(x),(k),(c))
+#define AtomicLoad32(x)       (*(volatile u32*)(x))
+#define AtomicInc32(x)        InterlockedIncrement((volatile i32*)(x))
+#define AtomicDec32(x)        InterlockedDecrement((volatile i32*)(x))
+#define AtomicAdd32(x,c)      InterlockedAdd((volatile i32*)(x), (c))
+#define AtomicSub32(x,c)      InterlockedAdd((volatile i32*)(x), -(i32)(c))
+#define AtomicXch32(x,c)      InterlockedExchange((volatile i32*)(x),(c))
+#define AtomicCmpXch32(x,k,c) InterlockedCompareExchange((volatile i32*)(x),(k),(c))
+
+#define AtomicLoadPtr(x)       (*(volatile void**)(x))
+#define AtomicXchPtr(x,c)      InterlockedExchangePointer((volatile void**)(x), (c))
+#define AtomicCmpXchPtr(x,k,c) InterlockedCompareExchangePointer((volatile void**)(x), (k), (c))
 #else
 #error Atomic intrinsics not defined for this compiler / architecture combination.
 #endif
@@ -392,6 +398,7 @@
 #define AtomicInc64(x)        __atomic_add_fetch ((x), (1), __ATOMIC_SEQ_CST)
 #define AtomicDec64(x)        __atomic_sub_fetch ((x), (1), __ATOMIC_SEQ_CST)
 #define AtomicAdd64(x,c)      __atomic_add_fetch ((x), (c), __ATOMIC_SEQ_CST)
+#define AtomicSub64(x,c)      __atomic_sub_fetch ((x), (c), __ATOMIC_SEQ_CST)
 #define AtomicXch64(x,c)      __atomic_exchange_n((x), (c), __ATOMIC_SEQ_CST)
 #define AtomicCmpXch64(x,k,c) ({ u64 UNIQUE(_new) = (c); \
                                    __atomic_compare_exchange_n((x), &UNIQUE(_new), (k), \
@@ -402,23 +409,21 @@
 #define AtomicInc32(x)        __atomic_add_fetch ((x), (1), __ATOMIC_SEQ_CST)
 #define AtomicDec32(x)        __atomic_sub_fetch ((x), (1), __ATOMIC_SEQ_CST)
 #define AtomicAdd32(x,c)      __atomic_add_fetch ((x), (c), __ATOMIC_SEQ_CST)
+#define AtomicSub32(x,c)      __atomic_sub_fetch ((x), (c), __ATOMIC_SEQ_CST)
 #define AtomicXch32(x,c)      __atomic_exchange_n((x), (c), __ATOMIC_SEQ_CST)
 #define AtomicCmpXch32(x,k,c) ({ u32 UNIQUE(_new) = (c); \
                                    __atomic_compare_exchange_n((x), &UNIQUE(_new), (k), \
                                                                0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); \
                                    UNIQUE(_new); })
+
+#define AtomicLoadPtr(x)       __atomic_load_n    ((x),      __ATOMIC_SEQ_CST)
+#define AtomicXchPtr(x,c)      __atomic_exchange_n((x), (c), __ATOMIC_SEQ_CST)
+#define AtomicCmpXchPtr(x,k,c) ({ uptr UNIQUE(_new) = (c); \
+                                    __atomic_compare_exchange_n((x), &UNIQUE(_new), (k), \
+                                                                0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); \
+                                    UNIQUE(_new); })
 #else
 #error Atomic intrinsics not defined for this compiler / architecture.
-#endif
-
-#if ARCH_SIZE == 64
-#define AtomicLoadPtr(x)       (void*)AtomicLoad64((x))
-#define AtomicXchPtr(x,c)      (void*)AtomicXch64((x), (i64)(c))
-#define AtomicCmpXchPtr(x,k,c) (void*)AtomicCmpXch64((i64*)(x), (i64)(k), (i64)(c))
-#else
-#define AtomicLoadPtr(x)       (void*)AtomicLoad32((x))
-#define AtomicXchPtr(x,c)      (void*)AtomicXch32((x), (i32)(c))
-#define AtomicCmpXchPtr(x,k,c) (void*)AtomicCmpXch32((i32*)(x), (i32)(k), (i32)(c))
 #endif
 
 //- long: ASAN Macros
@@ -1474,8 +1479,10 @@ function void      TempEnd(TempArena temp);
 //~ long: String Functions
 
 //- long: Constructor Functions
-#define ZeroStr ((String){0})
-#define   Str(...)   ((String){ __VA_ARGS__ })
+#define ZeroStr    ((String  ){0})
+#define ZeroStr16  ((String16){0})
+#define ZeroStr32  ((String32){0})
+#define   Str(...) ((String  ){ __VA_ARGS__ })
 #define Str16(...) ((String16){ __VA_ARGS__ })
 #define Str32(...) ((String32){ __VA_ARGS__ })
 
@@ -1812,9 +1819,15 @@ function u64 Hash64 (u8* values, u64 count);
 ////////////////////////////////////////////////////////////////
 //-/////////////////////////////////////////////////////////////
 
-// @CONSIDER(long): A generic or layer-specific hanle type
-
 //~ long: OS Setup
+
+typedef struct OS_Handle OS_Handle;
+struct OS_Handle
+{
+    u64 v[1];
+};
+
+function b32 OS_HandleIsValid(OS_Handle handle);
 
 function StringList OSSetArgs(int argc, char **argv);
 function StringList OSGetArgs(void);
@@ -1969,11 +1982,35 @@ struct SysInfo
 
 function SysInfo OSGetSysInfo(void);
 
-//~ TODO(long): Processes/Threads
+//~ NOTE(long): Processes
 
-#define OS_SYS(cmd) OSExec(StrLit(cmd), 0)
-function i32 OSExec(String command, i32* code);
-// TODO(long): OSExecEx where you can redirect std handles and switch between sync vs async
+typedef struct OS_ProcessParams OS_ProcessParams;
+struct OS_ProcessParams
+{
+    StringList env;
+    String path;
+    b32 consoleless;
+    OS_Handle stdOutHandle;
+    OS_Handle stdErrHandle;
+    OS_Handle stdInHandle;
+};
+
+function OS_Handle OS_ProcessLaunch(String cmd, OS_ProcessParams* params);
+function b32       OS_ProcessJoin(OS_Handle handle, u64 timeoutMs);
+function void      OS_ProcessDetach(OS_Handle handle);
+function b32       OS_ProcessExec(String cmd, OS_ProcessParams* params);
+
+#define OS_SYS(cmd, ...) OS_ProcessExec(StrLit(cmd), &(OS_ProcessParams){.consoleless = 0, __VA_ARGS__})
+
+//~ TODO(long): Threads
+
+typedef void OS_ThreadFunc(void* ptr);
+
+function OS_Handle OS_ThreadLaunch(OS_ThreadFunc* func, void* params);
+function b32       OS_ThreadJoin(OS_Handle handle, u64 timeoutMs);
+function void      OS_ThreadDetach(OS_Handle handle);
+
+// @CONSIDER(long): Should OS_Process/ThreadDetach become OS_HandleClose
 
 //ReadFileAsync
 //WriteFileAsync

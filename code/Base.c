@@ -1874,8 +1874,9 @@ function u32 StrEncodeWide(u16* dst, u32 codepoint)
 function String32 Str32FromStr(Arena* arena, String str)
 {
     u64 maxSize = str.size;
-    u32* memory = PushArrayNZ(arena, u32, maxSize + 1);
+    if (!maxSize) return ZeroStr32;
     
+    u32* memory = PushArrayNZ(arena, u32, maxSize + 1);
     u32* dptr = memory;
     Str8Stream(str, ptr, opl)
     {
@@ -1891,14 +1892,15 @@ function String32 Str32FromStr(Arena* arena, String str)
     
     u64 size = (u64)(dptr - memory);
     ArenaPop(arena, (maxSize - size) * sizeof(*memory));
-    return (String32){ memory, size };
+    return Str32(memory, size);
 }
 
 function String16 Str16FromStr(Arena* arena, String str)
 {
     u64 maxSize = str.size;
-    u16* memory = PushArrayNZ(arena, u16, maxSize + 1);
+    if (!maxSize) return ZeroStr16;
     
+    u16* memory = PushArrayNZ(arena, u16, maxSize + 1);
     u16* dptr = memory;
     Str8Stream(str, ptr, opl)
     {
@@ -1914,7 +1916,7 @@ function String16 Str16FromStr(Arena* arena, String str)
     
     u64 size = (u64)(dptr - memory);
     ArenaPop(arena, (maxSize - size) * sizeof(*memory));
-    return (String16){ memory, size };
+    return Str16(memory, size);
 }
 
 function String StrFromStr32(Arena* arena, String32 str)
@@ -2914,6 +2916,15 @@ BeforeMain(BaseInit)
     ScratchEnd(scratch);
 }
 
+#define W32GetHandle(handle) ((HANDLE)((handle).v[0]))
+#define W32SetHandle(osHandle, w32Handle) ((osHandle).v[0] = (u64)(w32Handle))
+
+function b32 OS_HandleIsValid(OS_Handle handle)
+{
+    HANDLE process = W32GetHandle(handle);
+    return process != NULL && process != INVALID_HANDLE_VALUE;
+}
+
 function StringList OSSetArgs(int argc, char** argv)
 {
     for (int i = 0; i < argc; ++i)
@@ -2928,8 +2939,6 @@ function StringList OSGetArgs(void)
 {
     return win32CmdLine;
 }
-
-//~ long: Exit
 
 function void OSExit(u32 code)
 {
@@ -3622,35 +3631,99 @@ function SysInfo OSGetSysInfo(void)
 
 //~ NOTE(long): Processes/Threads
 
-// https://learn.microsoft.com/en-us/windows/win32/procthread/creating-processes
-function b32 OSExec(String command, i32* code)
+StaticAssert(sizeof(DWORD) == sizeof(u32));
+
+function b32 OS_ProcessExec(String cmd, OS_ProcessParams* params)
 {
     b32 result = 0;
-    PROCESS_INFORMATION pi = {0};
-    
-    STARTUPINFO si = { .cb = sizeof(STARTUPINFO) };
-    // NOTE(long): You can set hStdError/Output/Input and dwFlags to redirect std handles
-    // https://github.com/tsoding/nob.h/blob/f019011fd9ac28646d72fad27f2bc52c43e53eca/nob.h#L829
-    
     ScratchBlock(scratch)
     {
-        String cmd = StrPushf(scratch, "cmd.exe /C %.*s", StrExpand(command));
-        
-        if (ALWAYS(CreateProcess(NULL, /*no module name*/
-                                 cmd.str,
-                                 NULL, NULL, FALSE, /*no inheritance*/
-                                 0,
-                                 NULL, NULL, /*use parent's enviroment and path*/
-                                 &si, &pi)))
+        cmd = StrPushf(scratch, "cmd.exe /C %.*s", StrExpand(cmd));
+        OS_Handle handle = OS_ProcessLaunch(cmd, params);
+        result = OS_ProcessJoin(handle, INFINITE);
+        OS_ProcessDetach(handle);
+    }
+    return result;
+}
+
+// https://learn.microsoft.com/en-us/windows/win32/procthread/creating-processes
+function OS_Handle OS_ProcessLaunch(String cmd, OS_ProcessParams* params)
+{
+    OS_Handle result = {0};
+    ScratchBegin(scratch);
+    
+    // UTF-8 -> UTF-16
+    // NOTE(long): If the string is empty, all of these must be null
+    WCHAR* cmd16 = 0,* dir16 = 0,* env16 = 0;
+    {
+        cmd16 = Str16FromStr(scratch, cmd).str;
+        dir16 = Str16FromStr(scratch, params->path).str;
+        if (params->env.totalSize)
         {
-            WaitForSingleObject(pi.hProcess, INFINITE);
-            result = code ? GetExitCodeProcess(pi.hProcess, code) : 1;
-            
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
+            String env = StrJoin(scratch, &params->env, .mid = StrLit("\0"), .post = StrLit("\0"));
+            env16 = Str16FromStr(scratch, env).str;
         }
     }
     
+    // STD Handles
+    BOOL inheritHandles = 0;
+    STARTUPINFOW startupInfo = {sizeof(startupInfo)};
+    {
+        if (OS_HandleIsValid(params->stdOutHandle))
+        {
+            startupInfo.hStdOutput = W32GetHandle(params->stdOutHandle);
+            startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+            inheritHandles = 1;
+        }
+        
+        if (OS_HandleIsValid(params->stdErrHandle))
+        {
+            startupInfo.hStdError = W32GetHandle(params->stdErrHandle);
+            startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+            inheritHandles = 1;
+        }
+        
+        if (OS_HandleIsValid(params->stdInHandle))
+        {
+            startupInfo.hStdInput = W32GetHandle(params->stdInHandle);
+            startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+            inheritHandles = 1;
+        }
+    }
+    
+    PROCESS_INFORMATION processInfo = {0};
+    if (CreateProcessW(NULL, // no module name
+                       cmd16,
+                       NULL, NULL, inheritHandles, // inheritance
+                       CREATE_UNICODE_ENVIRONMENT|(!!params->consoleless*CREATE_NO_WINDOW),
+                       env16, dir16, &startupInfo, &processInfo))
+    {
+        W32SetHandle(result, processInfo.hProcess);
+        CloseHandle(processInfo.hThread);
+    }
+    else
+    {
+        DWORD error = GetLastError();
+        DEBUG(error);
+    }
+    
+    ScratchEnd(scratch);
     return result;
+}
+
+StaticAssert(MAX_U32 == INFINITE, w32InfiniteCheck);
+#define W32TimeMS(ms) ((DWORD)ms)
+
+function b32 OS_ProcessJoin(OS_Handle handle, u64 timeoutMs)
+{
+    HANDLE process = W32GetHandle(handle);
+    DWORD result = WaitForSingleObject(process, W32TimeMS(timeoutMs));
+    return (result == WAIT_OBJECT_0);
+}
+
+function void OS_ProcessDetach(OS_Handle handle)
+{
+    if (OS_HandleIsValid(handle))
+        CloseHandle(W32GetHandle(handle));
 }
 #endif
