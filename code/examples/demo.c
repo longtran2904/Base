@@ -220,7 +220,7 @@ int main(void)
         Outf("---LIBS---\n");
         {
             OSLoadLib(StrLit("build\\test_base"));
-            OSLib lib = OSLoadLib(StrLit("build\\TestDLL.dll"));
+            OS_Handle lib = OSLoadLib(StrLit("build\\TestDLL.dll"));
             i32 (*init)(VoidFunc*, b32);
             PrcCast(init, OSGetProc(lib, "DLLCallback"));
             

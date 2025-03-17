@@ -364,9 +364,9 @@
 #endif
 
 // NOTE(long): Clang on Windows uses __atomic_* builtins rather than Interlocked* functions
-// because, unlike popcnt intrinsic, Clang doesn't automatically recognize these as builtins
+// Because Interlocked* are functions (Windows.h) while _Interlocked* are intrinsics (intrin.h)
+// Can't use _Interlocked* intrinsics here because some are only supported on ARM/ARM64
 #if COMPILER_CL
-#include <intrin.h>
 #if ARCH_X64
 #define AtomicLoad64(x)       (*(volatile u64*)(x))
 #define AtomicInc64(x)        InterlockedIncrement64((volatile i64*)(x))
@@ -384,9 +384,9 @@
 #define AtomicXch32(x,c)      InterlockedExchange((volatile i32*)(x),(c))
 #define AtomicCmpXch32(x,k,c) InterlockedCompareExchange((volatile i32*)(x),(k),(c))
 
-#define AtomicLoadPtr(x)       (*(volatile void**)(x))
-#define AtomicXchPtr(x,c)      InterlockedExchangePointer((volatile void**)(x), (c))
-#define AtomicCmpXchPtr(x,k,c) InterlockedCompareExchangePointer((volatile void**)(x), (k), (c))
+#define AtomicLoadPtr(x)       (*(void*volatile*)(x))
+#define AtomicXchPtr(x,c)      InterlockedExchangePointer((void*volatile*)(x), (c))
+#define AtomicCmpXchPtr(x,k,c) InterlockedCompareExchangePointer((void*volatile*)(x), (k), (c))
 #else
 #error Atomic intrinsics not defined for this compiler / architecture combination.
 #endif
@@ -418,7 +418,7 @@
 
 #define AtomicLoadPtr(x)       __atomic_load_n    ((x),      __ATOMIC_SEQ_CST)
 #define AtomicXchPtr(x,c)      __atomic_exchange_n((x), (c), __ATOMIC_SEQ_CST)
-#define AtomicCmpXchPtr(x,k,c) ({ uptr UNIQUE(_new) = (c); \
+#define AtomicCmpXchPtr(x,k,c) ({ void* UNIQUE(_new) = (c); \
                                     __atomic_compare_exchange_n((x), &UNIQUE(_new), (k), \
                                                                 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); \
                                     UNIQUE(_new); })
@@ -637,10 +637,15 @@
 
 #define SLLStackPush_N(f, n, next) ((n)->next=(f), (f)=(n))
 #define SLLStackPush(f, n) SLLStackPush_N(f, n, next)
-#define SLLAtomicPush(f, n) do { (n)->next = (f); } while (AtomicCmpXchPtr(&(f), (n), (n)->next) != (void*)(n)->next)
 
 #define SLLStackPop_N(f, next) ((f)==0 ? 0 :((f)=(f)->next))
 #define SLLStackPop(f) SLLStackPop_N(f, next)
+
+// NOTE(long): No other threads can modify n
+#define SLLAtomicPush_N(f, n, next) do { (n)->next = (f); } while (AtomicCmpXchPtr(&(f), (n), (n)->next) != (n)->next)
+#define SLLAtomicPush(f, n) SLLAtomicPush_N(f, n, next)
+
+#define SLLAtomicPop(f) SLLAtomicPop_(&(f), (u8*)&(f)->next - (u8*)(f))
 
 #define ForList_N(type, name, first, next) for (type* name = (first); name; name = name->next)
 #define ForList(type, name, first) ForList_N(type, name, first, next)
@@ -1227,6 +1232,8 @@ function void __movsb(unsigned char *, unsigned char const *, size_t);
 function void __movsd(unsigned long *, unsigned long const *, size_t);
 function void __movsq(unsigned long long *, unsigned long long const *, size_t);
 
+function void* SLLAtomicPop_(void*volatile* first, uptr nextOff);
+
 //~ long: Math Functions
 
 //- long: Large Type Functions
@@ -1361,14 +1368,14 @@ function i32 ClampR1I32(r1i32 r, i32 v);
 
 function r1u64 R1U64(u64 min, u64 max);
 function r1u64 R1U64Size(u64 min, u64 size);
-function r1u64 ShiftR1u64(r1u64 r, u64 x);
-function r1u64 PadR1u64(r1u64 r, u64 x);
-function u64 CenterR1u64(r1u64 r);
-function b32 ContainsR1u64(r1u64 r, u64 x);
-function u64 DimR1u64(r1u64 r);
-function r1u64 UnionR1u64(r1u64 a, r1u64 b);
-function r1u64 IntersectR1u64(r1u64 a, r1u64 b);
-function u64 ClampR1u64(r1u64 r, u64 v);
+function r1u64 ShiftR1U64(r1u64 r, u64 x);
+function r1u64 PadR1U64(r1u64 r, u64 x);
+function u64 CenterR1U64(r1u64 r);
+function b32 ContainsR1U64(r1u64 r, u64 x);
+function u64 DimR1U64(r1u64 r);
+function r1u64 UnionR1U64(r1u64 a, r1u64 b);
+function r1u64 IntersectR1U64(r1u64 a, r1u64 b);
+function u64 ClampR1U64(r1u64 r, u64 v);
 
 function r1f32 R1F32(f32 min, f32 max);
 function r1f32 R1F32Size(f32 min, f32 size);
@@ -1827,6 +1834,7 @@ struct OS_Handle
     u64 v[1];
 };
 
+#define NilHandle ((OS_Handle){0})
 function b32 OS_HandleIsValid(OS_Handle handle);
 
 function StringList OSSetArgs(int argc, char **argv);
@@ -1859,8 +1867,9 @@ function void OSClearConsole(i32 handle);
 
 //~ long: File Handling
 
-function String OSReadFile(Arena* arena, String fileName);
-function b32   OSWriteList(String fileName, StringList* data);
+function FileProperties OSFileProperties(String path);
+function String OSReadFile(Arena* arena, String path);
+function b32   OSWriteList(String path, StringList* data);
 #define OSWriteFile(file, data) OSWriteList((file), &(StringList) \
                                             { \
                                                 .first = &(StringNode){ .string = (data) }, \
@@ -1868,12 +1877,32 @@ function b32   OSWriteList(String fileName, StringList* data);
                                                 .nodeCount = 1, .totalSize = (data).size, \
                                             })
 
-function b32 OSDeleteFile(String fileName);
-function b32 OSRenameFile(String oldName, String newName); // NOTE(long): Can also move files/directories
-function b32 OSCreateDir(String path);
-function b32 OSDeleteDir(String path);
+typedef Flags32 OS_AccessFlags;
+enum
+{
+    AccessFlag_Read    = (1<<0),
+    AccessFlag_Write   = (1<<1),
+    AccessFlag_Append  = (1<<2),
+    AccessFlag_Execute = (1<<3),
+};
 
-function FileProperties OSFileProperties(String fileName);
+function OS_Handle OS_FileOpen(String path, OS_AccessFlags flags, OS_Handle queue);
+function void OS_FileClose(OS_Handle file);
+function FileProperties OS_FileProp(OS_Handle file);
+
+function u64 OS_FileRead (OS_Handle file, r1u64 rng, void* buffer);
+function u64 OS_FileWrite(OS_Handle file,   u64 pos, String  data);
+#define OS_FileAppend(file, data) OS_FileWrite((file), OS_FileProp(file).size, (data))
+
+function b32 OSRenameFile(String oldName, String newName); // NOTE(long): Can also move files/directories
+function b32 OSDeleteFile(String path);
+function b32 OSCreateDir (String path);
+function b32 OSDeleteDir (String path);
+
+function OS_Handle OS_PushFileQueue(void);
+function u64       OS_FileWaitAsync(OS_Handle queue, void** outUser, u64 timeoutMs);
+function b32       OS_FileReadAsync(OS_Handle file, r1u64 rng, void* buffer, void* user);
+function b32      OS_FileWriteAsync(OS_Handle file,   u64 pos, String  data, void* user);
 
 //~ long: File Iteration
 
@@ -1941,15 +1970,9 @@ function DateTime OSToUniTime(DateTime localTime);
 
 //~ long: Libraries
 
-typedef struct OSLib OSLib;
-struct OSLib
-{
-    u64 v[1];
-};
-
-function OSLib     OSLoadLib(String path);
-function void      OSFreeLib(OSLib lib);
-function VoidFunc* OSGetProc(OSLib lib, char* name);
+function OS_Handle OSLoadLib(String path);
+function void      OSFreeLib(OS_Handle lib);
+function VoidFunc* OSGetProc(OS_Handle lib, char* name);
 
 //~ long: Entropy
 
@@ -2002,7 +2025,7 @@ function b32       OS_ProcessExec(String cmd, OS_ProcessParams* params);
 
 #define OS_SYS(cmd, ...) OS_ProcessExec(StrLit(cmd), &(OS_ProcessParams){.consoleless = 0, __VA_ARGS__})
 
-//~ TODO(long): Threads
+//~ NOTE(long): Threads
 
 typedef void OS_ThreadFunc(void* ptr);
 
@@ -2010,19 +2033,13 @@ function OS_Handle OS_ThreadLaunch(OS_ThreadFunc* func, void* params);
 function b32       OS_ThreadJoin(OS_Handle handle, u64 timeoutMs);
 function void      OS_ThreadDetach(OS_Handle handle);
 
-// @CONSIDER(long): Should OS_Process/ThreadDetach become OS_HandleClose
+// @CONSIDER(long): Most of the Win32 APIs are generic functions like CloseHandle and WaitForSingleObject
+// while the Linux equivalents are more specific with different joining/detaching functions for threads vs processes
+// Should I implement a generic or specific API?
 
-//ReadFileAsync
-//WriteFileAsync
 //OSIsFileCompleted <- Maybe CloseHandle here?
-
-//OSCreateSemaphore
-//OSCreateMutex // either CreateMutex or InitializeCriticalSection (like RAD debugger)
-
-//OSCloseHandle
-
-//OSWaitForHandle
-//OSWaitForHandles
+//OSCreate/ReleaseSemaphore
+//OSCreate/WaitMutex -> either CreateMutex or InitializeCriticalSection (like RAD debugger)
 
 //~ TODO(long): Network/Sockets/IPC
 

@@ -907,7 +907,7 @@ int main(void)
         StringList logs = {0};
         LogBlock(arena, logs)
         {
-            OSLib testLib = OSLoadLib(StrLit("build/test.dll"));
+            OS_Handle testLib = OSLoadLib(StrLit("build/test.dll"));
             i32 (*init)(VoidFunc*, b32);
             PrcCast(init, OSGetProc(testLib, "DLLCallback"));
             snapshot = 0;

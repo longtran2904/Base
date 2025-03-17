@@ -105,7 +105,7 @@ del *.dll > NUL 2> NUL
 
 :: %compile% %opts% %warns% %code%\code\retired\Meta.c           %out%Meta.exe       %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\lloc.c          %out%lloc.exe       %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\glob.c          %out%glob.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\glob.c          %out%glob.exe       %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\test_glob.c     %out%test_glob.exe  %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\bench_mem.c     %out%bench_mem.exe  %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\print_args.c    %out%args.exe       %linker% %links%

@@ -62,10 +62,7 @@ readonly global const String Day_names[] =
 //~ long: Built-in Functions
 
 #if COMPILER_CL || (COMPILER_CLANG && OS_WIN) // https://stackoverflow.com/a/76705994
-// NOTE(long): Because Clang on Windows uses __atomic_* builtins rather than Interlocked* functions
-// It may not include intrin.h
 #include <intrin.h>
-
 function u32 __ctz32(u32 x) { u32 result; _BitScanForward  (&result, x); return result; }
 function u64 __ctz64(u64 x) { u32 result; _BitScanForward64(&result, x); return result; }
 function u32 __clz32(u32 x) { return __lzcnt  (x); }
@@ -889,7 +886,7 @@ function void TempEnd(TempArena temp)
 }
 
 #if !BASE_LIB_IMPORT_SYMBOLS && !BASE_LIB_RUNTIME_IMPORT
-threadvar Arena* scratchPool[SCRATCH_POOL_COUNT] = {0};
+global threadvar Arena* scratchPool[SCRATCH_POOL_COUNT] = {0};
 
 TempArena BASE_SHARABLE(GetScratch)(Arena** conflictArray, u64 count)
 {
@@ -2482,7 +2479,7 @@ struct LOG_Thread
 };
 
 #if !BASE_LIB_IMPORT_SYMBOLS && !BASE_LIB_RUNTIME_IMPORT
-threadvar LOG_Thread logThread = {0};
+global threadvar LOG_Thread logThread = {0};
 
 void BASE_SHARABLE(LogBeginEx)(LogInfo info)
 {
@@ -2651,8 +2648,6 @@ BufferUninterleave(Arena *arena, void *in,
 ////////////////////////////////////////////////////////////////
 //-/////////////////////////////////////////////////////////////
 
-// TODO(long): Abstract out all the INVALID_HANDLE_VALUE check
-
 #if OS_WIN
 // NOTE(long): 28301: annotations weren't found at the first declaration of a given function
 // I have zero idea what this warning does but it keep reports something stupid in winnt.h
@@ -2714,6 +2709,18 @@ function void OSRelease(void* ptr)
         DEBUG(error, DWORD error = GetLastError());
         PANIC("Failed to release memory");
     }
+}
+
+//~ long: Atomic Functions
+
+function void* SLLAtomicPop_(void*volatile* first, uptr nextOff)
+{
+    void* old,** next;
+    do {
+        old = *first;
+        next = PtrAdd(old, nextOff);
+    } while (old && AtomicCmpXchPtr(first, *next, old) != old);
+    return old;
 }
 
 //~ long: Global Variables
@@ -2916,13 +2923,17 @@ BeforeMain(BaseInit)
     ScratchEnd(scratch);
 }
 
-#define W32GetHandle(handle) ((HANDLE)((handle).v[0]))
-#define W32SetHandle(osHandle, w32Handle) ((osHandle).v[0] = (u64)(w32Handle))
+StaticAssert(MAX_U32 == INFINITE, w32InfiniteCheck);
+#define W32TimeMS(ms) ((DWORD)ms)
+
+#define W32CheckHandle(handle) ((handle) != 0 && (handle) != INVALID_HANDLE_VALUE)
+#define W32FromHandle(osHandle) ((HANDLE)((osHandle).v[0]))
+#define W32ToHandle(w32Handle) ((OS_Handle){ .v[0] = (u64)(w32Handle) })
 
 function b32 OS_HandleIsValid(OS_Handle handle)
 {
-    HANDLE process = W32GetHandle(handle);
-    return process != NULL && process != INVALID_HANDLE_VALUE;
+    HANDLE process = W32FromHandle(handle);
+    return W32CheckHandle(process);
 }
 
 function StringList OSSetArgs(int argc, char** argv)
@@ -2967,7 +2978,7 @@ function HINSTANCE W32GetInstance(void)
 
 //~ long: Time
 
-function DateTime W32DateTimeFromSystemTime(SYSTEMTIME* time)
+internal DateTime W32DateTimeFromSystemTime(SYSTEMTIME* time)
 {
     DateTime result = {0};
     result.year = (i16)time->wYear;
@@ -2980,7 +2991,7 @@ function DateTime W32DateTimeFromSystemTime(SYSTEMTIME* time)
     return result;
 }
 
-function SYSTEMTIME W32SystemTimeFromDateTime(DateTime time)
+internal SYSTEMTIME W32SystemTimeFromDateTime(DateTime time)
 {
     SYSTEMTIME result = {0};
     result.wYear = time.year;
@@ -2993,7 +3004,7 @@ function SYSTEMTIME W32SystemTimeFromDateTime(DateTime time)
     return result;
 }
 
-function DenseTime W32DenseTimeFromFileTime(FILETIME* fileTime)
+internal DenseTime W32DenseTimeFromFileTime(FILETIME* fileTime)
 {
     SYSTEMTIME systemTime = {0};
     FileTimeToSystemTime(fileTime, &systemTime);
@@ -3067,25 +3078,38 @@ function DateTime OSToUniTime(DateTime localTime)
 
 //~ long: Console Handling
 
-internal String W32ReadFile(Arena* arena, HANDLE file)
+internal String W32ReadFile(Arena* arena, HANDLE file, r1u64 rng)
 {
     String result = {0};
-    u64 size = 0;
     
-    if (GetFileSizeEx(file, (PLARGE_INTEGER)&size) && size)
+    r1u64 clampedRng;
+    {
+        u64 maxSize = 0;
+        GetFileSizeEx(file, (PLARGE_INTEGER)&maxSize); // TODO(long): Endianness
+        clampedRng = R1U64(ClampTop(rng.min, maxSize), ClampTop(rng.max, maxSize));
+        if (rng.min == 0 && rng.max == 0)
+            clampedRng.max = maxSize;
+    }
+    
+    u64 size = DimR1U64(clampedRng);
+    if (size)
     {
         TempArena restorePoint = TempBegin(arena);
         String str = StrPush(arena, size);
-        u8* buffer = str.str;
         
-        u8* ptr = buffer;
-        u8* opl = buffer + size;
+        u8* beg = str.str,* ptr = beg,* opl = beg + size;
         b32 success = 1;
         for (DWORD actualRead = 0; ptr < opl && success; ptr += actualRead)
         {
             DWORD readAmount = (u32)ClampTop((u64)(opl - ptr), MAX_U32);
-            // ReadFile will always zero out actualRead
-            success = ReadFile(file, ptr, readAmount, &actualRead, 0);
+            u64 off = ptr - beg + clampedRng.min;
+            OVERLAPPED overlapped = {
+                .Offset     = (off&0x00000000FFFFFFFFULL),
+                .OffsetHigh = (off&0xffffffff00000000ULL) >> 32,
+            };
+            
+            // NOTE(long): ReadFile will always zero out actualRead
+            success = ReadFile(file, ptr, readAmount, &actualRead, &overlapped);
             success = success && actualRead;
         }
         
@@ -3103,7 +3127,7 @@ internal String W32ReadFile(Arena* arena, HANDLE file)
 // https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
 #define CONSOLE_INTERNAL_BUFFER_SIZE KiB(8)
 
-function HANDLE W32GetStdHandle(i32 handle)
+internal HANDLE W32GetStdHandle(i32 handle)
 {
     DWORD handles[] =
     {
@@ -3124,11 +3148,11 @@ function String OSReadConsole(Arena* arena, i32 handle)
     String result = {0};
     
     HANDLE file = W32GetStdHandle(handle);
-    if (file != INVALID_HANDLE_VALUE)
+    if (W32CheckHandle(file))
     {
         DWORD fileType = GetFileType(file);
         if (fileType == FILE_TYPE_DISK)
-            result = W32ReadFile(arena, file);
+            result = W32ReadFile(arena, file, (r1u64){0});
         
         else
         {
@@ -3171,7 +3195,7 @@ function b32 OSWriteConsole(i32 handle, String data)
     b32 result = 0;
     
     HANDLE file = W32GetStdHandle(handle);
-    if (file != INVALID_HANDLE_VALUE)
+    if (W32CheckHandle(file))
     {
         DWORD writeAmount = ALWAYS(data.size <= MAX_I32) ? (DWORD)data.size : MAX_I32;
         DWORD actualWrite = 0;
@@ -3186,7 +3210,7 @@ function b32 OSWriteConsole(i32 handle, String data)
 function void OSClearConsole(i32 handle)
 {
     HANDLE console = W32GetStdHandle(handle);
-    if (console == INVALID_HANDLE_VALUE)
+    if (W32CheckHandle(console))
         return;
     
     // Get the number of character cells in the current buffer.
@@ -3231,35 +3255,34 @@ function void OSClearConsole(i32 handle)
                                                 __VA_ARGS__; \
                                             })
 
-function String OSReadFile(Arena* arena, String fileName)
+function String OSReadFile(Arena* arena, String path)
 {
     String result = {0};
-    HANDLE file = INVALID_HANDLE_VALUE;
-    W32WidePath(path, fileName, file = CreateFileW(path.str,
-                                                   GENERIC_READ, FILE_SHARE_READ, 0,
-                                                   OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0));
+    HANDLE file = 0;
+    W32WidePath(path16, path, file = CreateFileW(path16.str,
+                                                 GENERIC_READ, FILE_SHARE_READ, NULL,
+                                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0));
     
-    if (file != INVALID_HANDLE_VALUE)
+    if (W32CheckHandle(file))
     {
-        result = W32ReadFile(arena, file);
+        result = W32ReadFile(arena, file, (r1u64){0});
         CloseHandle(file);
     }
     
     return result;
 }
 
-function b32 OSWriteList(String fileName, StringList* data)
+function b32 OSWriteList(String path, StringList* data)
 {
     b32 result = 0;
-    HANDLE file = INVALID_HANDLE_VALUE;
-    W32WidePath(path, fileName, file = CreateFileW(path.str,
-                                                   GENERIC_WRITE, FILE_SHARE_WRITE, 0,
-                                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0));
+    HANDLE file = 0;
+    W32WidePath(path16, path, file = CreateFileW(path16.str,
+                                                 GENERIC_WRITE, FILE_SHARE_WRITE, NULL,
+                                                 CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0));
     
-    if (file != INVALID_HANDLE_VALUE)
+    if (W32CheckHandle(file))
     {
         result = 1;
-        
         StrListIter(data, node)
         {
             u8* ptr = node->string.str;
@@ -3270,7 +3293,7 @@ function b32 OSWriteList(String fileName, StringList* data)
                 DWORD writeAmount = (u32)ClampTop((u64)(opl - ptr), MAX_U32);
                 DWORD actualWrite = 0;
                 result = WriteFile(file, ptr, writeAmount, &actualWrite, 0);
-                if (result)
+                if (!result)
                     goto END;
                 
                 ptr += actualWrite;
@@ -3284,7 +3307,178 @@ function b32 OSWriteList(String fileName, StringList* data)
     return result;
 }
 
-function FilePropertyFlags W32FilePropertyFlagsFromAttributes(DWORD attributes)
+function OS_Handle OS_FileOpen(String path, OS_AccessFlags flags, OS_Handle queue)
+{
+    OS_Handle result = {0};
+    DWORD access = 0, share = 0, creation = OPEN_EXISTING, attributes = FILE_ATTRIBUTE_NORMAL;
+    b32 is_async = OS_HandleIsValid(queue);
+    
+    if (flags & AccessFlag_Read)    { access |= GENERIC_READ; share |= FILE_SHARE_READ; }
+    if (flags & AccessFlag_Write)   { access |= GENERIC_WRITE;share |= FILE_SHARE_WRITE|FILE_SHARE_DELETE;creation = CREATE_ALWAYS; }
+    if (flags & AccessFlag_Append)  { access |= FILE_APPEND_DATA; creation = OPEN_ALWAYS; }
+    if (flags & AccessFlag_Execute) { access |= GENERIC_EXECUTE; }
+    if (is_async)                   { attributes |= FILE_FLAG_OVERLAPPED; }
+    
+    HANDLE file = 0;
+    W32WidePath(path16, path, file = CreateFileW(path16.str, access, share, NULL, creation, attributes, 0));
+    if (W32CheckHandle(file))
+        if (!is_async || CreateIoCompletionPort(file, W32FromHandle(queue), (ULONG_PTR)file, 0))
+            result = W32ToHandle(file);
+    
+    return result;
+}
+
+function void OS_FileClose(OS_Handle file)
+{
+    if (OS_HandleIsValid(file))
+        if (!CloseHandle(W32FromHandle(file)))
+            Errf("Failed to close file: %lu\n", GetLastError());
+}
+
+function u64 OS_FileRead(OS_Handle file, r1u64 rng, void* buffer)
+{
+    u64 result = 0;
+    HANDLE handle = W32FromHandle(file);
+    
+    if (W32CheckHandle(handle))
+    {
+        r1u64 clampedRng;
+        {
+            u64 maxSize = 0;
+            GetFileSizeEx(handle, (PLARGE_INTEGER)&maxSize); // TODO(long): Endianness
+            
+            clampedRng = R1U64(ClampTop(rng.min, maxSize), ClampTop(rng.max, maxSize));
+            if (rng.min == 0 && rng.max == 0)
+                clampedRng.max = maxSize;
+        }
+        
+        u64 size = DimR1U64(clampedRng);
+        if (size)
+        {
+            u64 bytesRead = 0;
+            for (DWORD actualRead = 0, success = 1; bytesRead < size && success; bytesRead += actualRead)
+            {
+                u64 off = bytesRead + clampedRng.min;
+                DWORD readAmount = (u32)ClampTop(size - bytesRead, MAX_U32);
+                
+                // NOTE(long): ReadFile will always zero out actualRead
+                success = ReadFile(handle, PtrAdd(buffer, bytesRead), readAmount, &actualRead, &(OVERLAPPED){
+                                       .Offset     = (off&0x00000000FFFFFFFFULL),
+                                       .OffsetHigh = (off&0xffffffff00000000ULL) >> 32,
+                                   });
+            }
+            result = bytesRead;
+        }
+    }
+    
+    return result;
+}
+
+function u64 OS_FileWrite(OS_Handle file, u64 pos, String data)
+{
+    u64 bytesWritten = 0, size = data.size;
+    HANDLE handle = W32FromHandle(file);
+    
+    if (W32CheckHandle(handle) && size)
+    {
+        for (DWORD success = 1, actualWrite = 0; bytesWritten < size && success; bytesWritten += actualWrite)
+        {
+            u64 off = bytesWritten + pos;
+            DWORD writeAmount = (u32)ClampTop(size - bytesWritten, MAX_U32);
+            
+            // NOTE(long): WriteFile will always zero out actualWrite
+            success = WriteFile(handle, data.str + bytesWritten, writeAmount, &actualWrite, &(OVERLAPPED){
+                                    .Offset     = (off&0x00000000ffffffffull),
+                                    .OffsetHigh = (off&0xffffffff00000000ull) >> 32,
+                                });
+        }
+    }
+    
+    return bytesWritten;
+}
+
+function OS_Handle OS_PushFileQueue(void)
+{
+    HANDLE result = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+    return W32ToHandle(result);
+}
+
+typedef union W32FileEntry W32FileEntry;
+union W32FileEntry
+{
+    W32FileEntry* next;
+    struct
+    {
+        OVERLAPPED overlapped;
+        void* data;
+    };
+};
+global W32FileEntry* volatile freeEntry = 0;
+
+function u64 OS_FileWaitAsync(OS_Handle queue, void** outUser, u64 timeoutMs)
+{
+    u32 result = 0;
+    W32FileEntry* entry = 0;
+    HANDLE iocpQueue = W32FromHandle(queue);
+    if (!GetQueuedCompletionStatus(iocpQueue, &result, &(ULONG_PTR){0}, (LPOVERLAPPED*)&entry, W32TimeMS(timeoutMs)))
+        Errf("Failed to wait for file: %lu\n", GetLastError());
+    
+    if (outUser)
+        *outUser = entry->data;
+    SLLAtomicPush(freeEntry, entry);
+    return (u64)result;
+}
+
+function b32 OS_FileReadAsync(OS_Handle file, r1u64 rng, void* buffer, void* user)
+{
+    b32 result = 0;
+    HANDLE handle = W32FromHandle(file);
+    
+    if (W32CheckHandle(handle))
+    {
+        r1u64 clampedRng;
+        {
+            u64 maxSize = 0;
+            GetFileSizeEx(handle, (PLARGE_INTEGER)&maxSize); // TODO(long): Endianness
+            
+            clampedRng = R1U64(ClampTop(rng.min, maxSize), ClampTop(rng.max, maxSize));
+            if (rng.min == 0 && rng.max == 0)
+                clampedRng.max = maxSize;
+        }
+        
+        u64 size = DimR1U64(clampedRng);
+        if (size)
+        {
+            result = 1;
+            u64 bytesRead = 0;
+            
+            for (DWORD actualRead = 0; bytesRead < size && result; bytesRead += actualRead)
+            {
+                W32FileEntry* entry = SLLAtomicPop(freeEntry);
+                if (!entry) // @THREAD_SAFE(long): win32PermArena isn't thread-safe
+                    entry = PushStruct(win32PermArena, W32FileEntry);
+                
+                u64 off = bytesRead + clampedRng.min;
+                entry->overlapped.Offset     = (off&0x00000000FFFFFFFFULL);
+                entry->overlapped.OffsetHigh = (off&0xffffffff00000000ULL) >> 32;
+                entry->data = user;
+                
+                // NOTE(long): ReadFile will always zero out actualRead
+                DWORD readAmount = (u32)ClampTop(size - bytesRead, MAX_U32);
+                if (ReadFile(handle, PtrAdd(buffer, bytesRead), readAmount, &actualRead, &entry->overlapped))
+                    result = bytesRead == size; // The file is already cached in memory
+                else if (ALWAYS(GetLastError() == ERROR_IO_PENDING))
+                    bytesRead += readAmount; // TODO(long): Test this on 4GB+ files
+                else
+                    result = 0;
+            }
+        }
+    }
+    
+    return result;
+}
+
+internal FilePropertyFlags W32FilePropertyFlagsFromAttributes(DWORD attributes)
 {
     FilePropertyFlags result = 0;
     if (attributes & FILE_ATTRIBUTE_DIRECTORY)
@@ -3294,7 +3488,7 @@ function FilePropertyFlags W32FilePropertyFlagsFromAttributes(DWORD attributes)
     return result;
 }
 
-function DataAccessFlags W32AccessFromAttributes(DWORD attributes)
+internal DataAccessFlags W32AccessFromAttributes(DWORD attributes)
 {
     DataAccessFlags result = 0;
     if (attributes & FILE_ATTRIBUTE_READONLY)
@@ -3304,13 +3498,13 @@ function DataAccessFlags W32AccessFromAttributes(DWORD attributes)
     return result;
 }
 
-function FileProperties OSFileProperties(String fileName)
+function FileProperties OSFileProperties(String path)
 {
     FileProperties result = {0};
     WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
     b32 success = 0;
     
-    W32WidePath(path, fileName, success = GetFileAttributesExW(path.str, GetFileExInfoStandard, &attributes));
+    W32WidePath(path16, path, success = GetFileAttributesExW(path16.str, GetFileExInfoStandard, &attributes));
     if (success)
     {
         result = (FileProperties)
@@ -3320,6 +3514,27 @@ function FileProperties OSFileProperties(String fileName)
             .createTime = W32DenseTimeFromFileTime(&attributes.ftCreationTime),
             .modifyTime = W32DenseTimeFromFileTime(&attributes.ftLastWriteTime),
             .access = W32AccessFromAttributes(attributes.dwFileAttributes),
+        };
+    }
+    
+    return result;
+}
+
+function FileProperties OS_FileProp(OS_Handle file)
+{
+    FileProperties result = {0};
+    
+    BY_HANDLE_FILE_INFORMATION info;
+    if (GetFileInformationByHandle(W32FromHandle(file), &info))
+    {
+        result = (FileProperties)
+        {
+            .size = ((u64)info.nFileSizeHigh << 32)|(u64)info.nFileSizeLow,
+            .flags = W32FilePropertyFlagsFromAttributes(info.dwFileAttributes),
+            
+            .createTime = W32DenseTimeFromFileTime(&info.ftCreationTime),
+            .modifyTime = W32DenseTimeFromFileTime(&info.ftLastWriteTime),
+            .access = W32AccessFromAttributes(info.dwFileAttributes),
         };
     }
     
@@ -3342,10 +3557,10 @@ function String OSGetCurrDir(Arena* arena)
     return result;
 }
 
-function b32 OSDeleteFile(String fileName)
+function b32 OSDeleteFile(String path)
 {
     b32 result = 0;
-    W32WidePath(path, fileName, result = DeleteFileW(path.str));
+    W32WidePath(path16, path, result = DeleteFileW(path16.str));
     return result;
 }
 
@@ -3355,11 +3570,11 @@ function b32 OSRenameFile(String oldName, String newName)
     ScratchBlock(scratch)
     {
         // @W32WidePath
-        String16 o = Str16FromStr(scratch, oldName);
-        String16 n = Str16FromStr(scratch, newName);
+        String16 o16 = Str16FromStr(scratch, oldName);
+        String16 n16 = Str16FromStr(scratch, newName);
         
         // NOTE(long): Can't move a directory across drives
-        result = MoveFileW(o.str, n.str);
+        result = MoveFileW(o16.str, n16.str);
     }
     return result;
 }
@@ -3402,7 +3617,7 @@ StaticAssert(ArrayCount(MemberOf(OSFileIter, v)) >= sizeof(W32FileIter), w32file
 #define W32GetIter(iter) ((W32FileIter*)(iter)->v)
 
 #define FILE_ITER_BUFFER_SIZE KiB(64)
-function b32 W32FileIterInit(Arena* arena, W32FileIter* iter, String path)
+internal b32 W32FileIterInit(Arena* arena, W32FileIter* iter, String path)
 {
     b32 result = 0;
     W32WidePath(wpath, path, iter->handle = CreateFileW(wpath.str, FILE_LIST_DIRECTORY,
@@ -3410,7 +3625,7 @@ function b32 W32FileIterInit(Arena* arena, W32FileIter* iter, String path)
                                                         NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0));
     iter->path = path;
     
-    if (iter->handle != INVALID_HANDLE_VALUE)
+    if (W32CheckHandle(iter->handle))
     {
         TempArena temp = TempBegin(arena);
         iter->buffer = PushArray(arena, u8, FILE_ITER_BUFFER_SIZE);
@@ -3426,17 +3641,17 @@ function b32 W32FileIterInit(Arena* arena, W32FileIter* iter, String path)
     return result;
 }
 
+internal void W32FileIterEnd(W32FileIter* iter)
+{
+    if (W32CheckHandle(iter->handle))
+        CloseHandle(iter->handle);
+}
+
 function OSFileIter FileIterInit(Arena* arena, String path, OSFileIterFlags flags)
 {
     OSFileIter result = { .flags = flags };
     W32FileIterInit(arena, W32GetIter(&result), path);
     return result;
-}
-
-function void W32FileIterEnd(W32FileIter* iter)
-{
-    if (iter->handle != 0 && iter->handle != INVALID_HANDLE_VALUE)
-        CloseHandle(iter->handle);
 }
 
 function void FileIterEnd(OSFileIter* iter)
@@ -3449,7 +3664,7 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter)
     b32 result = 0;
     W32FileIter* w32Iter = W32GetIter(iter);
     
-    if (w32Iter->handle != 0 && w32Iter->handle != INVALID_HANDLE_VALUE)
+    if (W32CheckHandle(w32Iter->handle))
     {
         while (!(iter->flags & FileIterFlag_Done))
         {
@@ -3555,21 +3770,21 @@ function b32 FileIterNext(Arena* arena, OSFileIter* iter)
 
 //~ long: Libraries
 
-function OSLib OSLoadLib(String path)
+function OS_Handle OSLoadLib(String path)
 {
-    OSLib result = {0};
+    OS_Handle result = {0};
     W32WidePath(wpath, path, result.v[0] = (u64)LoadLibraryW(wpath.str));
     return result;
 }
 
-function VoidFunc* OSGetProc(OSLib lib, char* name)
+function VoidFunc* OSGetProc(OS_Handle lib, char* name)
 {
     HMODULE module = (HMODULE)lib.v[0];
     VoidFunc* result = (VoidFunc*)(GetProcAddress(module, name));
     return result;
 }
 
-function void OSFreeLib(OSLib lib)
+function void OSFreeLib(OS_Handle lib)
 {
     HMODULE module = (HMODULE)lib.v[0];
     FreeLibrary(module);
@@ -3631,21 +3846,6 @@ function SysInfo OSGetSysInfo(void)
 
 //~ NOTE(long): Processes/Threads
 
-StaticAssert(sizeof(DWORD) == sizeof(u32));
-
-function b32 OS_ProcessExec(String cmd, OS_ProcessParams* params)
-{
-    b32 result = 0;
-    ScratchBlock(scratch)
-    {
-        cmd = StrPushf(scratch, "cmd.exe /C %.*s", StrExpand(cmd));
-        OS_Handle handle = OS_ProcessLaunch(cmd, params);
-        result = OS_ProcessJoin(handle, INFINITE);
-        OS_ProcessDetach(handle);
-    }
-    return result;
-}
-
 // https://learn.microsoft.com/en-us/windows/win32/procthread/creating-processes
 function OS_Handle OS_ProcessLaunch(String cmd, OS_ProcessParams* params)
 {
@@ -3671,21 +3871,21 @@ function OS_Handle OS_ProcessLaunch(String cmd, OS_ProcessParams* params)
     {
         if (OS_HandleIsValid(params->stdOutHandle))
         {
-            startupInfo.hStdOutput = W32GetHandle(params->stdOutHandle);
+            startupInfo.hStdOutput = W32FromHandle(params->stdOutHandle);
             startupInfo.dwFlags |= STARTF_USESTDHANDLES;
             inheritHandles = 1;
         }
         
         if (OS_HandleIsValid(params->stdErrHandle))
         {
-            startupInfo.hStdError = W32GetHandle(params->stdErrHandle);
+            startupInfo.hStdError = W32FromHandle(params->stdErrHandle);
             startupInfo.dwFlags |= STARTF_USESTDHANDLES;
             inheritHandles = 1;
         }
         
         if (OS_HandleIsValid(params->stdInHandle))
         {
-            startupInfo.hStdInput = W32GetHandle(params->stdInHandle);
+            startupInfo.hStdInput = W32FromHandle(params->stdInHandle);
             startupInfo.dwFlags |= STARTF_USESTDHANDLES;
             inheritHandles = 1;
         }
@@ -3698,32 +3898,65 @@ function OS_Handle OS_ProcessLaunch(String cmd, OS_ProcessParams* params)
                        CREATE_UNICODE_ENVIRONMENT|(!!params->consoleless*CREATE_NO_WINDOW),
                        env16, dir16, &startupInfo, &processInfo))
     {
-        W32SetHandle(result, processInfo.hProcess);
+        result = W32ToHandle(processInfo.hProcess);
         CloseHandle(processInfo.hThread);
     }
-    else
-    {
-        DWORD error = GetLastError();
-        DEBUG(error);
-    }
+    else ErrorFmt("Failed to create process: %lu", GetLastError());
     
     ScratchEnd(scratch);
     return result;
 }
 
-StaticAssert(MAX_U32 == INFINITE, w32InfiniteCheck);
-#define W32TimeMS(ms) ((DWORD)ms)
-
 function b32 OS_ProcessJoin(OS_Handle handle, u64 timeoutMs)
 {
-    HANDLE process = W32GetHandle(handle);
-    DWORD result = WaitForSingleObject(process, W32TimeMS(timeoutMs));
-    return (result == WAIT_OBJECT_0);
+    HANDLE process = W32FromHandle(handle);
+    DWORD waitResult = WaitForSingleObject(process, W32TimeMS(timeoutMs));
+    b32 result = waitResult == WAIT_OBJECT_0;
+    if (result)
+        CloseHandle(process);
+    return result;
 }
 
 function void OS_ProcessDetach(OS_Handle handle)
 {
-    if (OS_HandleIsValid(handle))
-        CloseHandle(W32GetHandle(handle));
+    CloseHandle(W32FromHandle(handle));
+}
+
+function b32 OS_ProcessExec(String cmd, OS_ProcessParams* params)
+{
+    b32 result = 0;
+    ScratchBlock(scratch)
+    {
+        cmd = StrPushf(scratch, "cmd.exe /C %.*s", StrExpand(cmd));
+        OS_Handle handle = OS_ProcessLaunch(cmd, params);
+        result = OS_ProcessJoin(handle, INFINITE);
+        OS_ProcessDetach(handle);
+    }
+    return result;
+}
+
+//~ NOTE(long): Threads
+
+function OS_Handle OS_ThreadLaunch(OS_ThreadFunc* func, void* params)
+{
+    uptr stackSize = 0;
+    u32 threadId = 0;
+    HANDLE handle = CreateThread(0, stackSize, (LPTHREAD_START_ROUTINE)func, params, 0, &threadId);
+    return W32ToHandle(handle);
+}
+
+function b32 OS_ThreadJoin(OS_Handle handle, u64 timeoutMs)
+{
+    HANDLE thread = W32FromHandle(handle);
+    DWORD waitResult = WaitForSingleObject(thread, W32TimeMS(timeoutMs));
+    b32 result = waitResult == WAIT_OBJECT_0;
+    if (result)
+        CloseHandle(thread);
+    return result;
+}
+
+function void OS_ThreadDetach(OS_Handle handle)
+{
+    CloseHandle(W32FromHandle(handle));
 }
 #endif

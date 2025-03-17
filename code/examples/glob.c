@@ -3,7 +3,7 @@
 #endif
 
 #if !GLOB_STATIC_LIB
-//#define ENABLE_ASSERT 0
+#define ENABLE_ASSERT 0
 #endif
 
 #include "Base.h"
@@ -245,14 +245,9 @@ function u64 GlobFile(String text, String file)
 typedef struct FileEntry FileEntry;
 struct FileEntry
 {
-    FileEntry* next;
-    Arena* arena;
-    
     String path;
     String data;
-    
-    HANDLE file;
-    OVERLAPPED overlapped;
+    OS_Handle file;
 };
 
 typedef struct ThreadResult ThreadResult;
@@ -263,7 +258,7 @@ struct ThreadResult
     u64 matchCount;
 };
 
-global HANDLE iocp;
+global OS_Handle iocp;
 global volatile u64 workSize;
 
 global u64 pushFileMs;
@@ -273,15 +268,7 @@ global u64 memoryUsage;
 
 #include <stdlib.h>
 
-function FileEntry* WaitForFile(void)
-{
-    FileEntry* entry = 0;
-    if (!GetQueuedCompletionStatus(iocp, &(DWORD){0}, (PULONG_PTR)&entry, &(LPOVERLAPPED){0}, INFINITE))
-        Errf("\nERROR: Failed to wait for file\n");
-    return entry;
-}
-
-function DWORD WINAPI ThreadProc(LPVOID arg)
+function void ThreadProc(void* arg)
 {
     volatile ThreadResult* info = arg;
     
@@ -289,14 +276,18 @@ function DWORD WINAPI ThreadProc(LPVOID arg)
     {
         FileEntry* entry = 0;
         TIME_BLOCK(duration, info->waitMs += duration)
-            entry = WaitForFile();
+        {
+            u64 bytesRead = OS_FileWaitAsync(iocp, &entry, INFINITE);
+            if (bytesRead == 0)
+                Errf("ERROR: Failed to wait for file\n");
+        }
         
         if (ALWAYS(entry))
         {
             TIME_BLOCK(duration, info->workMs += duration)
                 info->matchCount += GlobFile(entry->data, entry->path);
             
-            CloseHandle(entry->file);
+            OS_FileClose(entry->file);
             free(entry->data.str);
             AtomicSub64(&workSize, entry->data.size);
         }
@@ -306,38 +297,26 @@ function DWORD WINAPI ThreadProc(LPVOID arg)
 function u64 ReadFileAsync(Arena* arena, String path)
 {
     b32 success = 0;
+    OS_Handle file = OS_FileOpen(path, AccessFlag_Read, iocp);
+    u64 size = OS_FileProp(file).size;
     
-    HANDLE file = INVALID_HANDLE_VALUE;
-    W32WidePath(wpath, path, file = CreateFileW(wpath.str, GENERIC_READ, FILE_SHARE_READ, 0,
-                                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OVERLAPPED, 0));
-    
-    u64 len = 0;
-    if (GetFileSizeEx(file, (PLARGE_INTEGER)&len) && InRange(len, 1, MAX_U32))
+    if (size)
     {
         FileEntry* entry = PushStruct(arena, FileEntry);
         entry->path = path;
         entry->file = file;
-        entry->data.size = len;
+        entry->data.size = size;
         
-        if (CreateIoCompletionPort(file, iocp, (ULONG_PTR)entry, 0))
-        {
-            DWORD bytesRead;
-            u8* buffer = entry->data.str = malloc(len);
-            
-            if (!buffer)
-                Errf("ERROR: \"%.*s\" is too big (%.2f MiB)\n", StrExpand(path),
-                     DivF64(len, MiB(1)));
-            else if (ReadFile(file, buffer, (DWORD)len, &bytesRead, &entry->overlapped))
-                success = bytesRead == len;
-            else
-                success = GetLastError() == ERROR_IO_PENDING;
-            
-            if (!success && buffer)
-                Errf("ERROR: \"%.*s\"\n", StrExpand(path));
-        }
+        void* buffer = entry->data.str = malloc(size);
+        if (!buffer)
+            Errf("ERROR: \"%.*s\" is too big (%.2f MiB)\n", StrExpand(path), DivF64(size, MiB(1)));
+        else if (!OS_FileReadAsync(file, R1U64Size(0, size), buffer, entry))
+            Errf("ERROR: \"%.*s\"\n", StrExpand(path));
+        else
+            success = 1;
     }
     
-    return success * len;
+    return success * size;
 }
 
 int main(i32 argc, char** argv)
@@ -390,10 +369,10 @@ int main(i32 argc, char** argv)
     ScratchBegin(scratch);
     
 #define THREAD_COUNT 2
-    iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+    iocp = OS_PushFileQueue();
     ThreadResult results[THREAD_COUNT] = {0};
     for (u64 i = 0; i < THREAD_COUNT; ++i)
-        CreateThread(0, 0, ThreadProc, results + i, 0, NULL);
+        OS_ThreadLaunch(ThreadProc, results + i);
     
     u64 ms = OSNowMS();
     u64 desiredSize = MiB(512);
@@ -510,7 +489,8 @@ int main(i32 argc, char** argv)
         Errf("Type \"glob /?\" for usage help.\n");
     }
     
-    else if (flags & Glob_CLI_Help) Outf("%s", helpMessage);
+    else if (flags & Glob_CLI_Help)
+        Outf("%s", helpMessage);
     
     else
     {
@@ -605,7 +585,7 @@ int main(i32 argc, char** argv)
                 
                 Outf("Iter File: %llums, ", iterFileMs);
                 if (globFile)
-                    Outf("Push File: %llums, Idle: %.2f ms/Thread, Glob: %.2f ms/Thread\n",
+                    Outf("Push File: %llums, Wait File: %.2f ms/Thread, Glob File: %.2f ms/Thread\n",
                          pushFileMs, DivF64(waitFileMs, THREAD_COUNT), DivF64(globFileMs, THREAD_COUNT));
                 else
                     Outf("Glob: %llums\n", globFileMs);

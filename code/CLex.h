@@ -641,9 +641,9 @@ StructLit(OSFileIter, 5)
     ArrayMember(OSFileIter, u8, v),
 };
 
-StructLit(OSLib, 1)
+StructLit(OS_Handle, 1)
 {
-    ArrayMember(OSLib, u64, v),
+    ArrayMember(OS_Handle, u64, v),
 };
 
 //~ long: Lexing Functions
