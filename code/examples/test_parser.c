@@ -1,10 +1,46 @@
+
+struct {
+    int**** a[1][2][3];
+    float** (**(*b[1])[2][3])[4];
+    char (*(*c[3])())[5];
+    char * const (*(* const d)[5])(int);
+    int (*(*e)(const void *))[3];
+    int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4];
+    int (* (**funcPtr)(void))[3][4];
+    int (* (**funcArr[10])(void))[3][4];
+}* Func7(struct
+         {
+             struct { i32 a, ** * b; };
+             struct { float f; float f2[10]; };
+             struct HStruct h;
+         }* a, int b);// { return 0; }
+
+struct ReturnType {
+    int**** a[1][2][3];
+    float** (**(*b[1])[2][3])[4];
+    char (*(*c[3])())[5];
+    char * const (*(* const d)[5])(int);
+    int (*(*e)(const void *))[3];
+    int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4];
+    int * (**funcPtr)(void**[1], int[2]);
+} Func8(// NOTE(long): warning: named type definition in parentheses
+        // If you ignore this warning, everything works fine
+        // You can use this type in other arguments/function's body
+        struct Argument
+        {
+            struct { i32 a, ** * b; };
+            struct { float f; float f2[10]; };
+            struct HStruct h;
+        }* a, int b/*, int * (**funcPtr)(void**[1], int[2])*/);
+
 int a = 10;
 int b = 100;
 float c = 10000;
 char d = 50;
 
 int e1, * e2, ** *** * e3;
-int* f1 = 0, f2, *** * f3 = 1, f4;
+// NOTE(long): f4 is nonstandard extension warning: qualifiers after comma in declarator list are ignored
+static const unsigned int* f1 = 0, f2 = 50, *** restrict * f3 = 0, volatile f4 = 100;
 
 Foo*** var;
 
@@ -48,7 +84,8 @@ struct BStruct
 typedef struct CStruct CStruct;
 struct CStruct
 {
-    char c[1024];
+    float** (**(*c1[1])[2][3])[4];
+    char c2[1024];
 };
 
 typedef struct DStruct
@@ -66,10 +103,10 @@ typedef struct
     int a;
 } FStruct;
 
-struct
+static struct
 {
     int a;
-} myGStruct, ***myGPtr;
+} myGStruct, * const * volatile *myGPtr;
 
 struct HStruct
 {
@@ -199,71 +236,40 @@ union WUnion
     b32 d;
 };
 
-//enum AEnum { FooA, BarA };
-//typedef enum BEnum { FooB } BEnum;
-//typedef enum CEnum CEnum; enum CEnum { FooC };
+enum AEnum { FooA, BarA };
+typedef enum BEnum { FooB } BEnum;
+typedef enum CEnum CEnum; enum CEnum { FooC };
 
-//typedef enum
-//{
-//FooD,
-//BarD = 10,
-//} DEnum;
+typedef enum
+{
+    FooD,
+    BarD = 10,
+} DEnum;
 
-//enum { FooE } EEnum;
+enum { FooE } EEnum;
 
-//enum FEnum
-//{
-//F1 = foo * bar / blah,
-//F2 = {},
-//F3 = Func(&(Type){ .a = 100*100, .b = 0, }, baz),
-//F4 = 100
-//};
+enum FEnum
+{
+    F1,// = foo * bar / blah,
+    F2,// = {},
+    F3,// = Func(&(Type){ .a = 100*100, .b = 0, }, baz),
+    F4 = 100
+};
 
-//void Func1();
-//void* Func2();
-//void* Func3(void);
-//void* Func4(void*);
-//void Func5(void* a);
-//int * ** *** **** Func6(int ** a, float b, char c[1024], char** d[10], char ** const * volatile e[1][2][3]);
+void Func1();
+void* Func2();
+void* Func3(void);
+void* Func4(void*);
+void Func5(void* a);
+int * ** *** **** Func6(int ** a, float b, char c[1024], char** d[10], char ** const * volatile e[1][2][3]);
 
-//struct {
-//int**** a[1][2][3];
-//float** (**(*b[1])[2][3])[4];
-//char (*(*c[3])())[5];
-//char * const (*(* const d)[5])(int);
-//int (*(*e)(const void *))[3];
-//int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4];
-//int (* (**funcPtr)(void))[3][4];
-//int (* (**funcArr[10])(void))[3][4];
-//}* Func7(struct
-//{
-//struct { i32 a, ** * b; };
-//struct { float f; float f2[10]; };
-//struct HStruct h;
-//}* a, int b) { return 0; }
-
-//struct ReturnType {
-//int**** a[1][2][3];
-//float** (**(*b[1])[2][3])[4];
-//char (*(*c[3])())[5];
-//char * const (*(* const d)[5])(int);
-//int (*(*e)(const void *))[3];
-//int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4];
-//int * (**funcPtr)(void**[1], int[2]);
-//} Func8(struct Argument
-//{
-//struct { i32 a, ** * b; };
-//struct { float f; float f2[10]; };
-//struct HStruct h;
-//}* a, int b, int * (**funcPtr)(void**[1], int[2]));
-
-//int**** a[1][2][3];
-//float** (**(*b[1])[2][3])[4];
-//char (*(*c[3])())[5];
-//char * const (*(* const d)[5])(int) = 0;
-//int (*(*e)(const void *))[3];
-//int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4];
-//void func1( int ), * (func2)( int ), (*funcPtr)(void);
+int**** a[1][2][3];
+float** (**(*b[1])[2][3])[4];
+char (*(*c[3])())[5];
+char * const (*(* const d)[5])(int) = 0;
+int (*(*e)(const void *))[3];
+int* f1,** f2, f3[10], ** f4[20], ** (**(*f5[1])[2][3])[4];
+void func1( int ), * (func2)( int ), (*funcPtr)(void);
 
 /*function MG_ExprResult CL_ParseExpr(Arena* arena, MD_Node* first, MD_Node* opl)
 {

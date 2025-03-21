@@ -49,7 +49,7 @@ typedef Flags64 CL_NodeFlags;
 #define CL_NodeFlag_String     (1ULL << 14)
 #define CL_NodeFlag_Symbol     (1ULL << 15)
 
-#define CL_NodeFlags_TypeKeyword (0x3 << 16)
+#define CL_NodeFlags_TypeKeyword (0x7 << 16)
 #define CL_NodeFlag_Struct (1ULL << 16)
 #define CL_NodeFlag_Union  (1ULL << 17)
 #define CL_NodeFlag_Enum   (1ULL << 18)

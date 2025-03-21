@@ -259,6 +259,13 @@ struct ThreadResult
 };
 
 global OS_Handle iocp;
+
+// TODO(long): https://youtu.be/xbvaeBCbDDA?t=498
+// workSize is only used for 2 things:
+// 1. Signal that all works are done
+// 2. Keep track of the maximum allocation size
+// The first one can be replaced with a single bool where one thread read and the other thread write
+// The second one can be replaced with each thread having a separate int
 global volatile u64 workSize;
 
 global u64 pushFileMs;

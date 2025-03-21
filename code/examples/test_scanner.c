@@ -474,6 +474,7 @@ int main(void)
         CL_Node* old = node;
         if (!CL_IsNil(node->args.first))
         {
+            indent++;
             Outf("%*s<args>:\n", indent * 2, "");
             node = node->args.first;
             indent++;
@@ -488,9 +489,20 @@ int main(void)
         else if (!CL_IsNil(node->next))
             node = node->next;
         
-        else for (CL_Node* parent = node->parent; !CL_IsNil(parent); parent = parent->parent)
+        else for (CL_Node* parent = node->parent,* child = node; !CL_IsNil(parent); parent = parent->parent, child = child->parent)
         {
             indent--;
+            b32 isArg = child->parent->args.last == child;
+            if (isArg)
+            {
+                if (!CL_IsNil(parent->body.first))
+                {
+                    node = parent->body.first;
+                    break;
+                }
+                indent--;
+            }
+            
             if (!CL_IsNil(parent->next))
             {
                 node = parent->next;
