@@ -141,7 +141,7 @@ internal f64 CosPi64(f64 x)
     return SinTurn64(x);
 }
 
-#include <math.h>
+#include <math.h> // TODO(long): Replace sin/cos/tan/atan
 
 function f32 Sin_f32(f32 x) { return sinf(x); }
 function f32 Cos_f32(f32 x) { return cosf(x); }

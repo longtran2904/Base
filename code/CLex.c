@@ -1,6 +1,17 @@
 
 //~ long: Lexing Functions
 
+struct CL_Scanner
+{
+    // optional separate newline
+    String wspace;
+    
+    // nested
+    String singleComment;
+    String multiCommentBeg;
+    String multiCommentEnd;
+};
+
 function TokenArray CL_TokenArrayFromStr(Arena* arena, String text)
 {
     Scanner* scanner = &ScannerFromStr(arena, text);
@@ -22,6 +33,23 @@ function TokenArray CL_TokenArrayFromStr(Arena* arena, String text)
     ScannerPushMark(scanner, CL_TokenFlag_Symbol, StrLit("->"), 0);
     MarkerPushOps(scanner, CL_TokenFlag_Symbol, StrLit("<>&|+-="), 1);
     MarkerPushOps(scanner, CL_TokenFlag_Symbol, StrLit("[](){0},;:?~!^%."), 0);
+    
+    //while (scanner->pos < scanner->source.size)
+    //{
+    //if (0) {}
+    //else if (ScannerParseArr(scanner, WspaceStr, untilNot)) {}
+    //else if (ScannerParseLine(scanner, .pre = "//")) {}
+    //else if (ScannerParseRange(scanner, "/*", "*/", noNest)) {}
+    //else if (ScannerParseIdentifier(scanner, "_", AllowUTF8|AllowDigit)) {}
+    //else if (ScannerParseNumerics(scanner, ".", "eEpP", AllowChar|AllowPrefixUnary|AllowPostfixUnary)) {}
+    //else if (ScannerParseLine(scanner, .pre = "\"", .mid = "\\", .post = "\"")) {}
+    //else if (ScannerParseLine(scanner, .pre = "'", .mid = "\\", .post = "'")) {}
+    //else if (ScannerParseStr(scanner, "...") || ScannerParseStr(scanner, "->")) {}
+    //else if (ScannerParseArr(scanner, "<>", "=", MatchTwice|MatchTwicePostfix)) {}
+    //else if (ScannerParseArr(scanner, "+-&|", "=", MatchTwice)) {}
+    //else if (ScannerParseArr(scanner, "*/!^%=", 0, MatchTwice)) {}
+    //else if (ScannerParseArr(scanner, "()[]{},;?:~", 0, 0)) {}
+    //}
     
     // C
     // 1 - 2 - 1+Equal - 2+Equal: < >
@@ -55,28 +83,7 @@ function TokenArray CL_TokenArrayFromStr(Arena* arena, String text)
     return result;
 }
 
-global String CL_Keywords[] = {
-    StrConst("alignas"),      StrConst("alignof"),  StrConst("auto"),          StrConst("bool"),      StrConst("break"),
-    StrConst("case"),         StrConst("char"),     StrConst("const"),         StrConst("constexpr"), StrConst("continue"),
-    StrConst("default"),      StrConst("do"),       StrConst("double"),        StrConst("else"),      StrConst("enum"),
-    StrConst("extern"),       StrConst("false"),    StrConst("float"),         StrConst("for"),       StrConst("goto"),
-    StrConst("if"),           StrConst("inline"),   StrConst("int"),           StrConst("long"),      StrConst("nullptr"),
-    StrConst("register"),     StrConst("restrict"), StrConst("return"),        StrConst("short"),     StrConst("signed"),
-    StrConst("sizeof"),       StrConst("static"),   StrConst("static_assert"), StrConst("struct"),    StrConst("switch"),
-    StrConst("thread_local"), StrConst("true"),     StrConst("typedef"),       StrConst("typeof"),    StrConst("typeof_unqual"),
-    StrConst("union"),        StrConst("unsigned"), StrConst("void"),          StrConst("volatile"),  StrConst("while"),
-};
-
-global String CL_TypeKewords[] = { StrConst("struct"), StrConst("union"), StrConst("enum") };
-
-global String CL_Qualifiers[] = {
-    StrConst("const"), StrConst("volatile"), StrConst("restrict"), StrConst("_Atomic"),
-};
-
-global String CL_Specifiers[] = {
-    StrConst("typedef"), StrConst("constexpr"), StrConst("auto"), StrConst("register"), StrConst("static"),
-    StrConst("extern"), StrConst("_Thread_local"), StrConst("inline"), StrConst("_Noreturn"), StrConst("_Alignas"),
-};
+//~ NOTE(long): MD Functions
 
 #define MD_NodeMatch(node, str) StrCompare((node)->string, StrLit(str), 0)
 
@@ -134,578 +141,6 @@ function void MD_DebugTree(MD_Node* root)
         MD_DebugTree(node->first);
         MD_DebugTree(node->first_tag);
     }
-}
-
-function CL_Node* CL_PushNode(Arena* arena, CL_NodeFlags flags, String string, u64 offset)
-{
-    CL_Node* result = PushStruct(arena, CL_Node);
-    *result = cl_nilNode;
-    result->flags = flags;
-    result->string = string;
-    result->offset = offset;
-    return result;
-}
-
-function CL_Node* CL_PushRangeNode(Arena* arena, String text, CL_NodeFlags flags, r1u64 range)
-{
-    String string = Substr(text, range.min, range.max);
-    CL_Node* result = CL_PushNode(arena, flags, string, range.min);
-    return result;
-}
-
-function CL_Node* CL_PushErrorNode(Arena* arena, String error, u64 offset)
-{
-    CL_Node* result = CL_PushNode(arena, CL_NodeFlag_Error, error, offset);
-    return result;
-}
-
-#define CL_IsNil(node) CheckNil(&cl_nilNode, node)
-
-function void CL_ErrorListPushf(Arena* arena, CL_NodeList* list, u64 offset, char* fmt, ...)
-{
-    va_list args;
-    va_start(args, fmt);
-    String error = StrPushfv(arena, fmt, args);
-    va_end(args);
-    
-    CL_Node* node = CL_PushErrorNode(arena, error, offset);
-    SLLQueuePush(list->first, list->last, node);
-    list->count++;
-}
-
-#define CL_NodePushChild(p, list, c) Stmnt((c)->parent = (p); (p)->list.count++;\
-                                           DLLPushBack_NPZ(&cl_nilNode, (p)->list.first, (p)->list.last, (c), next, prev))
-
-typedef enum CL_ParseWorkKind
-{
-    CL_ParseWorkKind_Stmt,
-    CL_ParseWorkKind_TypeExpr,
-    CL_ParseWorkKind_Expr,
-    CL_ParseWorkKind_Args,
-    CL_ParseWorkKind_TypeBody,
-} CL_ParseWorkKind;
-
-typedef struct CL_ParseWorkNode CL_ParseWorkNode;
-struct CL_ParseWorkNode
-{
-    CL_ParseWorkNode* next;
-    CL_ParseWorkKind kind;
-    CL_Node* parent;
-    CL_Node* first_tag;
-    CL_Node* last_tag;
-    Token* token;
-};
-
-function b32 CL_WorkHasFlags(CL_ParseWorkNode* work, CL_NodeFlags flags)
-{
-    for (CL_Node* node = work->first_tag; !CL_IsNil(node); node = node->next)
-        if (node->flags & flags)
-            return 1;
-    return 0;
-}
-
-#define CL_ParseWorkPush(work_kind, work_parent)                             \
-    Stmnt(CL_ParseWorkNode* work_node = work_free;                             \
-          if (!work_node) work_node = PushArray(scratch, CL_ParseWorkNode, 1); \
-          else SLLStackPop(work_free);                                         \
-          work_node->kind = (work_kind);                                       \
-          work_node->parent = (work_parent);                                   \
-          work_node->first_tag = work_node->last_tag = &cl_nilNode;            \
-          work_node->token = token;                                            \
-          SLLStackPush(work_top, work_node))
-
-#define CL_ParseWorkPop() Stmnt(SLLStackPop(work_top); if (!work_top) work_top = &broken_work;)
-
-function CL_NodeFlags CL_NodeFlagsFromToken(CL_TokenFlags flags, String lexeme)
-{
-    CL_NodeFlags result = 0;
-    
-    if (flags & CL_TokenFlag_Symbol ) result |= CL_NodeFlag_Symbol;
-    if (flags & CL_TokenFlag_Numeric) result |= CL_NodeFlag_Numeric;
-    if (flags & CL_TokenFlag_Char   ) result |= CL_NodeFlag_CharLit;
-    if (flags & CL_TokenFlag_String ) result |= CL_NodeFlag_String;
-    
-    if (flags & CL_TokenFlag_Identifier)
-    {
-        if (0) {} 
-        
-        else if (StrCompare(lexeme, StrLit("struct"), 0)) result |= CL_NodeFlag_Struct;
-        else if (StrCompare(lexeme, StrLit( "union"), 0)) result |= CL_NodeFlag_Union;
-        else if (StrCompare(lexeme, StrLit(  "enum"), 0)) result |= CL_NodeFlag_Enum;
-        
-        else if (StrCompare(lexeme, StrLit(    "void"), 0)) result |= CL_NodeFlag_Void;
-        else if (StrCompare(lexeme, StrLit(    "char"), 0)) result |= CL_NodeFlag_Char;
-        else if (StrCompare(lexeme, StrLit(   "short"), 0)) result |= CL_NodeFlag_Short;
-        else if (StrCompare(lexeme, StrLit(     "int"), 0)) result |= CL_NodeFlag_Int;
-        else if (StrCompare(lexeme, StrLit(    "long"), 0)) result |= CL_NodeFlag_Long;
-        else if (StrCompare(lexeme, StrLit(  "signed"), 0)) result |= CL_NodeFlag_Signed;
-        else if (StrCompare(lexeme, StrLit("unsigned"), 0)) result |= CL_NodeFlag_Unsigned;
-        else if (StrCompare(lexeme, StrLit(   "float"), 0)) result |= CL_NodeFlag_Float;
-        else if (StrCompare(lexeme, StrLit(  "double"), 0)) result |= CL_NodeFlag_Double;
-        
-        else if (StrCompare(lexeme, StrLit(   "const"), 0)) result |= CL_NodeFlag_Const;
-        else if (StrCompare(lexeme, StrLit("volatile"), 0)) result |= CL_NodeFlag_Volatile;
-        else if (StrCompare(lexeme, StrLit("restrict"), 0)) result |= CL_NodeFlag_Restrict;
-        else if (StrCompare(lexeme, StrLit( "_Atomic"), 0)) result |= CL_NodeFlag_Atomic;
-        
-        else if (StrCompare(lexeme, StrLit(      "typedef"), 0)) result |= CL_NodeFlag_Typedef;
-        else if (StrCompare(lexeme, StrLit(    "constexpr"), 0)) result |= CL_NodeFlag_Constexpr;
-        else if (StrCompare(lexeme, StrLit(         "auto"), 0)) result |= CL_NodeFlag_Auto;
-        else if (StrCompare(lexeme, StrLit(     "register"), 0)) result |= CL_NodeFlag_Register;
-        else if (StrCompare(lexeme, StrLit(       "static"), 0)) result |= CL_NodeFlag_Static;
-        else if (StrCompare(lexeme, StrLit(       "extern"), 0)) result |= CL_NodeFlag_Extern;
-        else if (StrCompare(lexeme, StrLit(       "inline"), 0)) result |= CL_NodeFlag_Inline;
-        else if (StrCompare(lexeme, StrLit("_Thread_local"), 0)) result |= CL_NodeFlag_ThreadLocal;
-        else if (StrCompare(lexeme, StrLit(    "_Noreturn"), 0)) result |= CL_NodeFlag_Noreturn;
-        else if (StrCompare(lexeme, StrLit(     "_Alignas"), 0)) result |= CL_NodeFlag_Alignas;
-        
-        else result |= CL_NodeFlag_Identifier;
-    }
-    
-    return result;
-}
-
-function CL_Node* CL_BaseTypeFromTag(CL_ParseWorkNode* work_top)
-{
-    CL_Node* base = work_top->first_tag;
-    if (!CL_IsNil(base))
-    {
-        if (!StrCompare(base->string, StrLit("*"), 0))
-            for (CL_Node* tag = base; !CL_IsNil(tag); tag = tag->next)
-                if (HasAnyFlags(tag->flags, CL_NodeFlag_Identifier|CL_NodeFlags_Leaf|
-                                CL_NodeFlags_TypeKeyword|CL_NodeFlag_Decl))
-                    base = tag;
-        
-        DLLRemove_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, base, next, prev);
-        for (CL_Node* tag = work_top->first_tag,* next = tag->next; !CL_IsNil(tag); tag = next, next = next->next)
-            CL_NodePushChild(base, tags, tag);
-        work_top->first_tag = work_top->last_tag = &cl_nilNode;
-    }
-    return base;
-}
-
-function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray array)
-{
-    ScratchBegin(scratch, arena);
-    
-    //- rjf: set up outputs
-    CL_NodeList msgs = {0};
-    CL_Node* root = CL_PushNode(arena, CL_NodeFlag_File, text, 0);
-    
-    //- rjf: set up parse rule stack
-    CL_ParseWorkNode  first_work = { 0, CL_ParseWorkKind_Stmt, root, &cl_nilNode, &cl_nilNode };
-    CL_ParseWorkNode broken_work = { 0, CL_ParseWorkKind_Stmt, root, &cl_nilNode, &cl_nilNode };
-    CL_ParseWorkNode* work_top = &first_work;
-    CL_ParseWorkNode* work_free = 0;
-    
-    //- rjf: parse
-    Token* tokens_first = array.tokens;
-    Token* tokens_opl = tokens_first + array.count;
-    Token* token = tokens_first;
-    Token* prevToken = tokens_first;
-    
-    while (token < tokens_opl)
-    {
-#define LexMatch(str) StrCompare(lexeme, StrLit(str), 0)
-#define TokMatch(tok, str) StrCompare(Substr(text, (tok)->range.min, (tok)->range.max), StrLit(str), 0)
-#define HasFlags(flgs) (token->user & (flgs))
-#define LeftNode(node) ((node)->body.first)
-#define RightNode(node) ((node)->body.last)
-        
-#define CL_IsTypeDecl(node) (((node)->flags & CL_NodeFlag_Decl) && \
-                             ((node)->reference->flags & CL_NodeFlags_TypeKeyword))
-        
-        //- rjf: unpack token
-        String lexeme = Substr(text, token->range.min, token->range.max);
-        b32 inc = 1;
-        
-        //- long: whitespace/preproc/comments -> always no-op & inc
-        if (HasFlags(CL_TokenFlags_Ignorable)) { }
-        
-#if 0
-        else if (work_top->kind == CL_ParseWorkKind_Expr && HasFlags(CL_TokenFlag_Symbol))
-        {
-            CL_Node* expr = CL_ExprFromStr(arena, lexeme);
-            CL_Node* parent = work_top->parent;
-            i32 prec = CL_ExprPrec(expr->flags);
-            
-            for (CL_Node* tail = parent; CL_IsNil(tail); parent = tail, tail = tail->parent)
-            {
-                i32 parentPrec = CL_ExprPrec(parent->flags);
-                if (parentPrec < prec && !(parentPrec == prec && CL_ExprIsLR(parent->flags)))
-                    break;
-                if (!CL_ExprIsClosed(parent))
-                    break;
-            }
-            
-            if (CL_IsNil(parent))
-            {
-                //Assert(CL_IsNil(parent->body.last) || CL_ExprIsPrefix(op));
-                //Assert(CL_IsNil(parent->body.first) || CL_ExprIsUnary(parent->op));
-                
-                expr->parent = parent;
-                LeftNode(expr) = RightNode(parent);
-                LeftNode(expr)->parent = expr;
-            }
-            //else Assert(it == first);
-            
-            work_top->parent = expr;
-        }
-#endif
-        
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && TokMatch(prevToken, "}") && LexMatch(";"))
-        {
-            // TODO(long): This is a stupid hack
-            goto CLEAN_UP;
-        }
-        
-        //- long: Enum Body (reuse this for array literal)
-        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(CL_TokenFlag_Identifier) &&
-                 (work_top->parent->reference->flags & CL_NodeFlag_Enum))
-        {
-            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
-            if (ALWAYS(flags & CL_NodeFlag_Identifier))
-            {
-                CL_Node* node = CL_PushNode(arena, CL_NodeFlag_Decl, lexeme, token->range.min);
-                CL_NodePushChild(work_top->parent, body, node);
-            }
-        }
-        else if ((work_top->parent->reference->flags & CL_NodeFlag_Enum) && LexMatch(","))
-        {
-            Assert(work_top->kind == CL_ParseWorkKind_Stmt);
-            work_top->first_tag = work_top->last_tag = &cl_nilNode;
-        }
-        
-        //- long: Declaration
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && work_top->parent == work_top->next->parent &&
-                 (HasAnyFlags(work_top->last_tag->flags, CL_NodeFlag_Identifier|CL_NodeFlags_TypeKeyword) ||
-                  (work_top->next->kind == CL_ParseWorkKind_Args || work_top->next->kind == CL_ParseWorkKind_Expr)) &&
-                 (LexMatch("(") || LexMatch(")") || LexMatch("[") || // can be nested in other parens
-                  LexMatch(",") || LexMatch("=") || LexMatch(";") || // can't be nested in other parens
-                  LexMatch("{") || LexMatch("}")))
-        {
-            CL_Node* decl = work_top->last_tag;
-            b32 hasName = 1;
-            
-            if (work_top->last_tag->flags & CL_NodeFlags_TypeKeyword)
-                hasName = 0;
-            
-            // NOTE(long): Because arguments can be anonymous, they can't differentiate between
-            // a function pointer decl and a paren-containing argument, even though the same
-            // argument can be parsed in other cases (field, variable, etc)
-            
-            else if (work_top->next->kind == CL_ParseWorkKind_Args || work_top->next->kind == CL_ParseWorkKind_Expr)
-            {
-                hasName = decl->flags & CL_NodeFlag_Identifier;
-                if (hasName)
-                {
-                    if (!StrCompare(work_top->first_tag->string, StrLit("*"), 0))
-                        for (CL_Node* tag = work_top->first_tag; tag != decl && !hasName; tag = tag->next)
-                            if (HasAnyFlags(tag->flags, CL_NodeFlag_Identifier|CL_NodeFlags_Leaf))
-                                hasName = 1;
-                }
-            }
-            
-            if (hasName)
-                DLLRemove_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, work_top->last_tag, next, prev);
-            else
-                decl = CL_PushNode(arena, CL_NodeFlag_Decl, StrPrefix(lexeme, 0), token->range.min);
-            
-            b32 isArg = /*(work_top->parent->flags & CL_NodeFlag_Decl)*/0;
-            {
-                CL_ParseWorkNode* parentWork = work_top->next;
-                while (parentWork->kind != CL_ParseWorkKind_Stmt && parentWork->kind != CL_ParseWorkKind_Args)
-                    parentWork = parentWork->next;
-                isArg = parentWork->kind == CL_ParseWorkKind_Args;
-            }
-            
-            if (isArg)
-                CL_NodePushChild(work_top->parent, args, decl);
-            else
-                CL_NodePushChild(work_top->parent, body, decl);
-            
-            work_top->parent = decl;
-            decl->flags |= CL_NodeFlag_Decl;
-            if (work_top->last_tag->flags & CL_NodeFlags_TypeKeyword)
-            {
-                decl->reference = work_top->last_tag;
-                DLLRemove_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, work_top->last_tag, next, prev);
-            }
-            else
-                decl->reference = CL_BaseTypeFromTag(work_top);
-            if (!CL_IsNil(decl->reference)) // @useless_paren
-                decl->reference->parent = decl;
-            inc = 0;
-        }
-        
-        //- long: Type's Body
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch("{") &&
-                 (CL_WorkHasFlags(work_top, CL_NodeFlags_TypeKeyword|CL_NodeFlag_Typedef) ||
-                  //HasAnyFlags(work_top->parent->reference->flags, CL_NodeFlags_TypeKeyword)
-                  !CL_IsNil(work_top->parent->reference)))
-        {
-            CL_ParseWorkPush(CL_ParseWorkKind_Stmt, work_top->parent);
-        }
-        
-        else if (work_top->kind == CL_ParseWorkKind_Stmt && LexMatch("}"))
-        {
-            if (ALWAYS(work_top->next->kind == CL_ParseWorkKind_TypeExpr))
-            {
-                CL_ParseWorkPop();
-                
-                if (ALWAYS(CL_IsTypeDecl(work_top->parent)))
-                {
-                    CL_Node* type = work_top->parent;
-                    CL_Node* base = CL_PushNode(arena, type->flags, type->string, type->offset);
-                    
-                    DLLPushBack_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, base, next, prev);
-                    work_top->parent = work_top->parent->parent;
-                }
-            }
-        }
-        
-        //- long: Clean up
-        else if (LexMatch(";"))
-        {
-            CLEAN_UP:
-            if (work_top->kind != CL_ParseWorkKind_Stmt && work_top->kind != CL_ParseWorkKind_Args)
-            {
-                CL_ParseWorkPop();
-                inc = 0;
-            }
-            else
-            {
-                // TODO(long): Memory leaked
-                work_top->first_tag = work_top->last_tag = &cl_nilNode;
-            }
-        }
-        
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch(","))
-        {
-            if (work_top->next->kind == CL_ParseWorkKind_Args)
-            {
-                CL_ParseWorkPop();
-                work_top->first_tag = work_top->last_tag = &cl_nilNode;
-            }
-            else if (ALWAYS(work_top->next->kind != CL_ParseWorkKind_TypeExpr))
-            {
-                CL_Node* base = work_top->parent->reference;
-                while (!CL_IsNil(base->reference))
-                    base = base->reference;
-                
-                if (!CL_IsNil(base))
-                {
-                    CL_Node* firstTag = base->tags.first;
-                    base = CL_PushNode(arena, base->flags, base->string, base->offset);
-                    
-                    for (CL_Node* tag = firstTag; !CL_IsNil(tag); tag = tag->next)
-                    {
-                        CL_Node* newTag = CL_PushNode(arena, tag->flags, tag->string, tag->offset);
-                        CL_NodePushChild(base, tags, newTag);
-                    }
-                }
-                
-                work_top->first_tag = work_top->last_tag = base;
-                if (ALWAYS((work_top->parent->flags & CL_NodeFlag_Decl) ||
-                           work_top->parent->parent->reference == work_top->parent))
-                    work_top->parent = work_top->next->parent;
-            }
-        }
-        
-        //- long: Type Expression
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && HasFlags(CL_TokenFlag_Identifier))
-        {
-            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
-            if (ALWAYS(flags))
-            {
-                CL_Node* node = CL_PushNode(arena, flags, lexeme, token->range.min);
-                DLLPushBack_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, node, next, prev);
-            }
-        }
-        
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch("*"))
-        {
-            CL_Node* base = CL_BaseTypeFromTag(work_top);
-            CL_Node* ptr = CL_PushNode(arena, CL_NodeFlag_Symbol, lexeme, token->range.min);
-            
-            if (!CL_IsNil(base))
-            {
-                ptr->reference = base;
-                base->parent = ptr;
-            }
-            work_top->first_tag = work_top->last_tag = ptr;
-        }
-        
-        //- long: Push/Pop Paren
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch("("))
-        {
-            if (work_top->parent != work_top->next->parent)
-            {
-                CL_ParseWorkPush(CL_ParseWorkKind_Args, work_top->parent);
-            }
-            
-            else
-            {
-                CL_Node* base = CL_BaseTypeFromTag(work_top);
-                work_top->first_tag = work_top->last_tag = base;
-                CL_ParseWorkPush(CL_ParseWorkKind_TypeExpr, work_top->parent);
-            }
-        }
-        
-        else if (work_top->kind == CL_ParseWorkKind_Args && LexMatch(")"))
-        {
-            CL_ParseWorkPop();
-        }
-        
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch(")"))
-        {
-            CL_Node* base = work_top->parent->reference;
-            if (CL_IsNil(base)) // @useless_paren
-                base = work_top->parent;
-            
-            CL_ParseWorkPop();
-            
-            if (work_top->kind == CL_ParseWorkKind_TypeExpr)
-            {
-                while (!CL_IsNil(base->reference))
-                    base = base->reference;
-                work_top->parent = base;
-                base->reference = work_top->first_tag;
-                base->reference->parent = base;
-            }
-            else if (ALWAYS(work_top->kind == CL_ParseWorkKind_Args))
-                CL_ParseWorkPop(); // NOTE(long): This can also be `inc = 0;`
-        }
-        
-        //- long: Push/Pop Bracket
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch("["))
-        {
-            CL_Node* node = CL_PushNode(arena, CL_NodeFlag_Brack, lexeme, token->range.min);
-            CL_Node* parent = work_top->parent;
-            node->reference = parent->reference;
-            
-            if (parent != root)
-            {
-                while (parent->reference->flags & CL_NodeFlag_Brack)
-                    parent = parent->reference;
-                
-                if (!CL_IsNil(parent->reference))
-                {
-                    parent->reference->parent = node;
-                    node->reference = parent->reference;
-                }
-                
-                parent->reference = node;
-                node->parent = parent;
-            }
-            else CL_NodePushChild(parent, body, node);
-            
-            CL_ParseWorkPush(CL_ParseWorkKind_Expr, node);
-        }
-        else if ((work_top->parent->flags & CL_NodeFlag_Brack) && LexMatch("]"))
-            CL_ParseWorkPop();
-        
-        //- long: Expr
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch("="))
-        {
-            CL_Node* node = CL_PushNode(arena, CL_NodeFlag_Symbol, lexeme, token->range.min);
-            CL_NodePushChild(work_top->parent, body, node);
-            CL_ParseWorkPush(CL_ParseWorkKind_Expr, node);
-        }
-        
-        else if (work_top->kind == CL_ParseWorkKind_Expr && LexMatch(",") &&
-                 (work_top->next->kind == CL_ParseWorkKind_TypeExpr || (work_top->next->parent->reference->flags & CL_NodeFlag_Enum)))
-        {
-            CL_ParseWorkPop();
-            inc = 0;
-        }
-        
-        else if (work_top->kind == CL_ParseWorkKind_Expr && HasFlags(CL_TokenFlags_Literal|CL_TokenFlag_Identifier))
-        {
-            CL_Node* atom = CL_PushNode(arena, CL_NodeFlag_Expr, lexeme, token->range.min);
-            CL_Node* expr = work_top->parent;
-            CL_NodePushChild(expr, body, atom);
-        }
-        
-        else if (work_top->kind == CL_ParseWorkKind_Expr && LexMatch("*"))
-        {
-            
-        }
-        
-        else if (work_top->kind == CL_ParseWorkKind_Expr && LexMatch(")"))
-        {
-            CL_ParseWorkPop();
-            inc = 0;
-        }
-        
-        // TODO(long): Parse operator precedence
-        else if (NEVER(work_top->kind == CL_ParseWorkKind_Expr && HasFlags(CL_TokenFlag_Symbol)));
-        
-        //- long: Identifier
-        else if ((work_top->kind == CL_ParseWorkKind_Stmt || work_top->kind == CL_ParseWorkKind_Args) &&
-                 HasFlags(CL_TokenFlag_Identifier))
-        {
-            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
-            if (HasAnyFlags(flags, CL_NodeFlags_TypeKeyword|CL_NodeFlag_Typedef))
-                goto PUSH_TYPE_EXPR;
-            
-            else if (ALWAYS(flags))
-            {
-                if ((flags & CL_NodeFlag_Identifier) && CL_IsNil(work_top->first_tag))
-                {
-                    CL_Node* node = CL_PushNode(arena, flags, lexeme, token->range.min);
-                    DLLPushBack_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, node, next, prev);
-                }
-                else
-                {
-                    PUSH_TYPE_EXPR:
-                    CL_ParseWorkNode* work_prev = work_top;
-                    CL_ParseWorkPush(CL_ParseWorkKind_TypeExpr, work_top->parent);
-                    work_top->first_tag = work_prev->first_tag;
-                    work_top-> last_tag = work_prev-> last_tag;
-                    work_prev->last_tag = work_prev->first_tag = &cl_nilNode;
-                    inc = 0;
-                }
-            }
-        }
-        
-        else if ((work_top->kind == CL_ParseWorkKind_Stmt || work_top->kind == CL_ParseWorkKind_Args) &&
-                 LexMatch("*") && !CL_IsNil(work_top->first_tag))
-            goto PUSH_TYPE_EXPR;
-        
-        // TODO(long): Function call
-        else if (NEVER(work_top->kind == CL_ParseWorkKind_Stmt && LexMatch("(") && (work_top->first_tag->flags & CL_NodeFlag_Identifier)));
-        
-        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(CL_TokenFlag_Symbol))
-        {
-            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
-            CL_Node* node = CL_PushNode(arena, flags, lexeme, token->range.min);
-            CL_NodePushChild(work_top->parent, body, node);
-            CL_ParseWorkPush(CL_ParseWorkKind_Expr, node);
-        }
-        
-        //- rjf: no consumption -> unexpected token! we don't know what to do with this.
-        //else CL_ErrorListPushf(arena, &msgs, token->range.min, "Unexpected \"%.*s\" token.", StrExpand(lexeme));
-        else Assert(0);
-        
-        if (inc)
-        {
-            if (!HasFlags(CL_TokenFlags_Ignorable))
-                prevToken = token;
-            token += 1;
-        }
-        
-#undef HasFlags
-#undef LexMatch
-#undef TokMatch
-#undef LeftNode
-#undef RightNode
-    }
-    
-    //- rjf: fill & return
-    CL_ParseResult result = { root, msgs };
-    ScratchEnd(scratch);
-    return result;
 }
 
 function b32 MD_NodeIsPtr(MD_Node* node)
@@ -904,6 +339,954 @@ function MD_Node* MD_ParseStrC(Arena* arena, String text)
     }
     
     return result.root;
+}
+
+//~ NOTE(long): CL Functions
+
+global String CL_Keywords[] = {
+    StrConst("alignas"),      StrConst("alignof"),  StrConst("auto"),          StrConst("bool"),      StrConst("break"),
+    StrConst("case"),         StrConst("char"),     StrConst("const"),         StrConst("constexpr"), StrConst("continue"),
+    StrConst("default"),      StrConst("do"),       StrConst("double"),        StrConst("else"),      StrConst("enum"),
+    StrConst("extern"),       StrConst("false"),    StrConst("float"),         StrConst("for"),       StrConst("goto"),
+    StrConst("if"),           StrConst("inline"),   StrConst("int"),           StrConst("long"),      StrConst("nullptr"),
+    StrConst("register"),     StrConst("restrict"), StrConst("return"),        StrConst("short"),     StrConst("signed"),
+    StrConst("sizeof"),       StrConst("static"),   StrConst("static_assert"), StrConst("struct"),    StrConst("switch"),
+    StrConst("thread_local"), StrConst("true"),     StrConst("typedef"),       StrConst("typeof"),    StrConst("typeof_unqual"),
+    StrConst("union"),        StrConst("unsigned"), StrConst("void"),          StrConst("volatile"),  StrConst("while"),
+};
+
+global String CL_TypeKewords[] = { StrConst("struct"), StrConst("union"), StrConst("enum") };
+
+global String CL_Qualifiers[] = {
+    StrConst("const"), StrConst("volatile"), StrConst("restrict"), StrConst("_Atomic"),
+};
+
+global String CL_Specifiers[] = {
+    StrConst("typedef"), StrConst("constexpr"), StrConst("auto"), StrConst("register"), StrConst("static"),
+    StrConst("extern"), StrConst("_Thread_local"), StrConst("inline"), StrConst("_Noreturn"), StrConst("_Alignas"),
+};
+
+function CL_Node* CL_PushNode(Arena* arena, CL_NodeFlags flags, String string, u64 offset)
+{
+    CL_Node* result = PushStruct(arena, CL_Node);
+    *result = cl_nilNode;
+    result->flags = flags;
+    result->string = string;
+    result->offset = offset;
+    return result;
+}
+
+#define CL_IsNil(node) CheckNil(&cl_nilNode, node)
+#define CL_NodePushChild(p, list, c) Stmnt((c)->parent = (p); (p)->list.count++;\
+                                           DLLPushBack_NPZ(&cl_nilNode, (p)->list.first, (p)->list.last, (c), next, prev))
+
+function void CL_DebugTree(CL_Node* root)
+{
+    for (CL_Node* node = root->body.first; !CL_IsNil(node); node = node->next)
+    {
+        Assert(node->next       != node);
+        Assert(node->prev       != node);
+        Assert(node->parent     != node);
+        Assert(node->body.first != node);
+        Assert(node->body.last  != node);
+        Assert(node->tags.first != node);
+        Assert(node->tags.last  != node);
+        Assert(node->args.first != node);
+        Assert(node->args.last  != node);
+        
+        Assert(CL_IsNil(node->body.first->prev));
+        Assert(CL_IsNil(node->body.last->next));
+        if (node->body.first == node->body.last)
+            Assert(CL_IsNil(node->body.first->next));
+        
+        Assert(CL_IsNil(node->tags.first->prev));
+        Assert(CL_IsNil(node->tags.last->next));
+        if (node->tags.first == node->tags.last)
+            Assert(CL_IsNil(node->tags.first->next));
+        
+        Assert(CL_IsNil(node->args.first->prev));
+        Assert(CL_IsNil(node->args.last->next));
+        if (node->args.first == node->args.last)
+            Assert(CL_IsNil(node->args.first->next));
+        
+        // TODO(long): Check for references
+        
+        if (!CL_IsNil(node->next))
+        {
+            Assert(node->next->prev == node);
+            Assert(node->next->parent == node->parent);
+            
+            if (!CL_IsNil(node->body.first))
+            {
+                Assert(node->body.first != node->next->body.first && node->body.first != node->next->body.last);
+                Assert(node-> next != node->next->body.first && node-> next != node->next->body.last);
+            }
+        }
+        
+        CL_DebugTree(node->body.first);
+        CL_DebugTree(node->tags.first);
+        CL_DebugTree(node->args.first);
+    }
+}
+
+typedef enum CL_ParseWorkKind
+{
+    CL_ParseWorkKind_Stmt,
+    CL_ParseWorkKind_TypeExpr,
+    CL_ParseWorkKind_Expr,
+    CL_ParseWorkKind_Args,
+    CL_ParseWorkKind_TypeBody,
+} CL_ParseWorkKind;
+
+typedef struct CL_ParseWorkNode CL_ParseWorkNode;
+struct CL_ParseWorkNode
+{
+    CL_ParseWorkNode* next;
+    CL_ParseWorkKind kind;
+    CL_Node* parent;
+    CL_Node* first_tag;
+    CL_Node* last_tag;
+    Token* token;
+};
+
+function b32 CL_WorkHasFlags(CL_ParseWorkNode* work, CL_NodeFlags flags)
+{
+    for (CL_Node* node = work->first_tag; !CL_IsNil(node); node = node->next)
+        if (node->flags & flags)
+            return 1;
+    return 0;
+}
+
+#define CL_ParseWorkPush(work_kind, work_parent)                             \
+    Stmnt(CL_ParseWorkNode* work_node = work_free;                             \
+          if (!work_node) work_node = PushArray(scratch, CL_ParseWorkNode, 1); \
+          else SLLStackPop(work_free);                                         \
+          work_node->kind = (work_kind);                                       \
+          work_node->parent = (work_parent);                                   \
+          work_node->first_tag = work_node->last_tag = &cl_nilNode;            \
+          work_node->token = token;                                            \
+          SLLStackPush(work_top, work_node))
+
+#define CL_ParseWorkPop() Stmnt(SLLStackPop(work_top); if (!work_top) work_top = &broken_work;)
+
+function CL_NodeFlags CL_NodeFlagsFromToken(CL_TokenFlags flags, String lexeme)
+{
+    CL_NodeFlags result = 0;
+    
+    if (flags & CL_TokenFlag_Symbol ) result |= CL_NodeFlag_Symbol;
+    if (flags & CL_TokenFlag_Numeric) result |= CL_NodeFlag_Numeric;
+    if (flags & CL_TokenFlag_Char   ) result |= CL_NodeFlag_CharLit;
+    if (flags & CL_TokenFlag_String ) result |= CL_NodeFlag_String;
+    
+    if (flags & CL_TokenFlag_Identifier)
+    {
+        if (0) {} 
+        
+        else if (StrCompare(lexeme, StrLit("struct"), 0)) result |= CL_NodeFlag_Struct;
+        else if (StrCompare(lexeme, StrLit( "union"), 0)) result |= CL_NodeFlag_Union;
+        else if (StrCompare(lexeme, StrLit(  "enum"), 0)) result |= CL_NodeFlag_Enum;
+        
+        else if (StrCompare(lexeme, StrLit(    "void"), 0)) result |= CL_NodeFlag_Void;
+        else if (StrCompare(lexeme, StrLit(    "char"), 0)) result |= CL_NodeFlag_Char;
+        else if (StrCompare(lexeme, StrLit(   "short"), 0)) result |= CL_NodeFlag_Short;
+        else if (StrCompare(lexeme, StrLit(     "int"), 0)) result |= CL_NodeFlag_Int;
+        else if (StrCompare(lexeme, StrLit(    "long"), 0)) result |= CL_NodeFlag_Long;
+        else if (StrCompare(lexeme, StrLit(  "signed"), 0)) result |= CL_NodeFlag_Signed;
+        else if (StrCompare(lexeme, StrLit("unsigned"), 0)) result |= CL_NodeFlag_Unsigned;
+        else if (StrCompare(lexeme, StrLit(   "float"), 0)) result |= CL_NodeFlag_Float;
+        else if (StrCompare(lexeme, StrLit(  "double"), 0)) result |= CL_NodeFlag_Double;
+        
+        else if (StrCompare(lexeme, StrLit(   "const"), 0)) result |= CL_NodeFlag_Const;
+        else if (StrCompare(lexeme, StrLit("volatile"), 0)) result |= CL_NodeFlag_Volatile;
+        else if (StrCompare(lexeme, StrLit("restrict"), 0)) result |= CL_NodeFlag_Restrict;
+        else if (StrCompare(lexeme, StrLit( "_Atomic"), 0)) result |= CL_NodeFlag_Atomic;
+        
+        else if (StrCompare(lexeme, StrLit(      "typedef"), 0)) result |= CL_NodeFlag_Typedef;
+        else if (StrCompare(lexeme, StrLit(    "constexpr"), 0)) result |= CL_NodeFlag_Constexpr;
+        else if (StrCompare(lexeme, StrLit(         "auto"), 0)) result |= CL_NodeFlag_Auto;
+        else if (StrCompare(lexeme, StrLit(     "register"), 0)) result |= CL_NodeFlag_Register;
+        else if (StrCompare(lexeme, StrLit(       "static"), 0)) result |= CL_NodeFlag_Static;
+        else if (StrCompare(lexeme, StrLit(       "extern"), 0)) result |= CL_NodeFlag_Extern;
+        else if (StrCompare(lexeme, StrLit(       "inline"), 0)) result |= CL_NodeFlag_Inline;
+        else if (StrCompare(lexeme, StrLit("_Thread_local"), 0)) result |= CL_NodeFlag_ThreadLocal;
+        else if (StrCompare(lexeme, StrLit(    "_Noreturn"), 0)) result |= CL_NodeFlag_Noreturn;
+        else if (StrCompare(lexeme, StrLit(     "_Alignas"), 0)) result |= CL_NodeFlag_Alignas;
+        
+        else result |= CL_NodeFlag_Identifier;
+    }
+    
+    return result;
+}
+
+// NOTE(long): RTL is Right-To-Left
+
+// TODO(long): C99 compound literal
+#define CL_OPERATORS(X) \
+    X(SuffixInc,        "++", Suffix,   18,  "") \
+    X(SuffixDec,        "--", Suffix,   18,  "") \
+    X(Call,              "(", Suffix,   18, ")") \
+    X(Index,             "[", Suffix,   18, "]") \
+    X(Dot,               ".", Binary,   18,  "") \
+    X(Arrow,            "->", Binary,   18,  "") \
+    X(PrefixInc,        "++", Prefix,   16,  "") \
+    X(PrefixDec,        "--", Prefix,   16,  "") \
+    X(UnaryPlus,         "+", Prefix,   16,  "") \
+    X(UnaryMinus,        "-", Prefix,   16,  "") \
+    X(LogicalNot,        "!", Prefix,   16,  "") \
+    X(BitwiseNot,        "~", Prefix,   16,  "") \
+    X(Cast,              "(", Prefix,   16, ")") \
+    X(Deref,             "*", Prefix,   16,  "") \
+    X(Addrof,            "&", Prefix,   16,  "") \
+    X(Sizeof,       "sizeof", Prefix,   16,  "") \
+    X(Alignof,    "_Alignof", Prefix,   16,  "") \
+    X(Mul,               "*", Binary,   14,  "") \
+    X(Div,               "/", Binary,   14,  "") \
+    X(Mod,               "%", Binary,   14,  "") \
+    X(Add,               "+", Binary,   13,  "") \
+    X(Sub,               "-", Binary,   13,  "") \
+    X(LShift,           "<<", Binary,   12,  "") \
+    X(RShift,           ">>", Binary,   12,  "") \
+    X(Less,              "<", Binary,   11,  "") \
+    X(LessEqual,        "<=", Binary,   11,  "") \
+    X(Greater,           ">", Binary,   11,  "") \
+    X(GreaterEqual,     ">=", Binary,   11,  "") \
+    X(Equal,            "==", Binary,   10,  "") \
+    X(NotEqual,         "!=", Binary,   10,  "") \
+    X(BitwiseAnd,        "&", Binary,    9,  "") \
+    X(BitwiseXor,        "^", Binary,    8,  "") \
+    X(BitwiseOr,         "|", Binary,    7,  "") \
+    X(LogicalAnd,       "&&", Binary,    6,  "") \
+    X(LogicalOr,        "||", Binary,    5,  "") \
+    X(TernaryCond,       "?", BinaryRTL, 4, ":") \
+    X(Assign,            "=", BinaryRTL, 3,  "") \
+    X(AssignAdd,        "+=", BinaryRTL, 3,  "") \
+    X(AssignSub,        "-=", BinaryRTL, 3,  "") \
+    X(AssignMul,        "*=", BinaryRTL, 3,  "") \
+    X(AssignDiv,        "/=", BinaryRTL, 3,  "") \
+    X(AssignMod,        "%=", BinaryRTL, 3,  "") \
+    X(AssignLShift,    "<<=", BinaryRTL, 3,  "") \
+    X(AssignRShift,    ">>=", BinaryRTL, 3,  "") \
+    X(AssignBitwiseAnd, "&=", BinaryRTL, 3,  "") \
+    X(AssignBitwiseXor, "^=", BinaryRTL, 3,  "") \
+    X(AssignBitwiseOr,  "|=", BinaryRTL, 3,  "") \
+    X(Comma,             ",", Binary,    1,  "") \
+    X(Grouping,          "(", Nil,       1, ")") \
+
+typedef enum
+{
+    CL_ExprOpKind_Nil,
+#define X(name, str, oprKind, prec, closeOp) CL_ExprOpKind_##name,
+    CL_OPERATORS(X)
+#undef X
+    CL_ExprOpKind_Count,
+} CL_ExprOpKind;
+
+typedef enum
+{
+    CL_ExprKind_Nil,
+    CL_ExprKind_Prefix,
+    CL_ExprKind_Suffix,
+    CL_ExprKind_Binary,
+    CL_ExprKind_BinaryRTL,
+    CL_ExprKind_Count
+} CL_ExprKind;
+
+readonly global String CL_ExprOpKind_names[] = {
+    StrConst("Nil"),
+#define X(name, str, oprKind, prec, closeOp) StrConst(#name),
+    CL_OPERATORS(X)
+#undef X
+};
+
+readonly global String cl_exprSymbolTable[CL_ExprOpKind_Count] = {
+    StrConst(""),
+#define X(name, str, oprKind, prec, closeOp) StrConst(str),
+    CL_OPERATORS(X)
+#undef X
+};
+
+readonly global i8 cl_exprPrecedenceTable[CL_ExprOpKind_Count] = {
+    0,
+#define X(name, str, oprKind, prec, closeOp) prec,
+    CL_OPERATORS(X)
+#undef X
+};
+
+readonly global CL_ExprKind cl_exprKindTable[CL_ExprOpKind_Count] = {
+    CL_ExprKind_Nil,
+#define X(name, str, oprKind, prec, closeOp) CL_ExprKind_##oprKind,
+    CL_OPERATORS(X)
+#undef X
+};
+
+readonly global String cl_exprCloseSymbol[CL_ExprOpKind_Count] = {
+    StrConst(""),
+#define X(name, str, oprKind, prec, closeOp) StrConst(closeOp),
+    CL_OPERATORS(X)
+#undef X
+};
+
+function CL_ExprOpKind CL_ExprOpFromStr(String lexeme, CL_ParseWorkNode* work_top)
+{
+    CL_Node* parent = work_top->parent;
+    b32 lookupPrefix = 0;
+    
+    // Max parent
+    if (NoFlags(parent->flags, CL_NodeFlag_Symbol))
+        lookupPrefix = !(parent->body.last->flags & CL_NodeFlags_Atom);
+    
+    // Only an unfinished prefix op or nil op can have zero child
+    else if (CL_IsNil(parent->body.first))
+    {
+        // Only true for ops _inside_ an unclosed op (parentheses, cast, ternary, etc)
+        if (work_top->next->parent == work_top->parent)
+            lookupPrefix = CL_IsNil(parent->reference);
+        
+        // TODO(long): language-specific hack to differentiate between cast and parentheses grouping
+        // Change this later when you change the type expression/operator parsing
+        else
+            lookupPrefix = CL_IsNil(parent->reference) || !!(parent->reference->flags & CL_NodeFlags_Atom);
+    }
+    
+    // This is only true for valid (1-child) suffix op or unfinished (1-child) binary op
+    else if (parent->offset > parent->body.last->offset)
+    {
+        for (u64 i = 0; i < CL_ExprOpKind_Count; ++i)
+        {
+            if (StrCompare(parent->string, cl_exprSymbolTable[i], 0))
+            {
+                CL_ExprKind kind = cl_exprKindTable[i];
+                if (kind != CL_ExprKind_Prefix)
+                {
+                    lookupPrefix = kind == CL_ExprKind_Binary;
+                    break;
+                }
+            }
+        }
+    }
+    
+    CL_ExprOpKind op = CL_ExprOpKind_Nil;
+    for (u64 i = 1; i < CL_ExprOpKind_Count && !op; ++i)
+        if (StrCompare(lexeme, cl_exprSymbolTable[i], 0))
+            if (lookupPrefix == (cl_exprKindTable[i] == CL_ExprKind_Prefix || cl_exprKindTable[i] == CL_ExprKind_Nil))
+                op = i;
+    
+    return op;
+}
+
+function CL_ExprOpKind CL_ExprOpFromNode(CL_Node* node)
+{
+    CL_ExprOpKind result = 0;
+    b32 lookupPre = 0, lookupBin = 0, lookupNil = 0, lookupBinOrSuf = 0;
+    
+    if (node->offset < node->body.first->offset)
+        lookupPre = 1;
+    
+    else if (CL_IsNil(node->body.first))
+    {
+        // TODO(long): language-specific hack to differentiate between cast and parentheses grouping
+        // Change this later when you change the type expression/operator parsing
+        if (CL_IsNil(node->reference) || (node->reference->flags & CL_NodeFlags_Atom))
+            lookupPre = 1; // unfinished prefix ops
+        else
+            lookupNil = 1;
+    }
+    
+    else if (node->body.first != node->body.last)
+        lookupBin = 1;
+    
+    else if (node->offset > node->body.first->offset)
+        lookupBinOrSuf = 1;
+    
+    for (u64 i = 0; i < CL_ExprOpKind_Count && !result; ++i)
+    {
+        if (StrCompare(node->string, cl_exprSymbolTable[i], 0))
+        {
+            CL_ExprKind kind = cl_exprKindTable[i];
+            
+            if (lookupBinOrSuf && (kind != CL_ExprKind_Prefix && kind != CL_ExprKind_Nil))
+                result = (CL_ExprOpKind)i;
+            else if (lookupBin && (kind == CL_ExprKind_Binary || kind == CL_ExprKind_BinaryRTL))
+                result = (CL_ExprOpKind)i;
+            
+            else if (lookupPre && kind == CL_ExprKind_Prefix)
+                result = (CL_ExprOpKind)i;
+            else if (lookupNil && kind == CL_ExprKind_Nil)
+                result = (CL_ExprOpKind)i;
+        }
+    }
+    
+    return result;
+}
+
+function i32 CL_ExprPrec(CL_ExprOpKind kind)
+{
+    return cl_exprPrecedenceTable[kind];
+}
+
+function b32 CL_ExprIsRTL(CL_ExprOpKind kind)
+{
+    // NOTE(long): All prefix ops are RTL while all postfix ops are LTR
+    CL_ExprKind exprKind = cl_exprKindTable[kind];
+    return exprKind == CL_ExprKind_Prefix || exprKind == CL_ExprKind_BinaryRTL;
+}
+
+function b32 CL_ExprIsCloseSymbol(CL_ExprOpKind op, String str)
+{
+    return StrCompare(cl_exprCloseSymbol[op], str, 0);
+}
+
+function CL_Node* CL_BaseTypeFromTag(CL_ParseWorkNode* work_top)
+{
+    CL_Node* base = work_top->first_tag;
+    if (!CL_IsNil(base))
+    {
+        if (!StrCompare(base->string, StrLit("*"), 0))
+            for (CL_Node* tag = base; !CL_IsNil(tag); tag = tag->next)
+                if (HasAnyFlags(tag->flags, CL_NodeFlag_Identifier|CL_NodeFlags_Leaf|
+                                CL_NodeFlags_TypeKeyword|CL_NodeFlag_Decl))
+                    base = tag;
+        
+        DLLRemove_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, base, next, prev);
+        for (CL_Node* tag = work_top->first_tag,* next = tag->next; !CL_IsNil(tag); tag = next, next = next->next)
+            CL_NodePushChild(base, tags, tag);
+        work_top->first_tag = work_top->last_tag = &cl_nilNode;
+    }
+    return base;
+}
+
+function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray array)
+{
+    ScratchBegin(scratch, arena);
+    
+    //- rjf: set up outputs
+    CL_NodeList msgs = {0};
+    CL_Node* root = CL_PushNode(arena, CL_NodeFlag_File, text, 0);
+    
+    //- rjf: set up parse rule stack
+    CL_ParseWorkNode  first_work = { 0, CL_ParseWorkKind_Stmt, root, &cl_nilNode, &cl_nilNode };
+    CL_ParseWorkNode broken_work = { 0, CL_ParseWorkKind_Stmt, root, &cl_nilNode, &cl_nilNode };
+    CL_ParseWorkNode* work_top = &first_work;
+    CL_ParseWorkNode* work_free = 0;
+    
+    //- rjf: parse
+    Token* tokens_first = array.tokens;
+    Token* tokens_opl = tokens_first + array.count;
+    Token* token = tokens_first;
+    Token* prevToken = tokens_first;
+    
+    while (token < tokens_opl)
+    {
+#define LexMatch(str) StrCompare(lexeme, StrLit(str), 0)
+#define TokMatch(tok, str) StrCompare(Substr(text, (tok)->range.min, (tok)->range.max), StrLit(str), 0)
+#define HasFlags(flgs) (token->user & (flgs))
+        
+#define CL_IsTypeDecl(node) \
+    (((node)->flags & CL_NodeFlag_Decl) && ((node)->reference->flags & CL_NodeFlags_TypeKeyword))
+        
+        //- rjf: unpack token
+        String lexeme = Substr(text, token->range.min, token->range.max);
+        b32 inc = 1;
+        
+        CL_Node* decl = work_top->last_tag;
+        b32 hasName = 0;
+        
+        //- long: Skip Whitespace/Preproc/Comments
+        if (HasFlags(CL_TokenFlags_Ignorable)) { }
+        
+        //- long: Enum Body (reuse this for array literal)
+        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(CL_TokenFlag_Identifier) &&
+                 (work_top->parent->reference->flags & CL_NodeFlag_Enum))
+        {
+            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
+            if (ALWAYS(flags & CL_NodeFlag_Identifier))
+            {
+                CL_Node* node = CL_PushNode(arena, CL_NodeFlag_Decl, lexeme, token->range.min);
+                CL_NodePushChild(work_top->parent, body, node);
+                work_top->parent = node;
+            }
+        }
+        else if ((work_top->parent->flags & CL_NodeFlag_Decl) && LexMatch(",") &&
+                 (work_top->next->parent->reference->flags & CL_NodeFlag_Enum))
+        {
+            Assert(work_top->kind == CL_ParseWorkKind_Stmt);
+            work_top->first_tag = work_top->last_tag = &cl_nilNode;
+            work_top->parent = work_top->parent->parent;
+            Assert(work_top->parent == work_top->next->parent);
+        }
+        
+#define CL_IsDecl(work_top) (work_top->kind == CL_ParseWorkKind_TypeExpr && \
+                             work_top->parent == work_top->next->parent  && \
+                             (LexMatch("(") || LexMatch(")") || LexMatch("[") || /*can   be nested in other parens*/ \
+                              LexMatch(",") || LexMatch("=") || LexMatch(";") || /*can't be nested in other parens*/ \
+                              LexMatch("{") || LexMatch("}")))
+        
+        //- long: Declaration
+        else if (CL_IsDecl(work_top) && work_top->last_tag != work_top->first_tag &&
+                 (work_top->last_tag->flags & CL_NodeFlag_Identifier) && !(work_top->last_tag->flags & CL_NodeFlag_Decl))
+        {
+            hasName = 1;
+            if (work_top->next->kind == CL_ParseWorkKind_Args || work_top->next->kind == CL_ParseWorkKind_Expr)
+            {
+                if (!StrCompare(work_top->first_tag->string, StrLit("*"), 0))
+                {
+                    hasName = 0;
+                    b32 hasType = 0, hasBrace = LexMatch("{");
+                    
+                    for (CL_Node* tag = work_top->first_tag; tag != decl && !hasName; tag = tag->next)
+                    {
+                        if (HasAnyFlags(tag->flags, CL_NodeFlag_Identifier|CL_NodeFlags_Leaf|CL_NodeFlag_Decl))
+                        {
+                            if (hasType)
+                                hasType = 0;
+                            else
+                                hasName = 1;
+                        }
+                        
+                        else if (HasAnyFlags(tag->flags, CL_NodeFlags_TypeKeyword))
+                        {
+                            if (hasBrace)
+                                hasName = 1;
+                            else
+                                hasType = 1;
+                        }
+                    }
+                }
+            }
+            
+            PUSH_DECL:
+            if (hasName)
+                DLLRemove_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, work_top->last_tag, next, prev);
+            else
+                decl = CL_PushNode(arena, CL_NodeFlag_Decl, StrPrefix(lexeme, 0), token->range.min);
+            
+            b32 isArg = 0;
+            {
+                CL_ParseWorkNode* parentWork = work_top->next;
+                while (parentWork->kind == CL_ParseWorkKind_TypeExpr)
+                    parentWork = parentWork->next;
+                isArg = parentWork->kind == CL_ParseWorkKind_Args;
+            }
+            
+            if (isArg)
+                CL_NodePushChild(work_top->parent, args, decl);
+            else
+                CL_NodePushChild(work_top->parent, body, decl);
+            
+            work_top->parent = decl;
+            decl->flags |= CL_NodeFlag_Decl;
+            if (work_top->last_tag->flags & CL_NodeFlags_TypeKeyword)
+            {
+                decl->reference = work_top->last_tag;
+                DLLRemove_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, work_top->last_tag, next, prev);
+            }
+            else
+                decl->reference = CL_BaseTypeFromTag(work_top);
+            
+            if (CL_IsNil(decl->reference)) // @useless_paren
+                Assert(work_top->next->kind == CL_ParseWorkKind_TypeExpr);
+            else
+                decl->reference->parent = decl;
+            
+            inc = 0;
+        }
+        
+        else if (CL_IsDecl(work_top) && (work_top->last_tag->flags & CL_NodeFlags_TypeKeyword))
+        {
+            goto PUSH_DECL;
+        }
+        
+        else if (CL_IsDecl(work_top) && (work_top->last_tag->flags & CL_NodeFlag_Identifier) &&
+                 work_top->next->kind == CL_ParseWorkKind_TypeExpr)
+        {
+            hasName = 1;
+            goto PUSH_DECL;
+        }
+        
+        else if (CL_IsDecl(work_top) && (work_top->next->kind == CL_ParseWorkKind_Args ||
+                                         work_top->next->kind == CL_ParseWorkKind_Expr) &&
+                 (StrCompare(work_top->last_tag->string, StrLit("*"), 0) ||
+                  HasAnyFlags(work_top->last_tag->flags, CL_NodeFlags_Leaf|CL_NodeFlag_Decl)))
+        {
+            goto PUSH_DECL;
+        }
+        
+        //- long: Type's Body
+        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch("{") &&
+                 (CL_WorkHasFlags(work_top, CL_NodeFlags_TypeKeyword|CL_NodeFlag_Typedef) ||
+                  !CL_IsNil(work_top->parent->reference)))
+        {
+            CL_ParseWorkPush(CL_ParseWorkKind_Stmt, work_top->parent);
+        }
+        
+        else if (work_top->kind == CL_ParseWorkKind_Stmt && LexMatch("}"))
+        {
+            if (ALWAYS(work_top->next->kind == CL_ParseWorkKind_TypeExpr))
+            {
+                CL_ParseWorkPop();
+                
+                if (ALWAYS(CL_IsTypeDecl(work_top->parent)))
+                {
+                    CL_Node* type = work_top->parent;
+                    CL_Node* base = CL_PushNode(arena, type->flags, type->string, type->offset);
+                    
+                    DLLPushBack_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, base, next, prev);
+                    work_top->parent = work_top->parent->parent;
+                }
+            }
+        }
+        
+        //- long: Clean up
+        else if (LexMatch(";"))
+        {
+            if (work_top->kind != CL_ParseWorkKind_Stmt && work_top->kind != CL_ParseWorkKind_Args)
+            {
+                CL_ParseWorkPop();
+                inc = 0;
+            }
+            
+            else
+            {
+                // TODO(long): Memory leaked
+                work_top->first_tag = work_top->last_tag = &cl_nilNode;
+            }
+        }
+        
+        else if (LexMatch("}"))
+        {
+            while (work_top->kind != CL_ParseWorkKind_Stmt && work_top->kind != CL_ParseWorkKind_Args)
+                CL_ParseWorkPop();
+            if (ALWAYS(work_top != &first_work))
+                CL_ParseWorkPop();
+        }
+        
+        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch(","))
+        {
+            if (work_top->next->kind == CL_ParseWorkKind_Args)
+            {
+                CL_ParseWorkPop();
+                work_top->first_tag = work_top->last_tag = &cl_nilNode;
+            }
+            
+            else if (ALWAYS(work_top->next->kind != CL_ParseWorkKind_TypeExpr))
+            {
+                CL_Node* base = work_top->parent->reference;
+                while (!CL_IsNil(base->reference))
+                    base = base->reference;
+                
+                if (!CL_IsNil(base))
+                {
+                    CL_Node* firstTag = base->tags.first;
+                    base = CL_PushNode(arena, base->flags, base->string, base->offset);
+                    
+                    for (CL_Node* tag = firstTag; !CL_IsNil(tag); tag = tag->next)
+                    {
+                        CL_Node* newTag = CL_PushNode(arena, tag->flags, tag->string, tag->offset);
+                        CL_NodePushChild(base, tags, newTag);
+                    }
+                }
+                
+                work_top->first_tag = work_top->last_tag = base;
+                if (ALWAYS((work_top->parent->flags & CL_NodeFlag_Decl) ||
+                           work_top->parent->parent->reference == work_top->parent))
+                    work_top->parent = work_top->next->parent;
+            }
+        }
+        
+        //- long: Type Expression
+        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && HasFlags(CL_TokenFlag_Identifier))
+        {
+            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
+            if (ALWAYS(flags))
+            {
+                CL_Node* node = CL_PushNode(arena, flags, lexeme, token->range.min);
+                DLLPushBack_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, node, next, prev);
+            }
+        }
+        
+        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch("*"))
+        {
+            CL_Node* base = CL_BaseTypeFromTag(work_top);
+            CL_Node* ptr = CL_PushNode(arena, CL_NodeFlag_Symbol, lexeme, token->range.min);
+            
+            if (!CL_IsNil(base))
+            {
+                ptr->reference = base;
+                base->parent = ptr;
+            }
+            work_top->first_tag = work_top->last_tag = ptr;
+        }
+        
+        //- long: Push/Pop Paren
+        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch("("))
+        {
+            if (work_top->parent != work_top->next->parent)
+                CL_ParseWorkPush(CL_ParseWorkKind_Args, work_top->parent);
+            
+            else
+            {
+                CL_Node* base = CL_BaseTypeFromTag(work_top);
+                work_top->first_tag = work_top->last_tag = base;
+                CL_ParseWorkPush(CL_ParseWorkKind_TypeExpr, work_top->parent);
+            }
+        }
+        
+        else if (work_top->kind == CL_ParseWorkKind_Args && LexMatch(")"))
+        {
+            CL_ParseWorkPop();
+        }
+        
+        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch(")"))
+        {
+            CL_Node* base = work_top->parent->reference;
+            if (CL_IsNil(base)) // @useless_paren
+                base = work_top->parent;
+            CL_ParseWorkPop();
+            
+            if (work_top->kind == CL_ParseWorkKind_TypeExpr)
+            {
+                while (!CL_IsNil(base->reference))
+                    base = base->reference;
+                
+                work_top->parent = base;
+                base->reference = work_top->first_tag;
+                base->reference->parent = base;
+                
+                Assert(base->parent != base && base != base->reference && base->parent != base->reference);
+            }
+            else if (ALWAYS(work_top->kind == CL_ParseWorkKind_Args))
+                CL_ParseWorkPop(); // NOTE(long): This can also be `inc = 0;`
+        }
+        
+        //- long: Push/Pop Bracket
+        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch("["))
+        {
+            CL_Node* node = CL_PushNode(arena, CL_NodeFlag_Brack, lexeme, token->range.min);
+            CL_Node* parent = work_top->parent;
+            node->reference = parent->reference;
+            
+            if (parent != root)
+            {
+                while (parent->reference->flags & CL_NodeFlag_Brack)
+                    parent = parent->reference;
+                
+                if (!CL_IsNil(parent->reference))
+                {
+                    parent->reference->parent = node;
+                    node->reference = parent->reference;
+                }
+                
+                parent->reference = node;
+                node->parent = parent;
+            }
+            else CL_NodePushChild(parent, body, node);
+            
+            CL_ParseWorkPush(CL_ParseWorkKind_Expr, node);
+        }
+        else if ((work_top->parent->flags & CL_NodeFlag_Brack) && LexMatch("]"))
+            CL_ParseWorkPop();
+        
+        //- long: Expr
+        else if (((work_top->parent->parent->reference->flags & CL_NodeFlag_Enum) ||
+                  work_top->kind == CL_ParseWorkKind_TypeExpr) && LexMatch("="))
+        {
+            CL_ParseWorkPush(CL_ParseWorkKind_Expr, work_top->parent);
+        }
+        
+        else if (work_top->kind == CL_ParseWorkKind_Expr && LexMatch(",") &&
+                 (work_top->next->kind == CL_ParseWorkKind_TypeExpr ||
+                  (work_top->next->parent->parent->reference->flags & CL_NodeFlag_Enum)))
+        {
+            CL_ParseWorkPop();
+            inc = 0;
+        }
+        
+        else if (work_top->kind == CL_ParseWorkKind_Expr && HasFlags(CL_TokenFlags_Literal|CL_TokenFlag_Identifier))
+        {
+            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
+            CL_Node* atom = CL_PushNode(arena, flags, lexeme, token->range.min);
+            CL_Node* expr = work_top->parent;
+            Assert(expr->body.first == expr->body.last);
+            
+            if (expr == work_top->next->parent && (expr->flags & CL_NodeFlag_Symbol))
+                expr->reference = atom;
+            else
+                CL_NodePushChild(expr, body, atom);
+        }
+        
+        else if (work_top->kind == CL_ParseWorkKind_Expr && HasFlags(CL_TokenFlag_Symbol))
+        {
+            CL_Node* parent = work_top->parent;
+            CL_ExprOpKind op = CL_ExprOpFromStr(lexeme, work_top);
+            
+            if (op)
+            {
+                i32 prec = CL_ExprPrec(op);
+                b32 leftToRight = !CL_ExprIsRTL(op);
+                
+                b32 isUnary = 0;
+                for (; parent != work_top->next->parent; parent = parent->parent)
+                {
+                    Assert(parent->flags & CL_NodeFlag_Symbol);
+                    CL_ExprOpKind parentOp = CL_ExprOpFromNode(parent);
+                    if (NEVER(parentOp == CL_ExprOpKind_Nil))
+                        break;
+                    
+                    CL_ExprKind parentKind = cl_exprKindTable[parentOp];
+                    if (parentKind == CL_ExprKind_Nil)
+                    {
+                        Assert(CL_IsNil(parent->body.first) && !CL_IsNil(parent->reference));
+                        continue;
+                    }
+                    isUnary = parentKind != CL_ExprKind_Binary && parentKind != CL_ExprKind_BinaryRTL;
+                    
+                    i32 parentPrec = CL_ExprPrec(parentOp);
+                    Assert(parentPrec);
+                    if (parentPrec < prec || (parentPrec == prec && !leftToRight))
+                        break;
+                }
+                
+                CL_Node* expr = CL_PushNode(arena, CL_NodeFlag_Symbol, lexeme, token->range.min);
+                b32 pushExpr = 1, popRight = 0;
+                
+                if (parent == work_top->next->parent)
+                {
+                    if (parent->flags & CL_NodeFlag_Symbol) // unclosed op
+                    {
+                        if (!CL_IsNil(parent->reference))
+                            CL_NodePushChild(expr, body, parent->reference);
+                        parent->reference = expr;
+                        expr->parent = parent;
+                        pushExpr = 0;
+                    }
+                    
+                    else // Max parent
+                    {
+                        if (parent->body.last->flags & CL_NodeFlags_Atom)
+                            popRight = 1;
+                        if (work_top->parent != work_top->next->parent && (parent->body.last->flags & CL_NodeFlag_Symbol))
+                            popRight = 1;
+                    }
+                }
+                
+                else if (parent->body.first != parent->body.last) // Binary operators
+                {
+                    Assert(parent->body.last == parent->body.first->next);
+                    popRight = 1;
+                }
+                
+                else if (!CL_IsNil(parent->body.first) && isUnary) // Unary operators
+                    popRight = 1;
+                
+                if (pushExpr)
+                {
+                    if (popRight)
+                    {
+                        CL_Node* parentRight = parent->body.last;
+                        DLLRemove_NPZ(&cl_nilNode, parent->body.first, parent->body.last, parentRight, next, prev);
+                        parent->body.count--;
+                        CL_NodePushChild(expr, body, parentRight);
+                    }
+                    
+                    CL_NodePushChild(parent, body, expr);
+                }
+                
+                work_top->parent = expr;
+                if (cl_exprCloseSymbol[op].size)
+                    CL_ParseWorkPush(CL_ParseWorkKind_Expr, expr);
+            }
+            
+            else if (work_top->next->parent->flags & CL_NodeFlag_Symbol)
+            {
+                CL_ExprOpKind topOp = CL_ExprOpFromNode(work_top->next->parent);
+                if (CL_ExprIsCloseSymbol(topOp, lexeme))
+                    CL_ParseWorkPop();
+            }
+            
+            else
+            {
+                CL_ParseWorkPop();
+                inc = 0;
+            }
+        }
+        
+        //- long: Identifier
+        else if ((work_top->kind == CL_ParseWorkKind_Stmt || work_top->kind == CL_ParseWorkKind_Args) &&
+                 LexMatch("*") && !CL_IsNil(work_top->first_tag))
+            goto PUSH_TYPE_EXPR;
+        
+        else if (work_top->kind == CL_ParseWorkKind_Args && HasFlags(CL_TokenFlag_Identifier))
+            goto PUSH_TYPE_EXPR;
+        
+        else if ((work_top->kind == CL_ParseWorkKind_Stmt || work_top->kind == CL_ParseWorkKind_Args) &&
+                 HasFlags(CL_TokenFlag_Identifier))
+        {
+            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
+            if (ALWAYS(flags))
+            {
+                if ((flags & CL_NodeFlag_Identifier) && CL_IsNil(work_top->first_tag))
+                {
+                    CL_Node* node = CL_PushNode(arena, flags, lexeme, token->range.min);
+                    DLLPushBack_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, node, next, prev);
+                }
+                
+                else
+                {
+                    PUSH_TYPE_EXPR:
+                    CL_ParseWorkNode* work_prev = work_top;
+                    CL_ParseWorkPush(CL_ParseWorkKind_TypeExpr, work_top->parent);
+                    work_top->first_tag = work_prev->first_tag;
+                    work_top-> last_tag = work_prev-> last_tag;
+                    work_prev->last_tag = work_prev->first_tag = &cl_nilNode;
+                    inc = 0;
+                }
+            }
+        }
+        
+        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(CL_TokenFlag_Symbol))
+        {
+            Assert(work_top->first_tag == work_top->last_tag);
+            CL_Node* atom = work_top->first_tag;
+            work_top->first_tag = work_top->last_tag = &cl_nilNode;
+            
+            CL_ParseWorkPush(CL_ParseWorkKind_Expr, work_top->parent);
+            if (!CL_IsNil(atom))
+            {
+                Assert(atom->flags & CL_NodeFlags_Atom);
+                CL_NodePushChild(work_top->parent, body, atom);
+            }
+            inc = 0;
+        }
+        
+        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(CL_TokenFlag_Numeric))
+        {
+            Assert(work_top->first_tag == work_top->last_tag);
+            CL_Node* atom = CL_PushNode(arena, CL_NodeFlag_Numeric, lexeme, token->range.min);
+            CL_ParseWorkPush(CL_ParseWorkKind_Expr, work_top->parent);
+            CL_NodePushChild(work_top->parent, body, atom);
+        }
+        
+        //- rjf: no consumption -> unexpected token! we don't know what to do with this.
+        //else CL_ErrorListPushf(arena, &msgs, token->range.min, "Unexpected \"%.*s\" token.", StrExpand(lexeme));
+        else Assert(0);
+        
+        if (inc)
+        {
+            if (!HasFlags(CL_TokenFlags_Ignorable))
+                prevToken = token;
+            token += 1;
+        }
+        
+#undef HasFlags
+#undef LexMatch
+#undef TokMatch
+    }
+    
+    //- rjf: fill & return
+    CL_DebugTree(root);
+    CL_ParseResult result = { root, msgs };
+    ScratchEnd(scratch);
+    return result;
 }
 
 function MetaTable CL_TableFromTokens(Arena* arena, String text, TokenArray array)

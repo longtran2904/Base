@@ -56,7 +56,7 @@ function MD_TokenizeResult MD_TokenizeFromScanner(Arena* arena, String text)
     return result;
 }
 
-function MD_TokenizeResult MD_TokenizeFromLexer(Arena* arena, String8 text)
+function MD_TokenizeResult MD_TokenizeFromLexer(Arena* arena, String text)
 {
     Scanner* scanner = &ScannerFromStr(arena, text);
     MD_TokenChunkList tokens = {0};
@@ -188,13 +188,13 @@ function MD_TokenizeResult MD_TokenizeFromLexer(Arena* arena, String8 text)
     return result;
 }
 
-internal MD_TokenizeResult MD_TokenizeFromText(Arena *arena, String8 text)
+internal MD_TokenizeResult MD_TokenizeFromText(Arena *arena, String text)
 {
     ScratchBegin(scratch, arena);
     MD_TokenChunkList tokens = {0};
-    U8 *byte_first = text.str;
-    U8 *byte_opl = byte_first + text.size;
-    U8 *byte = byte_first;
+    u8 *byte_first = text.str;
+    u8 *byte_opl = byte_first + text.size;
+    u8 *byte = byte_first;
     
     //- rjf: scan string & produce tokens
     for (; byte < byte_opl;)
@@ -284,7 +284,7 @@ internal MD_TokenizeResult MD_TokenizeFromText(Arena *arena, String8 text)
         //- rjf: triplet string literals
         else if (byte+2 < byte_opl && (CheckTriplet('"') || CheckTriplet('\'') || CheckTriplet('`')))
         {
-            U8 literal_style = byte[0];
+            u8 literal_style = byte[0];
             TokenInit(MD_TokenFlag_StringLiteral, 3);
             
             for (; byte+2 < byte_opl; ++byte)
@@ -303,7 +303,7 @@ internal MD_TokenizeResult MD_TokenizeFromText(Arena *arena, String8 text)
         //- rjf: singlet string literals
         else if (byte[0] == '"' || byte[0] == '\'' || byte[0] == '`')
         {
-            U8 literal_style = byte[0];
+            u8 literal_style = byte[0];
             TokenInit(MD_TokenFlag_StringLiteral, 1);
             
             B32 escaped = 0;
@@ -376,6 +376,220 @@ internal MD_TokenizeResult MD_TokenizeFromText(Arena *arena, String8 text)
     return result;
 }
 
+internal TokenArray CL_TokenizeFromText(Arena* arena, String text)
+{
+    ScratchBegin(scratch, arena);
+    TokenChunkList tokens = {0};
+    u8* firstByte = text.str;
+    u8* oplByte = firstByte + text.size;
+    u8* byte = firstByte;
+    
+    //- long: Scanning
+    b32 isPreproc = 0;
+    b32 blankLine = 1;
+    while (byte < oplByte)
+    {
+        CL_TokenFlags flags = 0;
+        u64 start = byte - firstByte;
+        
+#define TokenInit(flg, size) Stmnt(flags = (flg); byte += (size))
+#define Check2Bytes(str) (byte+1 < oplByte && byte[0] == (str)[0] && byte[1] == (str)[1])
+        if (0) { }
+        
+        //- long: Whitespaces/Newlines
+        else if (*byte == ' ' || *byte == '\t' || *byte == '\v' || *byte == '\r' || *byte == '\n')
+        {
+            if (*byte == '\n' || *byte == '\r')
+            {
+                blankLine = 1;
+                if (isPreproc)
+                    isPreproc = byte[-1] == '\\';
+            }
+            
+            TokenInit(CL_TokenFlag_Whitespace, 1);
+            for (; byte < oplByte; ++byte)
+            {
+                if (*byte == '\n')
+                    blankLine = 1;
+                
+                if (*byte != ' ' && *byte != '\t' && *byte != '\v' && *byte != '\r' && *byte != '\n')
+                    break;
+            }
+        }
+        
+        //- long: Single-line Comments
+        else if (Check2Bytes("//"))
+        {
+            TokenInit(CL_TokenFlag_Comment, 2);
+            for (; byte < oplByte; ++byte)
+                if (*byte == '\n')
+                    break;
+        }
+        
+        //- long: Multi-line Comments
+        else if (Check2Bytes("/*"))
+        {
+            TokenInit(CL_TokenFlag_Comment, 2);
+            b32 closed = 0;
+            while (!(closed = Check2Bytes("*/")))
+                ++byte;
+            
+            if (closed)
+                byte += 2;
+            else
+                flags |= CL_TokenFlag_Broken;
+        }
+        
+        //- long: Preproc
+        else if (*byte == '#' && !isPreproc)
+        {
+            isPreproc = 1;
+            Assert(blankLine); // TODO(long): Error
+            // NOTE(long): I could merge the next identifier into this
+            TokenInit(CL_TokenFlag_Symbol, 1);
+        }
+        
+        else if (*byte == '#') // @COPYPASTA(long): SYMBOL_TWO
+        {
+            if (byte+1 < oplByte && byte[1] == byte[0])
+                TokenInit(CL_TokenFlag_Symbol, 2);
+            else
+                goto SYMBOL_ONE;
+        }
+        
+        //- long: Identifiers
+        else if (IsCharacter(*byte) || *byte == '_' || utf8_class[*byte>>3] >= 2)
+        {
+            TokenInit(CL_TokenFlag_Identifier, 1);
+            for (; byte < oplByte; ++byte)
+                if (!IsAlphaNumeric(*byte) && *byte != '_' && utf8_class[*byte>>3] < 2)
+                    break;
+        }
+        
+        //- long: Numerics
+        else if (IsDigit(*byte) || (*byte == '.' && byte+1 < oplByte && IsDigit(byte[1])))
+        {
+            TokenInit(CL_TokenFlag_Numeric, 1);
+            for (u8 prev = 0; byte < oplByte; prev = *byte++)
+            {
+                if (*byte == '+' || *byte == '-')
+                {
+                    u8 c = ChrToLower(prev);
+                    if (c == 'e' || c == 'p')
+                        continue;
+                    break;
+                }
+                
+                if (!IsAlphaNumeric(*byte) && *byte != '.')
+                    break;
+            }
+        }
+        
+        //- long: String/Char literals
+        else if (byte[0] == '"' || byte[0] == '\'')
+        {
+            u8 lit = byte[0];
+            TokenInit(CL_TokenFlag_String, 1);
+            
+            for (b32 escaped = 0, done = 0; byte <= oplByte && !done; ++byte)
+            {
+                if (byte == oplByte || *byte == '\n')
+                {
+                    flags |= CL_TokenFlag_Broken;
+                    break;
+                }
+                
+                if (escaped)            escaped = 0;
+                else if (*byte == '\\') escaped = 1;
+                else if (*byte ==  lit)    done = 1;
+            }
+        }
+        
+        //- long: Special Symbols
+        else if (byte+2 < oplByte && byte[0] == '.' && byte[1] == '.' && byte[2] == '.')
+            TokenInit(CL_TokenFlag_Symbol, 3);
+        else if (Check2Bytes("->"))
+            TokenInit(CL_TokenFlag_Symbol, 2);
+        
+        //- long: 3-character Symbols
+        else if (*byte == '<' || *byte == '>')
+        {
+            if (byte+2 < oplByte && byte[1] == byte[0] && byte[2] == '=')
+                TokenInit(CL_TokenFlag_Symbol, 3); // <<= >>=
+            else // < > << >>
+                goto SYMBOL_TWO;
+        }
+        
+        //- long: 2-character Symbols
+        else if (*byte == '+' || *byte == '-' || *byte == '&' || *byte == '|')
+        {
+            SYMBOL_TWO:
+            if (byte+1 < oplByte && byte[1] == byte[0])
+                TokenInit(CL_TokenFlag_Symbol, 2); // ++ -- && ||
+            else
+                goto SYMBOL_EQUAL;
+        }
+        
+        else if (*byte == '*' || *byte == '/' || *byte == '!' || *byte == '^' || *byte == '%' || *byte == '=')
+        {
+            SYMBOL_EQUAL:
+            if (byte+1 < oplByte && byte[1] == '=')
+                TokenInit(CL_TokenFlag_Symbol, 2);
+            else
+                goto SYMBOL_ONE;
+        }
+        
+        //- long: 1-character Symbols
+        else if (*byte == '[' || *byte == ']' || *byte == '(' || *byte == ')' || *byte == '{' || *byte == '}' ||
+                 *byte == ',' || *byte == ';' || *byte == ':' || *byte == '?' || *byte == '~')
+        {
+            SYMBOL_ONE:
+            TokenInit(CL_TokenFlag_Symbol, 1);
+        }
+        
+        //- long: Invalid characters
+        else byte++;
+        
+#undef TokenInit
+#undef Check2Bytes
+        
+        //- long: Push Token
+        u64 opl = byte - firstByte;
+        Assert(opl > start);
+        
+        ScanResultFlags scanFlags = 0;
+        if (flags & CL_TokenFlag_Broken)
+            scanFlags |= ScanResultFlag_TokenUnclosed;
+        else if (flags == 0)
+            scanFlags |= ScanResultFlag_NoMatches;
+        
+        if (!(flags & CL_TokenFlags_Ignorable))
+            blankLine = 0;
+        if (isPreproc)
+            flags |= CL_TokenFlag_Preproc;
+        
+        Token token = { scanFlags, flags, {start, opl} };
+        TokenChunkListPush(scratch, &tokens, 4096, token);
+    }
+    
+    TokenArray result = TokenArrayFromChunkList(arena, &tokens);
+    ScratchEnd(scratch);
+    
+    for (u64 i = 1; i < result.count; ++i)
+    {
+        Token token1 = result.tokens[i-1];
+        Token token2 = result.tokens[i];
+        Assert(token2.range.min == token1.range.max);
+        
+        if (i == 1)
+            Assert(token1.range.min == 0);
+        if (i == result.count - 1)
+            Assert(token2.range.max == text.size);
+    }
+    
+    return result;
+}
+
 internal String MD_DumpJSON(Arena* arena, MD_Node* node, i32 indent)
 {
     String result = {0};
@@ -433,11 +647,24 @@ int main(void)
     
     {
         String data = OSReadFile(scratch, StrLit("code/examples/test_parser.c"));
-        TokenArray array = CL_TokenArrayFromStr(scratch, data);
+        TokenArray array = CL_TokenizeFromText(scratch, data);
+        
+        //TokenArray array_ = CL_TokenArrayFromStr(scratch, data);
+        //Assert(array.count == array_.count);
+        //for (u64 i = 0; i < array.count; ++i)
+        //{
+        //Token t1 = array_.tokens[i];
+        //Token t2 = array .tokens[i];
+        //Assert(t1.flags == t2.flags && t1.user == t2.user);
+        //Assert(t1.range.min != t1.range.max);
+        //Assert(t1.range.min == t2.range.min && t1.range.max == t2.range.max);
+        //}
+        
         for (u64 i = 0; i < array.count; ++i)
         {
             Token token = array.tokens[i];
-            Assert(NoFlags(token.user, CL_TokenFlag_Broken|CL_TokenFlag_Custom));
+            Assert(NoFlags(token.user, CL_TokenFlag_Broken|CL_TokenFlag_Preproc));
+            Assert(token.user);
             Assert(NoFlags(token.flags, ScanResultFlag_NoMatches|ScanResultFlag_TokenUnclosed));
             if (token.flags & ScanResultFlag_EOF)
                 Assert(i == array.count-1);
@@ -451,6 +678,16 @@ int main(void)
         
         REP:
         Outf("%*s%.*s", indent * 2, "", NodeExpand(node));
+        if (node->flags & CL_NodeFlag_Symbol)
+        {
+            if (node->offset < node->body.first->offset)
+                Assert(node->body.first == node->body.last);
+            if (!StrCompare(node->string, StrLit("("), 0))
+                Assert(!CL_IsNil(node->body.first));
+            
+            CL_ExprOpKind op = CL_ExprOpFromNode(node);
+            Outf(" (%s)", GetEnumCStr(CL_ExprOpKind, op));
+        }
         
         for (CL_Node* base = node->reference; !CL_IsNil(base); base = base->reference)
         {

@@ -571,7 +571,7 @@
 #define IsAlphaNumeric(c) (IsCharacter(c) || IsDigit(c))
 
 #define Characters "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-#define Binary "01"
+#define BinaryDigits "01"
 #define Digits "0123456789"
 #define NonZeroDigits "123456789"
 #define OctalDigits "01234567"
@@ -1886,6 +1886,7 @@ enum
     AccessFlag_Execute = (1<<3),
 };
 
+// TODO(long): Replace OSxxxFile
 function OS_Handle OS_FileOpen(String path, OS_AccessFlags flags, OS_Handle queue);
 function void OS_FileClose(OS_Handle file);
 function FileProperties OS_FileProp(OS_Handle file);

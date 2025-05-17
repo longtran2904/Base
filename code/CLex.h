@@ -22,7 +22,6 @@ enum
     CL_TokenFlag_String   = 1 << 7,
     
     CL_TokenFlag_Broken = 1 << 8,
-    CL_TokenFlag_Custom = 1 << 9,
 };
 
 //~ long: Node Types
@@ -31,18 +30,13 @@ typedef Flags64 CL_NodeFlags;
 
 #define CL_NodeFlag_File  (1ULL << 0)
 #define CL_NodeFlag_Error (1ULL << 1)
-
 #define CL_NodeFlag_Decl (1ULL << 3)
-//#define CL_NodeFlag_Type (1ULL << 4)
-//#define CL_NodeFlag_Proc (1ULL << 5)
-#define CL_NodeFlag_Expr (1ULL << 5)
-#define CL_NodeFlag_Stmt (1ULL << 6)
-//#define CL_NodeFlag_Macro (1ULL << 7)
 
 #define CL_NodeFlag_Brack (1ULL <<  8)
 #define CL_NodeFlag_Brace (1ULL <<  9)
 #define CL_NodeFlag_Paren (1ULL << 10)
 
+#define CL_NodeFlags_Atom      (0xF << 11)
 #define CL_NodeFlag_Identifier (1ULL << 11)
 #define CL_NodeFlag_Numeric    (1ULL << 12)
 #define CL_NodeFlag_CharLit    (1ULL << 13)

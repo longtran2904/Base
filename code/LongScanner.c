@@ -400,7 +400,7 @@ function void TokenChunkListPush(Arena* arena, TokenChunkList* list, u64 cap, To
         node->cap = cap;
         node->tokens = PushArrayNZ(arena, Token, cap);
         SLLQueuePush(list->first, list->last, node);
-        list->chunkCount += 1;
+        list->chunkCount++;
     }
     node->tokens[node->count] = token;
     node->count++;

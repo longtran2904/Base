@@ -255,7 +255,7 @@ function Token GetToken(Lexer* lexer)
                     {
                         // NOTE: MSVC's binary extension
                         AdvanceChars(lexer, 1);
-                        AdvanceUntil(lexer, StrLit(Binary), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
+                        AdvanceUntil(lexer, StrLit(BinaryDigits), StringMatchFlags_NotEqual|StringMatchFlags_Inclusive);
                     }
 #endif
                     else
