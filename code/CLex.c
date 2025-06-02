@@ -1,80 +1,68 @@
 
 //~ long: Lexing Functions
 
-struct CL_Scanner
-{
-    // optional separate newline
-    String wspace;
-    
-    // nested
-    String singleComment;
-    String multiCommentBeg;
-    String multiCommentEnd;
-};
+// C
+// 1 - 2 - 1+Equal - 2+Equal: < >
+// 1 - 2 - 1+Equal: & | + -
+// 1 - 1+Equal: * / ! ^ % =
+// 1 - 3: .
+// 1: [ ] ( ) { } , ; : ? ~
+// 1+1: ->
+
+// C#
+// 1 - 2: . :
+// 1 - 2 - 2+Equal: ?
+// 1+1: ?. ?[ !. =>
+
+// GCC: 1+1: ({ }) ?:
 
 function TokenArray CL_TokenArrayFromStr(Arena* arena, String text)
 {
-    Scanner* scanner = &ScannerFromStr(arena, text);
-    
-    MarkerPushRange(scanner, CL_TokenFlag_Comment, StrLit("/*"), MarkerFlag_InverseStr);
-    MarkerPushLine (scanner, CL_TokenFlag_Comment, StrLit("//"), '\\', 0);
-    MarkerPushLine (scanner, CL_TokenFlag_Preproc, StrLit( "#"), '\\', 0);
-    MarkerPushArr  (scanner, CL_TokenFlag_Whitespace, StrLit(SpaceStr"\r\n"), 0);
-    
-    MarkerPushLine(scanner, CL_TokenFlag_String, StrLit("\""), '\\', 1);
-    MarkerPushLine(scanner,   CL_TokenFlag_Char,  StrLit("'"), '\\', 1);
-    
-    MarkerPushIdent (scanner, CL_TokenFlag_Identifier);
-    MarkerPushNumber(scanner, CL_TokenFlag_Numeric, StrLit("eEpP"));
-    
-    MarkerPushOpsCombine(scanner, CL_TokenFlag_Symbol, StrLit("<>"), '=', 1); // <= >= <<= >>=
-    MarkerPushOpsCombine(scanner, CL_TokenFlag_Symbol, StrLit("&|*/+-!^%*/"), '=', 0); // &= |= *= /= += -= != etc
-    ScannerPushMark(scanner, CL_TokenFlag_Symbol, StrLit("..."), 0);
-    ScannerPushMark(scanner, CL_TokenFlag_Symbol, StrLit("->"), 0);
-    MarkerPushOps(scanner, CL_TokenFlag_Symbol, StrLit("<>&|+-="), 1);
-    MarkerPushOps(scanner, CL_TokenFlag_Symbol, StrLit("[](){0},;:?~!^%."), 0);
-    
-    //while (scanner->pos < scanner->source.size)
-    //{
-    //if (0) {}
-    //else if (ScannerParseArr(scanner, WspaceStr, untilNot)) {}
-    //else if (ScannerParseLine(scanner, .pre = "//")) {}
-    //else if (ScannerParseRange(scanner, "/*", "*/", noNest)) {}
-    //else if (ScannerParseIdentifier(scanner, "_", AllowUTF8|AllowDigit)) {}
-    //else if (ScannerParseNumerics(scanner, ".", "eEpP", AllowChar|AllowPrefixUnary|AllowPostfixUnary)) {}
-    //else if (ScannerParseLine(scanner, .pre = "\"", .mid = "\\", .post = "\"")) {}
-    //else if (ScannerParseLine(scanner, .pre = "'", .mid = "\\", .post = "'")) {}
-    //else if (ScannerParseStr(scanner, "...") || ScannerParseStr(scanner, "->")) {}
-    //else if (ScannerParseArr(scanner, "<>", "=", MatchTwice|MatchTwicePostfix)) {}
-    //else if (ScannerParseArr(scanner, "+-&|", "=", MatchTwice)) {}
-    //else if (ScannerParseArr(scanner, "*/!^%=", 0, MatchTwice)) {}
-    //else if (ScannerParseArr(scanner, "()[]{},;?:~", 0, 0)) {}
-    //}
-    
-    // C
-    // 1 - 2 - 1+Equal - 2+Equal: < >
-    // 1 - 2 - 1+Equal: & | + -
-    // 1 - 1+Equal: * / ! ^ % =
-    // 1 - 3: .
-    // 1: [ ] ( ) { } , ; : ? ~
-    // 1+1: ->
-    
-    // C#
-    // 1 - 2: . :
-    // 1 - 2 - 2+Equal: ?
-    // 1+1: ?. ?[ !. =>
-    
-    // GCC: 1+1: ({ }) ?:
-    
     ScratchBegin(scratch, arena);
-    TokenChunkList tokens = {0};
-    
-    while (scanner->pos < scanner->source.size)
-    {
-        Token token = ScannerNext(scanner);
-        if (token.flags & ScanResultFlag_TokenUnclosed)
-            token.user |= CL_TokenFlag_Broken;
+    Scanner scanner = {
+        .source = text,
+        .flags = (CL_Scan_Whitespace|CL_Line_Cont_Comments|CL_Line_Cont_Preprocs|CL_Scan_Preproc|CL_Scan_Comments|
+                  CL_Scan_SingleQuotes|CL_Scan_DoubleQuotes|CL_Scan_Idents|CL_Scan_Nums|CL_Scan_Symbols),
         
+        .lineContinuation = '\\',
+        .preproc = StrLit("#"),
+        
+        .commentDelim = StrLit("//"),
+        .commentMulti = StrLit("/*"),
+        
+        .escapeChar = '\\',
+        .strPrefixes = StrList(scratch, ArrayExpand(String, StrLit("u8"), StrLit("u"), StrLit("U"), StrLit("L"))),
+        
+        .preIdentSymbols = StrLit("_"),
+        .midIdentSymbols = StrLit("_"),
+        
+        .preNumSymbols = StrLit("."),
+        .midNumSymbols = StrLit("."),
+        .exponents = StrLit("eEpP"),
+        
+        // NOTE(long): Order matters!!!
+        .symbols = StrList(scratch, ArrayExpand(String, StrLit("..."), StrLit("->"), StrLit("##"), StrLit("#"),
+                                                StrLit("<<="), StrLit(">>="), StrLit("<="), StrLit(">="),
+                                                StrLit("<<"), StrLit(">>"), StrLit(">"), StrLit("<"),
+                                                
+                                                StrLit("&&"), StrLit("||"), StrLit("++"), StrLit("--"),
+                                                StrLit("&="), StrLit("|="), StrLit("+="), StrLit("-="),
+                                                StrLit("&"), StrLit("|"), StrLit("+"), StrLit("-"), 
+                                                
+                                                StrLit("*="), StrLit("/="), StrLit("!="),
+                                                StrLit("^="), StrLit("%="), StrLit("=="),
+                                                StrLit("*"), StrLit("/"), StrLit("!"),
+                                                StrLit("^"), StrLit("%"), StrLit("="),
+                                                
+                                                StrLit("["), StrLit("]"), StrLit("("), StrLit(")"),
+                                                StrLit("{"), StrLit("}"), StrLit(","), StrLit(";"),
+                                                StrLit(":"), StrLit("?"), StrLit("~"))),
+    };
+    
+    TokenChunkList tokens = {0};
+    while (scanner.pos < scanner.source.size)
+    {
+        Token token = ScannerNext(&scanner);
         TokenChunkListPush(scratch, &tokens, 4096, token);
     }
     
@@ -469,16 +457,15 @@ function b32 CL_WorkHasFlags(CL_ParseWorkNode* work, CL_NodeFlags flags)
 
 #define CL_ParseWorkPop() Stmnt(SLLStackPop(work_top); if (!work_top) work_top = &broken_work;)
 
-function CL_NodeFlags CL_NodeFlagsFromToken(CL_TokenFlags flags, String lexeme)
+function CL_NodeFlags CL_NodeFlagsFromToken(CL_NodeFlags flags, String lexeme)
 {
     CL_NodeFlags result = 0;
     
-    if (flags & CL_TokenFlag_Symbol ) result |= CL_NodeFlag_Symbol;
-    if (flags & CL_TokenFlag_Numeric) result |= CL_NodeFlag_Numeric;
-    if (flags & CL_TokenFlag_Char   ) result |= CL_NodeFlag_CharLit;
-    if (flags & CL_TokenFlag_String ) result |= CL_NodeFlag_String;
+    if (flags & TokenFlag_Symbol ) result |= CL_NodeFlag_Symbol;
+    if (flags & TokenFlag_Numeric) result |= CL_NodeFlag_Numeric;
+    if (flags & TokenFlag_String ) result |= CL_NodeFlag_String;
     
-    if (flags & CL_TokenFlag_Identifier)
+    if (flags & TokenFlag_Identifier)
     {
         if (0) {} 
         
@@ -755,6 +742,249 @@ function CL_Node* CL_BaseTypeFromTag(CL_ParseWorkNode* work_top)
     return base;
 }
 
+internal MD_ParseResult MD_ParseFromTokens(Arena* arena, String filename, String text, MD_TokenArray tokens)
+{
+    ScratchBegin(scratch, arena);
+    
+    //- rjf: set up outputs
+    MD_MsgList msgs = {0};
+    MD_Node* root = md_push_node(arena, MD_NodeKind_File, 0, filename, text, 0);
+    
+    //- rjf: set up parse rule stack
+    typedef enum MD_ParseWorkKind
+    {
+        MD_ParseWorkKind_Main,
+        MD_ParseWorkKind_MainImplicit,
+        MD_ParseWorkKind_NodeOptionalFollowUp,
+        MD_ParseWorkKind_NodeChildrenStyleScan,
+    } MD_ParseWorkKind;
+    
+    typedef struct MD_ParseWorkNode MD_ParseWorkNode;
+    struct MD_ParseWorkNode
+    {
+        MD_ParseWorkNode* next;
+        MD_ParseWorkKind kind;
+        MD_Node* parent;
+        MD_Node* first_gathered_tag;
+        MD_Node* last_gathered_tag;
+        MD_NodeFlags gathered_node_flags;
+        S32 counted_newlines;
+    };
+    
+    MD_ParseWorkNode  first_work = { 0, MD_ParseWorkKind_Main, root, };
+    MD_ParseWorkNode broken_work = { 0, MD_ParseWorkKind_Main, root, };
+    MD_ParseWorkNode* work_top = &first_work;
+    MD_ParseWorkNode* work_free = 0;
+    
+#define MD_ParsePush(work_kind, work_parent) Stmnt(MD_ParseWorkNode* work_node = work_free;                           \
+                                                   if (!work_node) work_node = PushStruct(scratch, MD_ParseWorkNode); \
+                                                   else SLLStackPop(work_free);                                       \
+                                                   work_node->kind = (work_kind);                                     \
+                                                   work_node->parent = (work_parent);                                 \
+                                                   SLLStackPush(work_top, work_node))
+    
+#define MD_ParsePop() Stmnt(SLLStackPop(work_top); if (!work_top) work_top = &broken_work)
+#define MD_ParseNext(work_kind) Stmnt(MD_Node* UNIQUE(parent) = work_top->parent; \
+                                      MD_ParsePop(); MD_ParsePush((work_kind), UNIQUE(parent)))
+#define MD_ParseRetry() Stmnt(MD_ParsePop(); inc = 0)
+    
+#define LexemeStr(range) Substr(text, (range).min, (range).max)
+#define MatchToken(str) StrCompare(lexeme, StrLit(str), 0)
+    
+    //- rjf: parse
+    for (MD_Token* token = tokens.v,* opl = token + tokens.count; token < opl;)
+    {
+        b32 inc = 1;
+        
+        //- rjf: unpack token
+        String lexeme = LexemeStr(token[0].range);
+        if (0) { }
+        
+        //- rjf: comments/whitespace -> always no-op & inc
+        else if (HasAnyFlags(token->flags, MD_TokenFlag_Whitespace|MD_TokenGroup_Comment));
+        
+        //- rjf: [node follow up] : following label -> work top parent has children. we need
+        // to scan for explicit delimiters, else parse an implicitly delimited set of children
+        else if (work_top->kind == MD_ParseWorkKind_NodeOptionalFollowUp && MatchToken(":"))
+            MD_ParseNext(MD_ParseWorkKind_NodeChildrenStyleScan);
+        
+        //- rjf: [node follow up] anything but : following label -> node has no children. just
+        // pop & move on
+        else if (work_top->kind == MD_ParseWorkKind_NodeOptionalFollowUp)
+            MD_ParseRetry();
+        
+        //- rjf: [main] separators -> mark & inc
+        else if (work_top->kind == MD_ParseWorkKind_Main && (MatchToken(",") || MatchToken(";")))
+        {
+            MD_Node* parent = work_top->parent;
+            if (!md_node_is_nil(parent->last))
+            {
+                parent->last->flags           |=     MD_NodeFlag_IsBeforeComma*!!MatchToken(",");
+                parent->last->flags           |= MD_NodeFlag_IsBeforeSemicolon*!!MatchToken(";");
+                work_top->gathered_node_flags |=      MD_NodeFlag_IsAfterComma*!!MatchToken(",");
+                work_top->gathered_node_flags |=  MD_NodeFlag_IsAfterSemicolon*!!MatchToken(";");
+            }
+        }
+        
+        //- rjf: [main_implicit] separators -> pop
+        else if (work_top->kind == MD_ParseWorkKind_MainImplicit && (MatchToken(",") || MatchToken(";")))
+            MD_ParseRetry();
+        
+        //- rjf: [main, main_implicit] unexpected reserved tokens
+        else if ((work_top->kind == MD_ParseWorkKind_Main || work_top->kind == MD_ParseWorkKind_MainImplicit) &&
+                 (MatchToken("#") || MatchToken("\\") || MatchToken(":")))
+        {
+            MD_Node* error = md_push_node(arena, MD_NodeKind_ErrorMarker, 0, lexeme, lexeme, token->range.min);
+            md_msg_list_pushf(arena, &msgs, error, MD_MsgKind_Error, "Unexpected reserved symbol \"%.*s\".", StrExpand(lexeme));
+        }
+        
+        //- rjf: [main, main_implicit] tag signifier -> create new tag
+        else if ((work_top->kind == MD_ParseWorkKind_Main || work_top->kind == MD_ParseWorkKind_MainImplicit) &&
+                 MatchToken("@"))
+        {
+            if (token+1 >= opl || !(token[1].flags & MD_TokenGroup_Label))
+            {
+                MD_Node* error = md_push_node(arena, MD_NodeKind_ErrorMarker, 0, lexeme, lexeme, token->range.min);
+                md_msg_list_push(arena, &msgs, error, MD_MsgKind_Error, StrLit("Tag label expected after @ symbol."));
+            }
+            
+            else
+            {
+                String tag_name_raw = LexemeStr(token[1].range);
+                String tag_name = md_content_string_from_token_flags_str8(token[1].flags, tag_name_raw);
+                MD_Node* node = md_push_node(arena, MD_NodeKind_Tag, md_node_flags_from_token_flags(token[1].flags),
+                                             tag_name, tag_name_raw, token[0].range.min);
+                DLLPushBack_NPZ(&md_nil_node, work_top->first_gathered_tag, work_top->last_gathered_tag, node, next, prev);
+                
+                if (token+2 < opl && token[2].flags & MD_TokenFlag_Reserved && StrCompare(LexemeStr(token[2].range), StrLit("("), 0))
+                {
+                    token++;
+                    MD_ParsePush(MD_ParseWorkKind_Main, node);
+                }
+                token++;
+            }
+        }
+        
+        //- rjf: [main, main_implicit] label -> create new main
+        else if ((work_top->kind == MD_ParseWorkKind_Main || work_top->kind == MD_ParseWorkKind_MainImplicit) &&
+                 token->flags & MD_TokenGroup_Label)
+        {
+            String node_string_raw = lexeme;
+            String node_string = md_content_string_from_token_flags_str8(token->flags, node_string_raw);
+            MD_NodeFlags flags = md_node_flags_from_token_flags(token->flags)|work_top->gathered_node_flags;
+            MD_Node* node = md_push_node(arena, MD_NodeKind_Main, flags, node_string, node_string_raw, token[0].range.min);
+            
+            work_top->gathered_node_flags = 0;
+            node->first_tag = work_top->first_gathered_tag;
+            node->last_tag = work_top->last_gathered_tag;
+            for (MD_Node* tag = work_top->first_gathered_tag; !md_node_is_nil(tag); tag = tag->next)
+                tag->parent = node;
+            work_top->first_gathered_tag = work_top->last_gathered_tag = &md_nil_node;
+            
+            md_node_push_child(work_top->parent, node);
+            MD_ParsePush(MD_ParseWorkKind_NodeOptionalFollowUp, node);
+        }
+        
+        //- rjf: [main] {s, [s, and (s -> create new main
+        else if (work_top->kind == MD_ParseWorkKind_Main && (MatchToken("{") || MatchToken("[") || MatchToken("(")))
+        {
+            MD_NodeFlags flags = md_node_flags_from_token_flags(token->flags)|work_top->gathered_node_flags;
+            flags |=   MD_NodeFlag_HasBraceLeft*!!MatchToken("{");
+            flags |= MD_NodeFlag_HasBracketLeft*!!MatchToken("[");
+            flags |=   MD_NodeFlag_HasParenLeft*!!MatchToken("(");
+            MD_Node* node = md_push_node(arena, MD_NodeKind_Main, flags, StrLit(""), StrLit(""), token[0].range.min);
+            
+            work_top->gathered_node_flags = 0;
+            node->first_tag = work_top->first_gathered_tag;
+            node->last_tag = work_top->last_gathered_tag;
+            for (MD_Node* tag = work_top->first_gathered_tag; !md_node_is_nil(tag); tag = tag->next)
+                tag->parent = node;
+            work_top->first_gathered_tag = work_top->last_gathered_tag = &md_nil_node;
+            
+            md_node_push_child(work_top->parent, node);
+            MD_ParsePush(MD_ParseWorkKind_Main, node);
+        }
+        
+        //- rjf: [node children style scan] {s, [s, and (s -> explicitly delimited children
+        else if (work_top->kind == MD_ParseWorkKind_NodeChildrenStyleScan && token->flags & MD_TokenFlag_Reserved &&
+                 (MatchToken("{") || MatchToken("[") || MatchToken("(")))
+        {
+            MD_Node* parent = work_top->parent;
+            parent->flags |=   MD_NodeFlag_HasBraceLeft*!!MatchToken("{");
+            parent->flags |= MD_NodeFlag_HasBracketLeft*!!MatchToken("[");
+            parent->flags |=   MD_NodeFlag_HasParenLeft*!!MatchToken("(");
+            MD_ParseNext(MD_ParseWorkKind_Main);
+        }
+        
+        //- rjf: [node children style scan] count newlines
+        else if (work_top->kind == MD_ParseWorkKind_NodeChildrenStyleScan && token->flags & MD_TokenFlag_Newline)
+            work_top->counted_newlines++;
+        
+        //- rjf: [main_implicit] newline -> pop
+        else if (work_top->kind == MD_ParseWorkKind_MainImplicit && token->flags & MD_TokenFlag_Newline)
+            MD_ParsePop();
+        
+        //- rjf: [all but main_implicit] newline -> no-op & inc
+        else if (work_top->kind != MD_ParseWorkKind_MainImplicit && token->flags & MD_TokenFlag_Newline);
+        
+        //- rjf: [node children style scan] anything causing implicit set -> <2 newlines, all good,
+        // >=2 newlines, houston we have a problem
+        else if (work_top->kind == MD_ParseWorkKind_NodeChildrenStyleScan)
+        {
+            if (work_top->counted_newlines >= 2)
+            {
+                MD_Node* node = work_top->parent;
+                MD_Node* error = md_push_node(arena, MD_NodeKind_ErrorMarker, 0, lexeme, lexeme, token->range.min);
+                md_msg_list_pushf(arena, &msgs, error, MD_MsgKind_Warning,
+                                  "More than two newlines following \"%.*s\", which has implicitly-delimited children, "
+                                  "resulting in an empty list of children.", StrExpand(node->string));
+                MD_ParsePop();
+            }
+            
+            else MD_ParseNext(MD_ParseWorkKind_MainImplicit);
+            inc = 0;
+        }
+        
+        //- rjf: [main] }s, ]s, and )s -> pop
+        else if (work_top->kind == MD_ParseWorkKind_Main && token->flags & MD_TokenFlag_Reserved &&
+                 (MatchToken("}") || MatchToken("]") || MatchToken(")")))
+        {
+            MD_Node* parent = work_top->parent;
+            parent->flags |=   MD_NodeFlag_HasBraceRight*!!MatchToken("}");
+            parent->flags |= MD_NodeFlag_HasBracketRight*!!MatchToken("]");
+            parent->flags |=   MD_NodeFlag_HasParenRight*!!MatchToken(")");
+            MD_ParsePop();
+        }
+        
+        //- rjf: [main implicit] }s, ]s, and )s -> pop without advancing
+        else if (work_top->kind == MD_ParseWorkKind_MainImplicit && token->flags & MD_TokenFlag_Reserved &&
+                 (MatchToken("}") || MatchToken("]") || MatchToken(")")))
+            MD_ParseRetry();
+        
+        //- rjf: no consumption -> unexpected token! we don't know what to do with this.
+        else
+        {
+            MD_Node* error = md_push_node(arena, MD_NodeKind_ErrorMarker, 0, lexeme, lexeme, token->range.min);
+            md_msg_list_pushf(arena, &msgs, error, MD_MsgKind_Error, "Unexpected \"%.*s\" token.", StrExpand(lexeme));
+        }
+        
+        if (inc)
+            token++;
+    }
+    
+#undef MD_ParsePush
+#undef MD_ParsePop
+#undef LexemeStr
+#undef MatchToken
+    
+    //- rjf: fill & return
+    MD_ParseResult result = {0};
+    result.root = root;
+    result.msgs = msgs;
+    ScratchEnd(scratch);
+    return result;
+}
+
 function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray array)
 {
     ScratchBegin(scratch, arena);
@@ -779,7 +1009,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
     {
 #define LexMatch(str) StrCompare(lexeme, StrLit(str), 0)
 #define TokMatch(tok, str) StrCompare(Substr(text, (tok)->range.min, (tok)->range.max), StrLit(str), 0)
-#define HasFlags(flgs) (token->user & (flgs))
+#define HasFlags(flgs) (token->flags & (flgs))
         
 #define CL_IsTypeDecl(node) \
     (((node)->flags & CL_NodeFlag_Decl) && ((node)->reference->flags & CL_NodeFlags_TypeKeyword))
@@ -795,10 +1025,10 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
         if (HasFlags(CL_TokenFlags_Ignorable)) { }
         
         //- long: Enum Body (reuse this for array literal)
-        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(CL_TokenFlag_Identifier) &&
+        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(TokenFlag_Identifier) &&
                  (work_top->parent->reference->flags & CL_NodeFlag_Enum))
         {
-            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
+            CL_NodeFlags flags = CL_NodeFlagsFromToken(token->flags, lexeme);
             if (ALWAYS(flags & CL_NodeFlag_Identifier))
             {
                 CL_Node* node = CL_PushNode(arena, CL_NodeFlag_Decl, lexeme, token->range.min);
@@ -994,9 +1224,9 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
         }
         
         //- long: Type Expression
-        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && HasFlags(CL_TokenFlag_Identifier))
+        else if (work_top->kind == CL_ParseWorkKind_TypeExpr && HasFlags(TokenFlag_Identifier))
         {
-            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
+            CL_NodeFlags flags = CL_NodeFlagsFromToken(token->flags, lexeme);
             if (ALWAYS(flags))
             {
                 CL_Node* node = CL_PushNode(arena, flags, lexeme, token->range.min);
@@ -1101,9 +1331,9 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
             inc = 0;
         }
         
-        else if (work_top->kind == CL_ParseWorkKind_Expr && HasFlags(CL_TokenFlags_Literal|CL_TokenFlag_Identifier))
+        else if (work_top->kind == CL_ParseWorkKind_Expr && HasFlags(CL_TokenFlags_Literal|TokenFlag_Identifier))
         {
-            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
+            CL_NodeFlags flags = CL_NodeFlagsFromToken(token->flags, lexeme);
             CL_Node* atom = CL_PushNode(arena, flags, lexeme, token->range.min);
             CL_Node* expr = work_top->parent;
             Assert(expr->body.first == expr->body.last);
@@ -1114,7 +1344,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
                 CL_NodePushChild(expr, body, atom);
         }
         
-        else if (work_top->kind == CL_ParseWorkKind_Expr && HasFlags(CL_TokenFlag_Symbol))
+        else if (work_top->kind == CL_ParseWorkKind_Expr && HasFlags(TokenFlag_Symbol))
         {
             CL_Node* parent = work_top->parent;
             CL_ExprOpKind op = CL_ExprOpFromStr(lexeme, work_top);
@@ -1215,13 +1445,13 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
                  LexMatch("*") && !CL_IsNil(work_top->first_tag))
             goto PUSH_TYPE_EXPR;
         
-        else if (work_top->kind == CL_ParseWorkKind_Args && HasFlags(CL_TokenFlag_Identifier))
+        else if (work_top->kind == CL_ParseWorkKind_Args && HasFlags(TokenFlag_Identifier))
             goto PUSH_TYPE_EXPR;
         
         else if ((work_top->kind == CL_ParseWorkKind_Stmt || work_top->kind == CL_ParseWorkKind_Args) &&
-                 HasFlags(CL_TokenFlag_Identifier))
+                 HasFlags(TokenFlag_Identifier))
         {
-            CL_NodeFlags flags = CL_NodeFlagsFromToken((CL_TokenFlags)token->user, lexeme);
+            CL_NodeFlags flags = CL_NodeFlagsFromToken(token->flags, lexeme);
             if (ALWAYS(flags))
             {
                 if ((flags & CL_NodeFlag_Identifier) && CL_IsNil(work_top->first_tag))
@@ -1243,7 +1473,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
             }
         }
         
-        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(CL_TokenFlag_Symbol))
+        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(TokenFlag_Symbol))
         {
             Assert(work_top->first_tag == work_top->last_tag);
             CL_Node* atom = work_top->first_tag;
@@ -1258,7 +1488,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
             inc = 0;
         }
         
-        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(CL_TokenFlag_Numeric))
+        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(TokenFlag_Numeric))
         {
             Assert(work_top->first_tag == work_top->last_tag);
             CL_Node* atom = CL_PushNode(arena, CL_NodeFlag_Numeric, lexeme, token->range.min);
@@ -1295,14 +1525,14 @@ function MetaTable CL_TableFromTokens(Arena* arena, String text, TokenArray arra
     u64 cap = array.count / 3;
     
 #define SkipNextNoWhitespace(token) Stmnt(token++; \
-                                          while ((token->user & CL_TokenFlags_Ignorable) && token < opl) token++;)
+                                          while ((token->flags & CL_TokenFlags_Ignorable) && token < opl) token++;)
     for (Token* token = array.tokens,* opl = array.tokens+array.count; token < opl; ++token)
     {
         MetaFlags flags = 0;
         String name = {0};
         String path = {0};
         
-        if (token->user & CL_TokenFlag_Identifier)
+        if (token->flags & TokenFlag_Identifier)
         {
             if (TokenMatch(text, *token, StrLit("EmbedFile")))
                 flags = MetaFlag_EmbedFile;
@@ -1317,7 +1547,7 @@ function MetaTable CL_TableFromTokens(Arena* arena, String text, TokenArray arra
                 if (token && TokenMatch(text, *token, StrLit("(")))
                 {
                     SkipNextNoWhitespace(token);
-                    if (token && (token->user & CL_TokenFlag_Identifier))
+                    if (token && (token->flags & TokenFlag_Identifier))
                     {
                         name = StrFromToken(text, *token);
                         
@@ -1327,7 +1557,7 @@ function MetaTable CL_TableFromTokens(Arena* arena, String text, TokenArray arra
                             if (token && TokenMatch(text, *token, StrLit(",")))
                             {
                                 SkipNextNoWhitespace(token);
-                                if (token && (token->user & CL_TokenFlag_String))
+                                if (token && (token->flags & TokenFlag_String))
                                     path = StrFromToken(text, *token);
                             }
                         }

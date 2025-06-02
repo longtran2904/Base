@@ -3,28 +3,13 @@
 #ifndef _C_LEX_H
 #define _C_LEX_H
 
-//~ long: Token Types
+//~ long: Node Types
 
-typedef Flags32 CL_TokenFlags;
 enum
 {
-    CL_TokenFlag_Identifier = 1 << 0,
-    CL_TokenFlag_Symbol = 1 << 1,
-    
-    CL_TokenFlags_Ignorable = 0x7 << 2,
-    CL_TokenFlag_Preproc    = 1 << 2,
-    CL_TokenFlag_Whitespace = 1 << 3,
-    CL_TokenFlag_Comment    = 1 << 4,
-    
-    CL_TokenFlags_Literal = 0x7 << 5,
-    CL_TokenFlag_Numeric  = 1 << 5,
-    CL_TokenFlag_Char     = 1 << 6,
-    CL_TokenFlag_String   = 1 << 7,
-    
-    CL_TokenFlag_Broken = 1 << 8,
+    CL_TokenFlags_Ignorable = TokenFlag_Preproc|TokenFlag_Comment|TokenFlag_Whitespace|TokenFlag_Newline,
+    CL_TokenFlags_Literal = TokenFlag_Numeric|TokenFlag_String,
 };
-
-//~ long: Node Types
 
 typedef Flags64 CL_NodeFlags;
 
@@ -36,10 +21,9 @@ typedef Flags64 CL_NodeFlags;
 #define CL_NodeFlag_Brace (1ULL <<  9)
 #define CL_NodeFlag_Paren (1ULL << 10)
 
-#define CL_NodeFlags_Atom      (0xF << 11)
+#define CL_NodeFlags_Atom      (0x7 << 11)
 #define CL_NodeFlag_Identifier (1ULL << 11)
 #define CL_NodeFlag_Numeric    (1ULL << 12)
-#define CL_NodeFlag_CharLit    (1ULL << 13)
 #define CL_NodeFlag_String     (1ULL << 14)
 #define CL_NodeFlag_Symbol     (1ULL << 15)
 

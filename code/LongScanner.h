@@ -3,95 +3,30 @@
 #ifndef _LONG_SCANNER_H
 #define _LONG_SCANNER_H
 
-//~ long: Scanner Types
-
-typedef Flags32 ScanResultFlags;
-enum
-{
-    ScanResultFlag_EOF = 1 << 0,
-    ScanResultFlag_NoMatches = 1 << 1,
-    
-    ScanResultFlag_TokenUnclosed = 1 << 2,
-    ScanResultFlag_TokenHasPrefix = 1 << 3,
-    ScanResultFlag_TokenHasPostfix = 1 << 4,
-};
-
-typedef Flags16 MarkerFlags;
-enum
-{
-    MarkerFlag_MatchLine = 1 << 0, // end before newline
-    MarkerFlag_MatchAll = 1 << 1,
-    MarkerFlag_MatchTwice = 1 << 2,
-    
-    MarkerFlag_MatchRange = 1 << 4,
-    MarkerFlag_MatchArray = 1 << 5,
-    
-    MarkerFlag_MatchAlpha = 1 << 6, // a-z A-Z _
-    MarkerFlag_MatchDigit = 1 << 7, // 0-9
-    MarkerFlag_MatchAlphaNumeric = MarkerFlag_MatchAlpha|MarkerFlag_MatchDigit,
-    
-    // Starts with Alpha or underscore and ends when not AlphaNumeric or underscore
-    MarkerFlag_MatchIdentifier = MarkerFlag_MatchAlpha|MarkerFlag_MatchAll|(1 << 8),
-    // Starts with Numeric or dot and ends when not Identifier, or dot
-    MarkerFlag_MatchNumeric = MarkerFlag_MatchDigit|MarkerFlag_MatchAll|(1 << 9),
-    
-    MarkerFlag_InverseStr = 1 << 11, // `{` -> `}`, `/*` -> `*/`, `({` -> `})`
-    MarkerFlag_PrefixStr = 1 << 12,
-    MarkerFlag_PostfixStr = 1 << 13,
-};
-
-typedef struct Marker Marker;
-struct Marker
-{
-    MarkerFlags flags;
-    u8 escapes[6];
-    String str;
-};
-
-typedef struct MarkerNode MarkerNode;
-struct MarkerNode
-{
-    MarkerNode* next;
-    i64 user;
-    Marker marker;
-};
-
-typedef struct Scanner Scanner;
-struct Scanner
-{
-    Arena* arena;
-    String source;
-    u64 pos;
-    
-    i64 fallback;
-    MarkerNode* first;
-    MarkerNode* last;
-    u64 count;
-};
-
-typedef Flags32 ScannerMatchFlags;
-enum
-{
-    ScannerMatchFlag_IsArray  = 1 << 0,
-    ScannerMatchFlag_Negate   = 1 << 1,
-    ScannerMatchFlag_UntilNot = ScannerMatchFlag_IsArray|ScannerMatchFlag_Negate,
-    
-    ScannerMatchFlag_Characters = 1 << 2,
-    ScannerMatchFlag_Numbers = 1 << 3,
-    ScannerMatchFlag_AlphaNumerics = ScannerMatchFlag_Characters|ScannerMatchFlag_Numbers,
-    
-    ScannerMatchFlag_LastIsEscape  = 1 << 6,
-    ScannerMatchFlag_LineExit      = 1 << 7,
-    ScannerMatchFlag_LineAndEscape = ScannerMatchFlag_LastIsEscape|ScannerMatchFlag_LineExit,
-};
-
 //~ long: Token Types
+
+typedef Flags32 TokenFlags;
+enum
+{
+    TokenFlag_Unterminated  = 1 << 0,
+    TokenFlag_BrokenUTF8    = 1 << 1,
+    
+    TokenFlag_Preproc    = 1 << 2,
+    TokenFlag_Comment    = 1 << 3,
+    TokenFlag_Whitespace = 1 << 4,
+    TokenFlag_Newline    = 1 << 5,
+    
+    TokenFlag_Identifier = 1 << 6,
+    TokenFlag_Symbol     = 1 << 7,
+    TokenFlag_Numeric    = 1 << 8,
+    TokenFlag_String     = 1 << 9,
+};
 
 typedef struct Token Token;
 struct Token
 {
-    ScanResultFlags flags;
-    i64 user;
+    Flags32 flags;
+    u32 user;
     r1u64 range;
 };
 
@@ -130,35 +65,97 @@ struct TokenIter
     Token* current;
 };
 
+//~ long: Scanner Types
+
+typedef Flags32 CL_Scan_Flags;
+enum
+{
+    // If CL_Scan_XXX is not set then they are skipped and don't get reported
+    CL_Scan_Whitespace = 1 << 0,
+    CL_Scan_Newline    = 1 << 1,
+    
+    CL_Line_Cont_Comments = 1 << 2,
+    CL_Line_Cont_Preprocs = 1 << 3,
+    CL_Line_Cont_Strings  = 1 << 4,
+    
+    CL_Scan_Preproc  = 1 << 5,
+    CL_Scan_Comments = 1 << 6,
+    CL_Nest_Comments = 1 << 7,
+    
+    CL_Scan_SingleQuotes = 1 <<  8,
+    CL_Scan_DoubleQuotes = 1 <<  9,
+    CL_Scan_Ticks        = 1 << 10,
+    
+    CL_Scan_UTF8       = 1 << 11,
+    CL_Scan_Idents     = 1 << 12,
+    CL_Skip_Ident_Nums = 1 << 13,
+    
+    CL_Scan_Nums       = 1 << 14,
+    CL_Skip_Num_Idents = 1 << 15,
+    
+    CL_Scan_Symbols = 1 << 16,
+};
+
+typedef struct Scanner Scanner;
+typedef TokenFlags ScannerHook(Scanner* scanner);
+
+struct Scanner
+{
+    String source;
+    u64 pos;
+    u32 line, col;
+    r1u64 prevLine;
+    Token token;
+    
+    ScannerHook* hook;
+    CL_Scan_Flags flags;
+    u8 lineContinuation;
+    
+    // preproc
+    String preproc;
+    
+    // Comment
+    String commentDelim;
+    String commentMulti;
+    
+    // String
+    u8 escapeChar;
+    StringList strPrefixes; // L"...", u8"...", U"...", etc
+    
+    // Identifier
+    String preIdentSymbols;
+    String midIdentSymbols;
+    
+    // Numeric
+    String preNumSymbols; // unary +- (JSON and expressionless languages), `.` seperator
+    String midNumSymbols; // . _ ` '
+    String exponents; // e/p/x
+    
+    // Symbols
+    StringList symbols;
+    String joinSymbols;
+};
+
 //~ long: Scanner Functions
 
 //- long: Construction Functions
-function Marker* ScannerPushMark(Scanner* scanner, i64 user, String str, MarkerFlags flags);
+#define  ScannerFromStr(str) ((Scanner){ .source = (str) })
+#define ScannerFromFile(arena, file) ScannerFromStr(OSReadFile((arena), (file), 0))
 
-function Marker*   MarkerPushArr(Scanner* scanner, i64 user, String array, b32 matchOnce);
-function Marker*  MarkerPushLine(Scanner* scanner, i64 user, String start, u8 escape, b32 matchRange);
-function Marker* MarkerPushRange(Scanner* scanner, i64 user, String str, MarkerFlags flags);
-
-function Marker*  MarkerPushIdent(Scanner* scanner, i64 user);
-function Marker* MarkerPushNumber(Scanner* scanner, i64 user, String prefixes);
-
-#define  ScannerFromStr(_arena, str) ((Scanner){ .arena = (_arena), .source = (str) })
-#define ScannerFromFile(_arena, file) ScannerFromStr((_arena), OSReadFile((_arena), (file), 0))
-#define ScannerPushFlags(scanner, user, flags) ScannerPushMark((scanner), (user), ZeroStr, ZeroStr, (flags));
-
-#define ScannerStrFromRange(scanner, range) Substr((scanner)->source, (range).min, (range).max)
-#define ScannerCurrStr(scanner) StrSkip((scanner)->source, (scanner)->pos)
-#define ScannerPrevStr(scanner) StrPrefix((scanner)->source, (scanner)->pos)
+#define ScannerRange(scanner, min, max) Substr((scanner)->source, (min), (max))
+#define ScannerStr(scanner, size) SubstrRange((scanner)->source, (scanner)->pos, (size))
 
 //- long: Lexing Functions
 function b32 ScannerAdvance(Scanner* scanner, i64 advance);
-function b32 ScannerCompare(Scanner* scanner, String val, ScannerMatchFlags flags);
-function b32   ScannerParse(Scanner* scanner, String val, ScannerMatchFlags flags);
+function b32 ScannerCompare(Scanner* scanner, String str);
+function b32 ScannerCompareArr(Scanner* scanner, String arr);
+function b32 ScannerParse(Scanner* scanner, String str);
 
-function b32 ScannerAdvanceUntil(Scanner* scanner, String val, ScannerMatchFlags flags);
+function b32 ScannerAdvanceUntil(Scanner* scanner, String str, u8 escapeChar);
+function void ScannerAdvanceLine(Scanner* scanner, u8 escapeChar);
 
 // @UB(long): if offset is negative will this wrap around?
-#define ScannerPeekByte(scanner, offset) ChrFromStr((scanner)->source, (scanner)->pos + (offset))
+#define ScannerByte(scanner, offset) ChrFromStr((scanner)->source, (scanner)->pos + (offset))
 
 function Token ScannerNext(Scanner* scanner);
 function Token ScannerPeek(Scanner* scanner);
@@ -169,7 +166,7 @@ function Token ScannerPeekAhead(Scanner* scanner, i64 tokenCount);
 function String StrFromToken(String text, Token token);
 function b32 TokenMatch(String text, Token token, String match);
 
-function void TokenChunkListPush(Arena* arena, TokenChunkList* list, u64 cap, Token token);
+function Token*     TokenChunkListPush(Arena* arena, TokenChunkList* list, u64 cap, Token token);
 function TokenArray TokenArrayFromChunkList(Arena* arena, TokenChunkList* chunks);
 
 #define TokenItFromArray(array) ((TokenIter){ (array), (array).tokens })

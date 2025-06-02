@@ -523,6 +523,7 @@
 #define HasAnyFlags(flags, fl)  ((flags) & (fl))
 #define HasAllFlags(flags, fl) (((flags) & (fl)) == (fl))
 #define     NoFlags(flags, fl) (!HasAnyFlags(flags, fl))
+#define    SetFlags(flags, fl, val) (flags = (flags & ~(fl)) | ((-!!(val)) & (fl)))
 
 #define Boolify(x) ((x) != 0) // @RECONSIDER(long): Do I need this? Can't I just use `!!`?
 #define Implies(a,b) (!(a) || (b))

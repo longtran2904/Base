@@ -1,161 +1,13 @@
 
 //~ long: Scanner Functions
 
-//- long: Construction Functions
-function Marker* ScannerPushMark(Scanner* scanner, i64 user, String str, MarkerFlags flags)
-{
-    MarkerNode* node = PushStruct(scanner->arena, MarkerNode);
-    node->user = user;
-    node->marker = (Marker){ .flags = flags, .str = str };
-    SLLQueuePush(scanner->first, scanner->last, node);
-    scanner->count++;
-    return &node->marker;
-}
-
-function Marker* MarkerPushArr(Scanner* scanner, i64 user, String array, b32 matchOnce)
-{
-    Marker* result = ScannerPushMark(scanner, user, array, MarkerFlag_MatchArray);
-    if (!matchOnce)
-        result->flags |= MarkerFlag_MatchAll;
-    return result;
-}
-
-function Marker* MarkerPushLine(Scanner* scanner, i64 user, String start, u8 escape, b32 matchRange)
-{
-    Marker* result = ScannerPushMark(scanner, user, start, MarkerFlag_MatchLine);
-    if (matchRange)
-        result->flags |= MarkerFlag_MatchRange;
-    
-    result->escapes[0] = escape;
-    return result;
-}
-
-function Marker* MarkerPushRange(Scanner* scanner, i64 user, String str, MarkerFlags flags)
-{
-    Marker* result = ScannerPushMark(scanner, user, str, flags|MarkerFlag_MatchRange);
-    return result;
-}
-
-function Marker* MarkerPushIdent(Scanner* scanner, i64 user)
-{
-    Marker* result = ScannerPushMark(scanner, user, StrLit(""), MarkerFlag_MatchIdentifier);
-    return result;
-}
-
-function Marker* MarkerPushNumber(Scanner* scanner, i64 user, String exponents)
-{
-    Marker* result = ScannerPushMark(scanner, user, exponents, MarkerFlag_MatchNumeric);
-    return result;
-}
-
-function Marker* MarkerPushOpsCombine(Scanner* scanner, i64 user, String symbols, u8 postfixSymbol, b32 matchTwice)
-{
-    //c 2^5 + 2^13
-    Marker* result = ScannerPushMark(scanner, user, symbols, MarkerFlag_MatchArray|MarkerFlag_PostfixStr);
-    result->escapes[0] = postfixSymbol;
-    if (matchTwice)
-        result->flags |= MarkerFlag_MatchTwice;
-    return result;
-}
-
-function Marker* MarkerPushOps(Scanner* scanner, i64 user, String symbols, b32 matchTwice)
-{
-    Marker* result = ScannerPushMark(scanner, user, symbols, MarkerFlag_MatchArray);
-    if (matchTwice)
-        result->flags |= MarkerFlag_MatchTwice;
-    return result;
-}
+// AdvanceUntilNot
+// MatchLine
+// MatchStr -> AdvanceUntilStr (escape)
+// MatchArr -> AdvanceUntilNot
+// Exponent and Unary plus/minus
 
 //- long: Lexing Functions
-
-function b32 ScannerAdvance(Scanner* scanner, i64 advance)
-{
-    u64 pos = scanner->pos + advance;
-    b32 result = pos <= scanner->source.size;
-    if (result)
-        scanner->pos = pos;
-    return result;
-}
-
-function b32 ScannerCompare(Scanner* scanner, String val, ScannerMatchFlags flags)
-{
-    b32 result = 0;
-    if (/*ALWAYS*/(scanner->pos < scanner->source.size))
-    {
-        if (flags & ScannerMatchFlag_IsArray)
-        {
-            char c = scanner->source.str[scanner->pos];
-            result = ChrCompareArr(c, val, 0);
-            if (flags & ScannerMatchFlag_Characters)
-                result |= IsCharacter(c);
-            if (flags & ScannerMatchFlag_Numbers)
-                result |= IsDigit(c);
-        }
-        
-        else
-        {
-            char c = ScannerPeekByte(scanner, val.size);
-            result = StrCompare(SubstrRange(scanner->source, scanner->pos, val.size), val, 0);
-            if (flags & ScannerMatchFlag_Characters)
-                result &= IsCharacter(c);
-            if (flags & ScannerMatchFlag_Numbers)
-                result &= IsDigit(c);
-        }
-    }
-    
-    if (flags & ScannerMatchFlag_Negate)
-        result = !result;
-    
-    return result;
-}
-
-function b32 ScannerParse(Scanner* scanner, String val, ScannerMatchFlags flags)
-{
-    b32 result = ScannerCompare(scanner, val, flags);
-    if (result)
-        ScannerAdvance(scanner, (flags & ScannerMatchFlag_IsArray) ? 1 : val.size);
-    return result;
-}
-
-function b32 ScannerAdvanceUntil(Scanner* scanner, String val, ScannerMatchFlags flags)
-{
-    b32 result = 0;
-    u8 escapeChar = 0;
-    if (flags & ScannerMatchFlag_LastIsEscape)
-    {
-        if (val.size)
-        {
-            escapeChar = val.str[val.size - 1];
-            val = StrChop(val, 1);
-        }
-    }
-    
-    b32 (*check)(Scanner*, String, ScannerMatchFlags) = ScannerParse;
-    if (flags & ScannerMatchFlag_Negate)
-        check = ScannerCompare;
-    
-    for (b32 escaped = 0; scanner->pos < scanner->source.size; )
-    {
-        if ((flags & ScannerMatchFlag_LineExit) && ScannerCompare(scanner, StrLit(NlineStr), ScannerMatchFlag_IsArray))
-        {
-            result = 0;
-            break;
-        }
-        
-        if (escaped) escaped = 0;
-        else if (scanner->source.str[scanner->pos] == escapeChar) escaped = 1;
-        else if (check(scanner, val, flags))
-        {
-            result = 1;
-            break;
-        }
-        
-        ScannerAdvance(scanner, 1);
-    }
-    
-    return result;
-}
-
 internal String ScannerInverseStr(Arena* arena, String str)
 {
     String result = PushBuffer(arena, str.size);
@@ -182,176 +34,320 @@ internal String ScannerInverseStr(Arena* arena, String str)
     return result;
 }
 
-internal b32 MarkerMatchBeg(Scanner* scanner, Marker* marker, u64* outSize)
+function b32 ScannerAdvance(Scanner* scanner, i64 advance)
+{
+    i64 pos = scanner->pos;
+    scanner->pos = Clamp(pos + advance, 0, (i64)scanner->source.size);
+    return scanner->pos != pos;
+}
+
+function b32 ScannerCompare(Scanner* scanner, String str)
 {
     b32 result = 0;
-    u8 byte = ScannerPeekByte(scanner, 0);
-    MarkerFlags flags = marker->flags;
-    String str = marker->str;
-    
-    ScratchBegin(scratch);
-    u64 size = 1;
-    
-    if (HasAnyFlags(flags, MarkerFlag_MatchRange|MarkerFlag_MatchLine) || flags == 0)
+    if (str.size)
     {
-        result |= ScannerCompare(scanner, str, 0);
-        if (result)
-        {
-            size = str.size;
-            if ((flags & MarkerFlag_MatchTwice) && ScannerCompare(scanner, StrRepeat(scratch, str, 2), 0))
-                size = str.size * 2;
-        }
+        String lexeme = ScannerStr(scanner, str.size);
+        result = StrCompare(lexeme, str, 0);
     }
-    
-    if (flags & MarkerFlag_MatchArray)
-    {
-        result |= ScannerCompare(scanner, str, ScannerMatchFlag_IsArray);
-        if (result && (flags & MarkerFlag_MatchTwice))
-        {
-            String twice = ChrRepeat(scratch, ScannerPeekByte(scanner, 0), 2);
-            if (ScannerCompare(scanner, twice, 0))
-                size = 2;
-        }
-    }
-    
-    if (flags & MarkerFlag_MatchAlpha)
-        result |= IsCharacter(byte);
-    if (flags & MarkerFlag_MatchDigit)
-        result |= IsDigit(byte);
-    if (HasAllFlags(flags, MarkerFlag_MatchIdentifier))
-        result |= byte == '_' /*|| byte > MAX_I8*/;
-    if (HasAllFlags(flags, MarkerFlag_MatchNumeric))
-    {
-        u8 next = ScannerPeekByte(scanner, 1);
-        result |= (byte == '.' && IsDigit(next));
-    }
-    
-    ScratchEnd(scratch);
-    if (result && outSize)
-        *outSize = size;
     return result;
 }
 
-internal b32 MarkerMatchEnd(Scanner* scanner, Marker* marker, u64* outSize)
+function b32 ScannerCompareArr(Scanner* scanner, String arr)
 {
+    u8 byte = ScannerByte(scanner, 0);
     b32 result = 0;
-    u8 byte = ScannerPeekByte(scanner, 0);
-    MarkerFlags flags = marker->flags;
-    String str = marker->str;
-    
-    ScratchBegin(scratch);
-    String inverseStr = str;
-    if (flags & MarkerFlag_InverseStr)
-        inverseStr = ScannerInverseStr(scratch, str);
-    
-    b32 matchStr = flags & MarkerFlag_MatchRange;
-    if (matchStr)
-        result |= ScannerCompare(scanner, inverseStr, 0);
-    if (flags & MarkerFlag_MatchArray)
-        result |= ScannerCompare(scanner, inverseStr, ScannerMatchFlag_UntilNot);
-    
-    if (!result && HasAnyFlags(flags, MarkerFlag_MatchAlpha|MarkerFlag_MatchDigit))
-    {
-        if (flags & MarkerFlag_MatchAlpha)
-            result |= IsCharacter(byte);
-        if (flags & MarkerFlag_MatchDigit)
-            result |= IsDigit(byte);
-        if (HasAllFlags(flags, MarkerFlag_MatchIdentifier))
-            result |= IsDigit(byte) || byte == '_' /*|| byte > MAX_I8*/;
-        if (HasAllFlags(flags, MarkerFlag_MatchNumeric))
-        {
-            result |= IsCharacter(byte) || byte == '.' || byte == '_';
-            if (byte == '+' || byte == '-')
-                result |= ChrCompareArr(ScannerPeekByte(scanner, -1), marker->str, 0);
-        }
-        result = !result;
-    }
-    
-    ScratchEnd(scratch);
-    if (result && outSize)
-        *outSize = matchStr ? str.size : 0;
+    for (u64 i = 0; i < arr.size && !result; ++i)
+        if (byte == arr.str[i])
+            result = 1;
     return result;
 }
 
-// TODO(long): Clean this up
+// NOTE(long): This currently doesn't handle when you actually want to escape with \0
+function b32 ScannerAdvanceUntil(Scanner* scanner, String str, u8 escapeChar)
+{
+    for (b32 escaped = 0; scanner->pos < scanner->source.size; scanner->pos++)
+    {
+        if (escaped)
+            escaped = 0;
+        else if (scanner->source.str[scanner->pos] == escapeChar)
+            escaped = 1;
+        else if (ScannerCompare(scanner, str))
+            return 1;
+    }
+    return 0;
+}
+
+function b32 ScannerAdvanceUntilArr(Scanner* scanner, String arr)
+{
+    b32 result = 0;
+    for (; scanner->pos < scanner->source.size && !result; scanner->pos++)
+        if (ScannerCompareArr(scanner, arr))
+            result = 1;
+    return result;
+}
+
+function b32 ScannerAdvancePast(Scanner* scanner, String str, u8 escapeChar)
+{
+    b32 result = ScannerAdvanceUntil(scanner, str, escapeChar);
+    if (result)
+        ScannerAdvance(scanner, str.size);
+    return result;
+}
+
+function b32 ScannerParse(Scanner* scanner, String str)
+{
+    b32 result = ScannerCompare(scanner, str);
+    if (result)
+        ScannerAdvance(scanner, str.size);
+    return result;
+}
+
+function b32 ScannerParseArr(Scanner* scanner, String arr)
+{
+    b32 result = 0;
+    while (ScannerCompareArr(scanner, arr) && ScannerAdvance(scanner, 1))
+        result = 1;
+    return result;
+}
+
+function b32 ScannerParseList(Scanner* scanner, StringList* list)
+{
+    b32 result = 0;
+    StrListIter(list, node)
+    {
+        if (ScannerParse(scanner, node->string))
+        {
+            result = 1;
+            break;
+        }
+    }
+    return result;
+}
+
+function void ScannerParseLine(Scanner* scanner, u8 escapeChar)
+{
+    REPEAT:
+    u64 oldPos = scanner->pos;
+    if (ScannerAdvanceUntil(scanner, StrLit("\n"), escapeChar))
+    {
+        if (scanner->pos - oldPos > 1)
+        {
+            u8* str = scanner->source.str;
+            if (str[scanner->pos-1] == '\r' && str[scanner->pos-2] == escapeChar)
+                goto REPEAT;
+        }
+    }
+}
+
+internal b32 ScannerParseStrDelim(Scanner* scanner)
+{
+    b32 result = 0;
+    Scanner restore = *scanner;
+    
+    ScannerParseList(scanner, &scanner->strPrefixes);
+    
+    if (0) { }
+    else if ((scanner->flags & CL_Scan_Ticks       ) && ScannerParse(scanner, StrLit( "`"))) result = 1;
+    else if ((scanner->flags & CL_Scan_SingleQuotes) && ScannerParse(scanner, StrLit( "'"))) result = 1;
+    else if ((scanner->flags & CL_Scan_DoubleQuotes) && ScannerParse(scanner, StrLit("\""))) result = 1;
+    
+    if (!result)
+        *scanner = restore;
+    return result;
+}
+
+function b32 ScannerParseLineDelim(Scanner* scanner, String delim, u8 escapeChar)
+{
+    b32 result = 0;
+    
+    for (b32 escaped = 0; scanner->pos < scanner->source.size && !result; scanner->pos++)
+    {
+        if (ScannerCompare(scanner, StrLit("\r\n")))
+            scanner->pos++;
+        
+        if (ScannerByte(scanner, 0) == '\n')
+            if (!(escaped && (scanner->flags & CL_Line_Cont_Strings)))
+                break;
+        
+        if (escaped)
+            escaped = 0;
+        else if (scanner->source.str[scanner->pos] == escapeChar)
+            escaped = 1;
+        else if (ScannerCompare(scanner, delim))
+            result = 1;
+    }
+    
+    return result;
+}
+
 function Token ScannerNext(Scanner* scanner)
 {
-    Token result = {0};
+    ScratchBegin(scratch);
+    Token token = {0};
+    Token prevToken = scanner->token;
     
-    if (scanner->pos < scanner->source.size)
+    b32 isPreproc = prevToken.flags & TokenFlag_Preproc;
+    b32 blankLine = scanner->pos == 0;
+    if (HasAnyFlags(prevToken.flags, TokenFlag_Whitespace|TokenFlag_Newline))
     {
-        Marker* marker = 0;
-        i64 user = 0;
-        u64 start = scanner->pos;
-        ForList(MarkerNode, node, scanner->first)
-        {
-            if (node->marker.flags & MarkerFlag_PrefixStr)
-                if (!ScannerParse(scanner, StrFromChr(node->marker.escapes[0]), 0))
-                    goto CLEANUP;
-            
-            u64 size = 0;
-            if (MarkerMatchBeg(scanner, &node->marker, &size))
-            {
-                ScannerAdvance(scanner, size);
-                if (node->marker.flags & MarkerFlag_PostfixStr)
-                    if (ScannerParse(scanner, StrFromChr(node->marker.escapes[0]), 0))
-                        result.flags |= ScanResultFlag_TokenHasPostfix;
-                
-                marker = &node->marker;
-                user = node->user;
-                break;
-            }
-            
-            CLEANUP:
-            scanner->pos = start;
-        }
-        
-        if (marker)
-        {
-            b32 nested = HasAllFlags(marker->flags, MarkerFlag_MatchRange|MarkerFlag_MatchAll);
-            b32 matchOnce =  NoFlags(marker->flags, MarkerFlag_MatchRange|MarkerFlag_MatchAll|MarkerFlag_MatchLine);
-            b32 match = matchOnce;
-            
-            for (i64 escaped = 0, nestCount = 1, advance = 1;
-                 !match && scanner->pos < scanner->source.size;
-                 ScannerAdvance(scanner, advance))
-            {
-                u64 size = 1;
-                
-                if (ScannerCompare(scanner, StrLit(NlineStr), ScannerMatchFlag_IsArray) && (marker->flags & MarkerFlag_MatchLine))
-                    if (marker->flags != MarkerFlag_MatchLine || !escaped)
-                        break;
-                
-                if (escaped)
-                    escaped = 0;
-                else if (ScannerCompare(scanner, Str(marker->escapes, ArrayCount(marker->escapes)), ScannerMatchFlag_IsArray))
-                    escaped = 1;
-                else if (MarkerMatchEnd(scanner, marker, &size))
-                    match = (--nestCount) <= 0;
-                else if (nested && MarkerMatchBeg(scanner, marker, &size))
-                    nestCount++;
-                
-                advance = size;
-            }
-            
-            result.range = R1U64(start, scanner->pos);
-            result.user = user;
-            if (!match && (marker->flags & MarkerFlag_MatchRange))
-                result.flags |= ScanResultFlag_TokenUnclosed;
-        }
-        else
-        {
-            result.flags |= ScanResultFlag_NoMatches;
-            result.range = R1U64(scanner->pos, scanner->pos + 1);
-            result.user = scanner->fallback;
-            ScannerAdvance(scanner, 1);
-        }
+        Assert(prevToken.range.min != prevToken.range.max);
+        String lexeme = ScannerRange(scanner, prevToken.range.min, prevToken.range.max);
+        if (lexeme.str[0] == '\n' || (lexeme.size >= 2 && lexeme.str[0] == '\r' && lexeme.str[1] == '\n'))
+            blankLine = 1;
     }
     
-    if (scanner->pos >= scanner->source.size)
-        result.flags |= ScanResultFlag_EOF;
+    String commentMultiEnd = ScannerInverseStr(scratch, scanner->commentMulti);
+    String alphaNumeric = StrLit(Characters Digits);
+    String identDelim = StrJoin3(scratch, scanner->flags & CL_Skip_Ident_Nums ?
+                                 StrLit(Characters) : alphaNumeric, scanner->midIdentSymbols);
+    String numDelim = StrJoin3(scratch, scanner->flags & CL_Skip_Num_Idents ?
+                               StrLit(Digits) : alphaNumeric, scanner->midNumSymbols);
     
-    return result;
+    b32 scanNewline = scanner->flags & CL_Scan_Newline;
+    String whitespace = StrLit(WspaceStr);
+    if (isPreproc || scanNewline)
+        whitespace = StrLit(SpaceStr);
+    
+    String lineCont1 = StrPushf(scratch, "%c\n", scanner->lineContinuation);
+    String lineCont2 = StrPushf(scratch, "%c\r\n", scanner->lineContinuation);
+    
+    //- long: Scanning
+    if (scanner->pos < scanner->source.size)
+    {
+        TokenFlags flags = 0;
+        u64 start = scanner->pos;
+        
+        if (0) { }
+        
+        //- long: Whitespace
+        else if (ScannerParseArr(scanner, whitespace) || ScannerCompare(scanner, lineCont1) || ScannerCompare(scanner, lineCont2))
+        {
+            flags |= TokenFlag_Whitespace;
+            while (ScannerParse(scanner, lineCont1) || ScannerParse(scanner, lineCont2))
+                if (!ScannerParseArr(scanner, whitespace))
+                    break;
+        }
+        
+        // NOTE(long): This only runs when in preproc or CL_Scan_Newline is set
+        else if (ScannerParse(scanner, StrLit("\n")) || ScannerParse(scanner, StrLit("\r\n")))
+        {
+            flags |= scanNewline ? TokenFlag_Newline : TokenFlag_Whitespace;
+            isPreproc = 0;
+        }
+        
+        //- long: Hook
+        else if (scanner->hook && (flags = scanner->hook(scanner)));
+        
+        //- long: Single-line Comments
+        else if (ScannerParse(scanner, scanner->commentDelim))
+        {
+            flags |= TokenFlag_Comment;
+            u8 escape = scanner->flags & CL_Line_Cont_Comments ? scanner->lineContinuation : 0;
+            ScannerParseLine(scanner, escape);
+        }
+        
+        //- long: Multi-line Comments
+        else if (ScannerParse(scanner, scanner->commentMulti))
+        {
+            flags |= TokenFlag_Comment;
+            if (scanner->flags & CL_Nest_Comments)
+            {
+                i64 nest = 1;
+                while (scanner->pos < scanner->source.size)
+                {
+                    if (nest == 0)
+                        break;
+                    
+                    if (ScannerParse(scanner, scanner->commentMulti))
+                        nest++;
+                    else if (ScannerParse(scanner, commentMultiEnd))
+                        nest--;
+                    else scanner->pos++;
+                }
+                
+                if (nest)
+                    flags |= TokenFlag_Unterminated;
+            }
+            
+            else if (!ScannerAdvancePast(scanner, commentMultiEnd, 0))
+                flags |= TokenFlag_Unterminated;
+        }
+        
+        //- long: Preproc
+        else if (!isPreproc && blankLine && ScannerParse(scanner, scanner->preproc))
+        {
+            if (scanner->flags & CL_Scan_Preproc)
+            {
+                isPreproc = 1;
+                flags |= TokenFlag_Symbol;
+            }
+            
+            else
+            {
+                flags |= TokenFlag_Preproc;
+                ScannerParseLine(scanner, scanner->flags & CL_Line_Cont_Preprocs ? scanner->lineContinuation : 0);
+            }
+        }
+        
+        //- long: String Literals
+        else if (ScannerParseStrDelim(scanner))
+        {
+            flags |= TokenFlag_String;
+            String style = StrFromChr(scanner->source.str[scanner->pos-1]);
+            ScannerParseLineDelim(scanner, style, scanner->escapeChar);
+        }
+        
+        //- long: Identifiers
+        // TODO(long): UTF8
+        else if (ScannerParseArr(scanner, StrLit(Characters)) || ScannerParseArr(scanner, scanner->preIdentSymbols))
+        {
+            flags |= TokenFlag_Identifier;
+            ScannerParseArr(scanner, identDelim);
+        }
+        
+        //- long: Numerics
+        else if (ScannerParseArr(scanner, StrLit(Digits)))
+        {
+            SCAN_NUMERIC:
+            flags |= TokenFlag_Numeric;
+            
+            ScannerParseArr(scanner, numDelim);
+            while (ScannerCompareArr(scanner, StrLit("+-")) && ChrCompareArr(ScannerByte(scanner, -1), scanner->exponents, 0))
+            {
+                ScannerAdvance(scanner, 1);
+                ScannerParseArr(scanner, numDelim);
+            }
+            
+            // TODO(long): handle symbols after numerics (e.g. 0..<10 in Odin)
+        }
+        
+        else if (ScannerCompareArr(scanner, scanner->preNumSymbols) && IsDigit(ScannerByte(scanner, 1)))
+        {
+            ScannerAdvance(scanner, 2);
+            goto SCAN_NUMERIC;
+        }
+        
+        //- long: Symbols
+        else if (ScannerParseList(scanner, &scanner->symbols))
+            flags |= TokenFlag_Symbol;
+        else if (ScannerParseArr(scanner, scanner->joinSymbols))
+            flags |= TokenFlag_Symbol;
+        
+        //- long: Invalid characters
+        else scanner->pos++;
+        
+        //- long: Push Token
+        u64 opl = scanner->pos;
+        Assert(opl > start);
+        if (isPreproc)
+            flags |= TokenFlag_Preproc;
+        
+        token = (Token){ .flags = flags, .range = {start, opl} };
+        scanner->token = prevToken;
+    }
+    
+    ScratchEnd(scratch);
+    return token;
 }
 
 function Token ScannerPeek(Scanner* scanner)
@@ -369,7 +365,7 @@ function Token ScannerPeekAhead(Scanner* scanner, i64 tokenCount)
     ForEach(_, tokenCount)
     {
         result = ScannerNext(scanner);
-        if (result.flags & ScanResultFlag_EOF)
+        if (scanner->pos >= scanner->source.size)
             break;
     }
     scanner->pos = pos;
@@ -391,7 +387,7 @@ function b32 TokenMatch(String text, Token token, String match)
     return result;
 }
 
-function void TokenChunkListPush(Arena* arena, TokenChunkList* list, u64 cap, Token token)
+function Token* TokenChunkListPush(Arena* arena, TokenChunkList* list, u64 cap, Token token)
 {
     TokenChunkNode* node = list->last;
     if (!node || node->count >= node->cap)
@@ -402,9 +398,13 @@ function void TokenChunkListPush(Arena* arena, TokenChunkList* list, u64 cap, To
         SLLQueuePush(list->first, list->last, node);
         list->chunkCount++;
     }
-    node->tokens[node->count] = token;
+    
+    Token* result = node->tokens + node->count;
     node->count++;
     list->totalTokenCount++;
+    
+    *result = token;
+    return result;
 }
 
 function TokenArray TokenArrayFromChunkList(Arena* arena, TokenChunkList* chunks)
@@ -425,36 +425,34 @@ function TokenArray TokenArrayFromChunkList(Arena* arena, TokenChunkList* chunks
 
 function u64 CSV_StrListPushRow(Arena* arena, StringList* list, String text)
 {
-    Scanner* scanner = &ScannerFromStr(arena, text);
+    Scanner* scanner = &ScannerFromStr(text);
     r1u64 range = {0};
     
     while (1)
     {
-        b32 eof = !ScannerAdvanceUntil(scanner, StrLit(",\n\""), ScannerMatchFlag_IsArray);
-        if (!eof)
-            ScannerAdvance(scanner, -1);
+        b32 eof = !ScannerAdvanceUntilArr(scanner, StrLit(",\n\""));
         range.max = scanner->pos;
         
-        b32 isComma = ScannerParse(scanner, StrLit(","), 0);
-        if (eof || isComma || ScannerParse(scanner, StrLit("\n"), 0))
+        b32 isComma = ScannerParse(scanner, StrLit(","));
+        if (eof || isComma || ScannerParse(scanner, StrLit("\n")))
         {
-            String str = ScannerStrFromRange(scanner, range);
+            String str = ScannerRange(scanner, range.min, range.max);
             if (StrStartsWith(str, StrLit("\""), 0) && StrEndsWith(str, StrLit("\""), 0))
             {
                 str = Substr(str, 1, str.size - 1);
                 str = StrReplace(arena, str, StrLit("\"\""), StrLit("\""), 0);
             }
-            
             StrListPush(arena, list, str);
             
             if (isComma)
                 range.min = scanner->pos;
-            else
+            else // newline or eof
                 break;
         }
         
-        while (ScannerParse(scanner, StrLit("\""), 0))
-            ScannerAdvanceUntil(scanner, StrLit("\""), 0);
+        if (ScannerParse(scanner, StrLit("\"")))
+            if (ScannerAdvanceUntil(scanner, StrLit("\""), '"'))
+                ScannerAdvance(scanner, 1);
     }
     
     return scanner->pos;
@@ -595,22 +593,26 @@ function TokenArray JSON_TokenizeFromText(Arena* arena, String text)
             TokenInit(JSON_TokenType_Whitespace, 2);
             for (i64 nest = 1; byte < byte_opl;)
             {
-                if (nest == 0) break;
+                if (nest == 0)
+                    break;
+                
                 else if (Check2Bytes("*/"))
                 {
                     byte += 2;
                     nest--;
                 }
+                
                 else if (Check2Bytes("/*"))
                 {
                     byte += 2;
                     nest++;
                 }
+                
                 else byte += 1;
             }
             
             if (byte == byte_opl)
-                token.flags |= ScanResultFlag_TokenUnclosed;
+                token.flags |= TokenFlag_Unterminated;
         }
         
         //- long: Single-quote string
@@ -625,7 +627,7 @@ function TokenArray JSON_TokenizeFromText(Arena* arena, String text)
                 if (byte == byte_opl)
                 {
                     ENDSTR:
-                    token.flags |= ScanResultFlag_TokenUnclosed;
+                    token.flags |= TokenFlag_Unterminated;
                     break;
                 }
                 
@@ -651,8 +653,7 @@ function TokenArray JSON_TokenizeFromText(Arena* arena, String text)
         }
         
         //- long: Number
-        else if (IsDigit(byte[0]) ||
-                 (byte+1 < byte_opl && byte[0] == '-' && IsDigit(byte[1])))
+        else if (IsDigit(byte[0]) || (byte+1 < byte_opl && byte[0] == '-' && IsDigit(byte[1])))
         {
             TokenInit(JSON_TokenType_Number, 1);
             for (; byte < byte_opl; ++byte)
@@ -683,7 +684,7 @@ function TokenArray JSON_TokenizeFromText(Arena* arena, String text)
 #endif
                     )
                 {
-                    token.flags |= ScanResultFlag_TokenUnclosed;
+                    token.flags |= TokenFlag_Unterminated;
                     break;
                 }
                 
@@ -722,18 +723,33 @@ function TokenArray JSON_TokenizeFromText(Arena* arena, String text)
             TokenInit(JSON_TokenType_Null, 1);
         
         //- long: Invalid characters in all other cases
-        else
-        {
-            TokenInit(JSON_TokenType_Invalid, 1);
-            token.flags |= ScanResultFlag_NoMatches;
-        }
+        else TokenInit(JSON_TokenType_Invalid, 1);
         
 #undef TokenInit
 #undef Check2Bytes
         
-        //- rjf: push token if formed
+        //- NOTE(long): This is optional
+        switch (token.user)
+        {
+            case JSON_TokenType_OpenObj:
+            case JSON_TokenType_CloseObj:
+            case JSON_TokenType_OpenArr:
+            case JSON_TokenType_CloseArr:
+            case JSON_TokenType_Terminator:
+            case JSON_TokenType_Assignment: token.flags |= TokenFlag_Symbol; break;
+            
+            case JSON_TokenType_Null:
+            case JSON_TokenType_True:
+            case JSON_TokenType_False:      token.flags |= TokenFlag_Identifier; break;
+            
+            case JSON_TokenType_Whitespace: token.flags |= TokenFlag_Whitespace; break;
+            case JSON_TokenType_String:     token.flags |= TokenFlag_String; break;
+            case JSON_TokenType_Number:     token.flags |= TokenFlag_Numeric; break;
+        }
+        
+        //- long: push token if formed
         token.range.max = byte - byte_first;
-        if (token.range.max > token.range.min)
+        if (ALWAYS(token.range.max > token.range.min))
             TokenChunkListPush(scratch, &tokens, 4096, token);
     }
     
