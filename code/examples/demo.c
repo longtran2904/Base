@@ -171,9 +171,9 @@ int main(void)
         String now = StrFromTime(arena, OSNowUniTime());
         Outf("Today:  %.*s\n", StrExpand(now));
         
+#if 0
         Outf("\n");
         Outf("---STDIO---\n");
-        //OSSleepMS(10000);
         OSWriteConsole(OS_STD_OUT, StrLit("Please enter your name: "));
         String input = OSReadConsole(arena, OS_STD_IN);
         if (StrCompare(input, StrLit("Long"), 1))
@@ -182,8 +182,8 @@ int main(void)
             OSWriteConsole(OS_STD_ERR, StrLit("Then just kill yourself\n"));
         else
             OSWriteConsole(OS_STD_ERR, StrPushf(arena, "ERROR: \"%.*s\" is a stupid name\n", StrExpand(input)));
-        //input = OSReadConsole(arena, OS_STD_IN, 1);
         OSSleepMS(500);
+#endif
         
         Outf("\n");
         Outf("---FILES---\n");
@@ -219,9 +219,8 @@ int main(void)
         Outf("\n");
         Outf("---LIBS---\n");
         {
-            OSLoadLib(StrLit("build\\test_base"));
-            OS_Handle lib = OSLoadLib(StrLit("build\\TestDLL.dll"));
-            i32 (*init)(VoidFunc*, b32);
+            OS_Handle lib = OSLoadLib(StrLit("build\\test.dll"));
+            i32 (*init)(VoidFunc*, b32) = 0;
             PrcCast(init, OSGetProc(lib, "DLLCallback"));
             
             StringList logs = {0};

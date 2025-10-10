@@ -11,15 +11,16 @@ enum
     TokenFlag_Unterminated  = 1 << 0,
     TokenFlag_BrokenUTF8    = 1 << 1,
     
-    TokenFlag_Preproc    = 1 << 2,
-    TokenFlag_Comment    = 1 << 3,
-    TokenFlag_Whitespace = 1 << 4,
-    TokenFlag_Newline    = 1 << 5,
+    TokenFlag_MultiLine  = 1 << 2,
+    TokenFlag_Preproc    = 1 << 3,
+    TokenFlag_Comment    = 1 << 4,
+    TokenFlag_Whitespace = 1 << 5,
+    TokenFlag_Newline    = 1 << 6,
     
-    TokenFlag_Identifier = 1 << 6,
-    TokenFlag_Symbol     = 1 << 7,
-    TokenFlag_Numeric    = 1 << 8,
-    TokenFlag_String     = 1 << 9,
+    TokenFlag_Identifier = 1 << 7,
+    TokenFlag_Symbol     = 1 << 8,
+    TokenFlag_Numeric    = 1 << 9,
+    TokenFlag_String     = 1 <<10,
 };
 
 typedef struct Token Token;
@@ -107,7 +108,6 @@ struct Scanner
     r1u64 prevLine;
     Token token;
     
-    ScannerHook* hook;
     CL_Scan_Flags flags;
     u8 lineContinuation;
     
@@ -121,6 +121,7 @@ struct Scanner
     // String
     u8 escapeChar;
     StringList strPrefixes; // L"...", u8"...", U"...", etc
+    ScannerHook* rawStrParser;
     
     // Identifier
     String preIdentSymbols;

@@ -8,6 +8,7 @@
 // [ ] Support for custom data structures
 // [ ] Property-based testing
 // [ ] Seperate backing buffer for arenas
+// [ ] Add profiling (Spall?)
 
 //~/////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////
@@ -36,7 +37,7 @@
 #elif BASE_LIB_IMPORT_SYMBOLS
 #define BASE_SHARABLE(name) libimport name
 #elif BASE_LIB_RUNTIME_IMPORT
-#define BASE_SHARABLE(name) global (*name)
+#define BASE_SHARABLE(name) function (*name)
 #else
 #define BASE_SHARABLE(name) function name
 #endif
@@ -1771,7 +1772,7 @@ struct Logger
 #define LogBlock(arena, list, ...) for (Logger UNIQUE(dummy) = (LogBegin(__VA_ARGS__), (Logger){ .count = MAX_U64 }); \
                                         UNIQUE(dummy).count == MAX_U64; \
                                         UNIQUE(dummy) = LogEnd(arena), list = StrListFromLogger(arena, &UNIQUE(dummy)))
-#define LogPush(level, log, ...) LogPushf((level), __FILE__, __LINE__, (log), __VA_ARGS__)
+#define LogPush(level, log, ...) LogPushf((level), __FILE__, __LINE__, (log), ##__VA_ARGS__)
 
 void BASE_SHARABLE(LogBeginEx)(LogInfo info);
 Logger BASE_SHARABLE(LogEnd)(Arena* arena);

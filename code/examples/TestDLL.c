@@ -1,4 +1,4 @@
-//#define BASE_LIB_RUNTIME_IMPORT 1
+#define BASE_LIB_RUNTIME_IMPORT 1
 #include "Base.h"
 #include "Base.c"
 

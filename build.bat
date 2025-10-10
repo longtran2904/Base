@@ -30,7 +30,7 @@ if "%clang%"=="1" (
 	set warns=!warns! -Wno-initializer-overrides -Wno-missing-field-initializers -Wno-incompatible-pointer-types
 
 	:: --- unused flags ---
-	set warns=!warns! -Wno-unused-local-typedef -Wno-unused-function
+	set warns=!warns! -Wno-unused-local-typedef -Wno-unused-function -Wno-unused-variable
 	:: --- Microsoft extensions ---
 	set warns=!warns! -Wno-microsoft-enum-forward-reference -Wno-microsoft-string-literal-from-predefined -Wno-microsoft-anon-tag
 	:: --- GNU extensions ---
@@ -67,9 +67,11 @@ if "%msvc%"=="1" (
 	REM set warns=!warns! /wd4100 /wd4101
 	:: --- analyze flags ---
 	REM set warns=!warns! /analyze /wd28251 /wd28182 /wd6287 /wd6387
+	:: --- this might be useful ---
+	set warns=!warns! /wd5287
 
 	:: --- compile options ---
-	set opts=/FC /GR- /EHa- /nologo /Zi
+	set opts=/FC /GR- /EHa- /nologo /Zi /Zc:preprocessor
 	set opts=!opts! /arch:AVX2  & :: MSVC doesn't have an equivalent to -march=native
 	if "%asan%"=="1" set opts=!opts! /fsanitize=address /JMC
 	if "%release%"=="1" set opts=!opts! /O2
@@ -95,15 +97,17 @@ IF NOT EXIST "fast_float.o" clang++ %lib_opts% %code%\code\dependencies\fast_flo
 del *.pdb > NUL 2> NUL
 del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
+del *.lib > NUL 2> NUL
 
-%compile% %opts% %warns% %code%\code\examples\test_scanner.c %out%test_scanner.exe %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\test_base.c    %out%test_base.exe    %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\TestDLL.c      %out%test.dll   %dll% %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\demo_gfx.c     %out%demo_gfx.exe     %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\demo.c         %out%demo.exe         %linker% %links%
-%compile% %opts% %warns% %code%\code\Metamain.c              %out%metagen.exe      %linker% %links%
-
+:: %compile% %opts% %warns% %code%\code\examples\test_scanner.c %out%test_scanner.exe %linker% %links%
+:: %compile% %opts% %warns% %code%\code\Metamain.c              %out%metagen.exe      %linker% %links%
 :: %compile% %opts% %warns% %code%\code\retired\Meta.c           %out%Meta.exe       %linker% %links%
+
+%compile% %opts% %warns% %code%\code\examples\demo.c         %out%demo.exe         %linker% %links%
+%compile% %opts% %warns% %code%\code\examples\test_base.c    %out%test_base.exe    %linker% %links%
+%compile% %opts% %warns% %code%\code\examples\TestDLL.c      %out%test.dll   %dll% %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\demo_gfx.c     %out%demo_gfx.exe     %linker% %links%
+
 :: %compile% %opts% %warns% %code%\code\examples\lloc.c          %out%lloc.exe       %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\glob.c          %out%glob.exe       %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\test_glob.c     %out%test_glob.exe  %linker% %links%
@@ -120,7 +124,6 @@ del *.o   > NUL 2> NUL
 ren fast_float.obj.temp fast_float.obj > NUL 2> NUL
 ren   fast_float.o.temp fast_float.o   > NUL 2> NUL
 
-del *.lib > NUL 2> NUL
 del *.ilk > NUL 2> NUL
 del *.exp > NUL 2> NUL
 del *.xml > NUL 2> NUL
@@ -165,6 +168,7 @@ popd
 :: WL Enables One-Line Diagnostics (appends additional information to an error or warning message)
 :: JMC Just my code debug
 :: FA generates an assembler listing file (s includes source code while c includes machine code)
+:: /Zc:preprocessor supports token pasting tricks like `, ##__VA_ARGS__`
 
 :: --- BATCH References -------------------------------------------------------
 :: 1. A code block can't have 2 comments start with `::` next to each other

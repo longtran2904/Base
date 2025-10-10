@@ -29,7 +29,7 @@ function b32  TestResult(b32 result);
 #ifdef LONG_TEST_IMPLEMENTATION
 
 #ifndef LT_PRINTF
-#define LT_PRINTF(fmt, ...) Outf(fmt, __VA_ARGS__)
+#define LT_PRINTF(fmt, ...) Outf(fmt, ##__VA_ARGS__)
 #endif
 
 #ifndef LT_ASSERT

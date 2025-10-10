@@ -365,37 +365,41 @@ function CL_Node* CL_PushNode(Arena* arena, CL_NodeFlags flags, String string, u
 }
 
 #define CL_IsNil(node) CheckNil(&cl_nilNode, node)
-#define CL_NodePushChild(p, list, c) Stmnt((c)->parent = (p); (p)->list.count++;\
-                                           DLLPushBack_NPZ(&cl_nilNode, (p)->list.first, (p)->list.last, (c), next, prev))
+#define CL_NodePushChild(node, child) \
+    Stmnt((child)->parent = (node); DLLPushBack_NPZ(&cl_nilNode, (node)->first, (node)->last, (child), next, prev))
+#define CL_NodePushArg(node, arg) \
+    Stmnt((arg)->parent = (node); DLLPushBack_NPZ(&cl_nilNode, (node)->firstArg, (node)->lastArg, (arg), next, prev))
+#define CL_NodePushTag(node, tag) \
+    Stmnt((tag)->parent = (node); DLLPushBack_NPZ(&cl_nilNode, (node)->firstTag, (node)->lastTag, (tag), next, prev))
 
 function void CL_DebugTree(CL_Node* root)
 {
-    for (CL_Node* node = root->body.first; !CL_IsNil(node); node = node->next)
+    for (CL_Node* node = root->first; !CL_IsNil(node); node = node->next)
     {
         Assert(node->next       != node);
         Assert(node->prev       != node);
         Assert(node->parent     != node);
-        Assert(node->body.first != node);
-        Assert(node->body.last  != node);
-        Assert(node->tags.first != node);
-        Assert(node->tags.last  != node);
-        Assert(node->args.first != node);
-        Assert(node->args.last  != node);
+        Assert(node->first != node);
+        Assert(node->last  != node);
+        Assert(node->firstTag != node);
+        Assert(node->lastTag  != node);
+        Assert(node->firstArg != node);
+        Assert(node->lastArg  != node);
         
-        Assert(CL_IsNil(node->body.first->prev));
-        Assert(CL_IsNil(node->body.last->next));
-        if (node->body.first == node->body.last)
-            Assert(CL_IsNil(node->body.first->next));
+        Assert(CL_IsNil(node->first->prev));
+        Assert(CL_IsNil(node->last->next));
+        if (node->first == node->last)
+            Assert(CL_IsNil(node->first->next));
         
-        Assert(CL_IsNil(node->tags.first->prev));
-        Assert(CL_IsNil(node->tags.last->next));
-        if (node->tags.first == node->tags.last)
-            Assert(CL_IsNil(node->tags.first->next));
+        Assert(CL_IsNil(node->firstTag->prev));
+        Assert(CL_IsNil(node->lastTag->next));
+        if (node->firstTag == node->lastTag)
+            Assert(CL_IsNil(node->firstTag->next));
         
-        Assert(CL_IsNil(node->args.first->prev));
-        Assert(CL_IsNil(node->args.last->next));
-        if (node->args.first == node->args.last)
-            Assert(CL_IsNil(node->args.first->next));
+        Assert(CL_IsNil(node->firstArg->prev));
+        Assert(CL_IsNil(node->lastArg->next));
+        if (node->firstArg == node->lastArg)
+            Assert(CL_IsNil(node->firstArg->next));
         
         // TODO(long): Check for references
         
@@ -404,16 +408,16 @@ function void CL_DebugTree(CL_Node* root)
             Assert(node->next->prev == node);
             Assert(node->next->parent == node->parent);
             
-            if (!CL_IsNil(node->body.first))
+            if (!CL_IsNil(node->first))
             {
-                Assert(node->body.first != node->next->body.first && node->body.first != node->next->body.last);
-                Assert(node-> next != node->next->body.first && node-> next != node->next->body.last);
+                Assert(node->first != node->next->first && node->first != node->next->last);
+                Assert(node-> next != node->next->first && node-> next != node->next->last);
             }
         }
         
-        CL_DebugTree(node->body.first);
-        CL_DebugTree(node->tags.first);
-        CL_DebugTree(node->args.first);
+        CL_DebugTree(node->first);
+        CL_DebugTree(node->firstTag);
+        CL_DebugTree(node->firstArg);
     }
 }
 
@@ -620,23 +624,23 @@ function CL_ExprOpKind CL_ExprOpFromStr(String lexeme, CL_ParseWorkNode* work_to
     
     // Max parent
     if (NoFlags(parent->flags, CL_NodeFlag_Symbol))
-        lookupPrefix = !(parent->body.last->flags & CL_NodeFlags_Atom);
+        lookupPrefix = !(parent->last->flags & CL_NodeFlags_Atom);
     
     // Only an unfinished prefix op or nil op can have zero child
-    else if (CL_IsNil(parent->body.first))
+    else if (CL_IsNil(parent->first))
     {
         // Only true for ops _inside_ an unclosed op (parentheses, cast, ternary, etc)
         if (work_top->next->parent == work_top->parent)
-            lookupPrefix = CL_IsNil(parent->reference);
+            lookupPrefix = CL_IsNil(parent->ref);
         
         // TODO(long): language-specific hack to differentiate between cast and parentheses grouping
         // Change this later when you change the type expression/operator parsing
         else
-            lookupPrefix = CL_IsNil(parent->reference) || !!(parent->reference->flags & CL_NodeFlags_Atom);
+            lookupPrefix = CL_IsNil(parent->ref) || !!(parent->ref->flags & CL_NodeFlags_Atom);
     }
     
     // This is only true for valid (1-child) suffix op or unfinished (1-child) binary op
-    else if (parent->offset > parent->body.last->offset)
+    else if (parent->offset > parent->last->offset)
     {
         for (u64 i = 0; i < CL_ExprOpKind_Count; ++i)
         {
@@ -666,23 +670,23 @@ function CL_ExprOpKind CL_ExprOpFromNode(CL_Node* node)
     CL_ExprOpKind result = 0;
     b32 lookupPre = 0, lookupBin = 0, lookupNil = 0, lookupBinOrSuf = 0;
     
-    if (node->offset < node->body.first->offset)
+    if (node->offset < node->first->offset)
         lookupPre = 1;
     
-    else if (CL_IsNil(node->body.first))
+    else if (CL_IsNil(node->first))
     {
         // TODO(long): language-specific hack to differentiate between cast and parentheses grouping
         // Change this later when you change the type expression/operator parsing
-        if (CL_IsNil(node->reference) || (node->reference->flags & CL_NodeFlags_Atom))
+        if (CL_IsNil(node->ref) || (node->ref->flags & CL_NodeFlags_Atom))
             lookupPre = 1; // unfinished prefix ops
         else
             lookupNil = 1;
     }
     
-    else if (node->body.first != node->body.last)
+    else if (node->first != node->last)
         lookupBin = 1;
     
-    else if (node->offset > node->body.first->offset)
+    else if (node->offset > node->first->offset)
         lookupBinOrSuf = 1;
     
     for (u64 i = 0; i < CL_ExprOpKind_Count && !result; ++i)
@@ -735,255 +739,47 @@ function CL_Node* CL_BaseTypeFromTag(CL_ParseWorkNode* work_top)
                     base = tag;
         
         DLLRemove_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, base, next, prev);
-        for (CL_Node* tag = work_top->first_tag,* next = tag->next; !CL_IsNil(tag); tag = next, next = next->next)
-            CL_NodePushChild(base, tags, tag);
+        for (CL_Node* tag = work_top->first_tag; !CL_IsNil(tag); tag = tag->next)
+            CL_NodePushTag(base, tag);
         work_top->first_tag = work_top->last_tag = &cl_nilNode;
     }
     return base;
 }
 
-internal MD_ParseResult MD_ParseFromTokens(Arena* arena, String filename, String text, MD_TokenArray tokens)
-{
-    ScratchBegin(scratch, arena);
-    
-    //- rjf: set up outputs
-    MD_MsgList msgs = {0};
-    MD_Node* root = md_push_node(arena, MD_NodeKind_File, 0, filename, text, 0);
-    
-    //- rjf: set up parse rule stack
-    typedef enum MD_ParseWorkKind
-    {
-        MD_ParseWorkKind_Main,
-        MD_ParseWorkKind_MainImplicit,
-        MD_ParseWorkKind_NodeOptionalFollowUp,
-        MD_ParseWorkKind_NodeChildrenStyleScan,
-    } MD_ParseWorkKind;
-    
-    typedef struct MD_ParseWorkNode MD_ParseWorkNode;
-    struct MD_ParseWorkNode
-    {
-        MD_ParseWorkNode* next;
-        MD_ParseWorkKind kind;
-        MD_Node* parent;
-        MD_Node* first_gathered_tag;
-        MD_Node* last_gathered_tag;
-        MD_NodeFlags gathered_node_flags;
-        S32 counted_newlines;
-    };
-    
-    MD_ParseWorkNode  first_work = { 0, MD_ParseWorkKind_Main, root, };
-    MD_ParseWorkNode broken_work = { 0, MD_ParseWorkKind_Main, root, };
-    MD_ParseWorkNode* work_top = &first_work;
-    MD_ParseWorkNode* work_free = 0;
-    
-#define MD_ParsePush(work_kind, work_parent) Stmnt(MD_ParseWorkNode* work_node = work_free;                           \
-                                                   if (!work_node) work_node = PushStruct(scratch, MD_ParseWorkNode); \
-                                                   else SLLStackPop(work_free);                                       \
-                                                   work_node->kind = (work_kind);                                     \
-                                                   work_node->parent = (work_parent);                                 \
-                                                   SLLStackPush(work_top, work_node))
-    
-#define MD_ParsePop() Stmnt(SLLStackPop(work_top); if (!work_top) work_top = &broken_work)
-#define MD_ParseNext(work_kind) Stmnt(MD_Node* UNIQUE(parent) = work_top->parent; \
-                                      MD_ParsePop(); MD_ParsePush((work_kind), UNIQUE(parent)))
-#define MD_ParseRetry() Stmnt(MD_ParsePop(); inc = 0)
-    
-#define LexemeStr(range) Substr(text, (range).min, (range).max)
-#define MatchToken(str) StrCompare(lexeme, StrLit(str), 0)
-    
-    //- rjf: parse
-    for (MD_Token* token = tokens.v,* opl = token + tokens.count; token < opl;)
-    {
-        b32 inc = 1;
-        
-        //- rjf: unpack token
-        String lexeme = LexemeStr(token[0].range);
-        if (0) { }
-        
-        //- rjf: comments/whitespace -> always no-op & inc
-        else if (HasAnyFlags(token->flags, MD_TokenFlag_Whitespace|MD_TokenGroup_Comment));
-        
-        //- rjf: [node follow up] : following label -> work top parent has children. we need
-        // to scan for explicit delimiters, else parse an implicitly delimited set of children
-        else if (work_top->kind == MD_ParseWorkKind_NodeOptionalFollowUp && MatchToken(":"))
-            MD_ParseNext(MD_ParseWorkKind_NodeChildrenStyleScan);
-        
-        //- rjf: [node follow up] anything but : following label -> node has no children. just
-        // pop & move on
-        else if (work_top->kind == MD_ParseWorkKind_NodeOptionalFollowUp)
-            MD_ParseRetry();
-        
-        //- rjf: [main] separators -> mark & inc
-        else if (work_top->kind == MD_ParseWorkKind_Main && (MatchToken(",") || MatchToken(";")))
-        {
-            MD_Node* parent = work_top->parent;
-            if (!md_node_is_nil(parent->last))
-            {
-                parent->last->flags           |=     MD_NodeFlag_IsBeforeComma*!!MatchToken(",");
-                parent->last->flags           |= MD_NodeFlag_IsBeforeSemicolon*!!MatchToken(";");
-                work_top->gathered_node_flags |=      MD_NodeFlag_IsAfterComma*!!MatchToken(",");
-                work_top->gathered_node_flags |=  MD_NodeFlag_IsAfterSemicolon*!!MatchToken(";");
-            }
-        }
-        
-        //- rjf: [main_implicit] separators -> pop
-        else if (work_top->kind == MD_ParseWorkKind_MainImplicit && (MatchToken(",") || MatchToken(";")))
-            MD_ParseRetry();
-        
-        //- rjf: [main, main_implicit] unexpected reserved tokens
-        else if ((work_top->kind == MD_ParseWorkKind_Main || work_top->kind == MD_ParseWorkKind_MainImplicit) &&
-                 (MatchToken("#") || MatchToken("\\") || MatchToken(":")))
-        {
-            MD_Node* error = md_push_node(arena, MD_NodeKind_ErrorMarker, 0, lexeme, lexeme, token->range.min);
-            md_msg_list_pushf(arena, &msgs, error, MD_MsgKind_Error, "Unexpected reserved symbol \"%.*s\".", StrExpand(lexeme));
-        }
-        
-        //- rjf: [main, main_implicit] tag signifier -> create new tag
-        else if ((work_top->kind == MD_ParseWorkKind_Main || work_top->kind == MD_ParseWorkKind_MainImplicit) &&
-                 MatchToken("@"))
-        {
-            if (token+1 >= opl || !(token[1].flags & MD_TokenGroup_Label))
-            {
-                MD_Node* error = md_push_node(arena, MD_NodeKind_ErrorMarker, 0, lexeme, lexeme, token->range.min);
-                md_msg_list_push(arena, &msgs, error, MD_MsgKind_Error, StrLit("Tag label expected after @ symbol."));
-            }
-            
-            else
-            {
-                String tag_name_raw = LexemeStr(token[1].range);
-                String tag_name = md_content_string_from_token_flags_str8(token[1].flags, tag_name_raw);
-                MD_Node* node = md_push_node(arena, MD_NodeKind_Tag, md_node_flags_from_token_flags(token[1].flags),
-                                             tag_name, tag_name_raw, token[0].range.min);
-                DLLPushBack_NPZ(&md_nil_node, work_top->first_gathered_tag, work_top->last_gathered_tag, node, next, prev);
-                
-                if (token+2 < opl && token[2].flags & MD_TokenFlag_Reserved && StrCompare(LexemeStr(token[2].range), StrLit("("), 0))
-                {
-                    token++;
-                    MD_ParsePush(MD_ParseWorkKind_Main, node);
-                }
-                token++;
-            }
-        }
-        
-        //- rjf: [main, main_implicit] label -> create new main
-        else if ((work_top->kind == MD_ParseWorkKind_Main || work_top->kind == MD_ParseWorkKind_MainImplicit) &&
-                 token->flags & MD_TokenGroup_Label)
-        {
-            String node_string_raw = lexeme;
-            String node_string = md_content_string_from_token_flags_str8(token->flags, node_string_raw);
-            MD_NodeFlags flags = md_node_flags_from_token_flags(token->flags)|work_top->gathered_node_flags;
-            MD_Node* node = md_push_node(arena, MD_NodeKind_Main, flags, node_string, node_string_raw, token[0].range.min);
-            
-            work_top->gathered_node_flags = 0;
-            node->first_tag = work_top->first_gathered_tag;
-            node->last_tag = work_top->last_gathered_tag;
-            for (MD_Node* tag = work_top->first_gathered_tag; !md_node_is_nil(tag); tag = tag->next)
-                tag->parent = node;
-            work_top->first_gathered_tag = work_top->last_gathered_tag = &md_nil_node;
-            
-            md_node_push_child(work_top->parent, node);
-            MD_ParsePush(MD_ParseWorkKind_NodeOptionalFollowUp, node);
-        }
-        
-        //- rjf: [main] {s, [s, and (s -> create new main
-        else if (work_top->kind == MD_ParseWorkKind_Main && (MatchToken("{") || MatchToken("[") || MatchToken("(")))
-        {
-            MD_NodeFlags flags = md_node_flags_from_token_flags(token->flags)|work_top->gathered_node_flags;
-            flags |=   MD_NodeFlag_HasBraceLeft*!!MatchToken("{");
-            flags |= MD_NodeFlag_HasBracketLeft*!!MatchToken("[");
-            flags |=   MD_NodeFlag_HasParenLeft*!!MatchToken("(");
-            MD_Node* node = md_push_node(arena, MD_NodeKind_Main, flags, StrLit(""), StrLit(""), token[0].range.min);
-            
-            work_top->gathered_node_flags = 0;
-            node->first_tag = work_top->first_gathered_tag;
-            node->last_tag = work_top->last_gathered_tag;
-            for (MD_Node* tag = work_top->first_gathered_tag; !md_node_is_nil(tag); tag = tag->next)
-                tag->parent = node;
-            work_top->first_gathered_tag = work_top->last_gathered_tag = &md_nil_node;
-            
-            md_node_push_child(work_top->parent, node);
-            MD_ParsePush(MD_ParseWorkKind_Main, node);
-        }
-        
-        //- rjf: [node children style scan] {s, [s, and (s -> explicitly delimited children
-        else if (work_top->kind == MD_ParseWorkKind_NodeChildrenStyleScan && token->flags & MD_TokenFlag_Reserved &&
-                 (MatchToken("{") || MatchToken("[") || MatchToken("(")))
-        {
-            MD_Node* parent = work_top->parent;
-            parent->flags |=   MD_NodeFlag_HasBraceLeft*!!MatchToken("{");
-            parent->flags |= MD_NodeFlag_HasBracketLeft*!!MatchToken("[");
-            parent->flags |=   MD_NodeFlag_HasParenLeft*!!MatchToken("(");
-            MD_ParseNext(MD_ParseWorkKind_Main);
-        }
-        
-        //- rjf: [node children style scan] count newlines
-        else if (work_top->kind == MD_ParseWorkKind_NodeChildrenStyleScan && token->flags & MD_TokenFlag_Newline)
-            work_top->counted_newlines++;
-        
-        //- rjf: [main_implicit] newline -> pop
-        else if (work_top->kind == MD_ParseWorkKind_MainImplicit && token->flags & MD_TokenFlag_Newline)
-            MD_ParsePop();
-        
-        //- rjf: [all but main_implicit] newline -> no-op & inc
-        else if (work_top->kind != MD_ParseWorkKind_MainImplicit && token->flags & MD_TokenFlag_Newline);
-        
-        //- rjf: [node children style scan] anything causing implicit set -> <2 newlines, all good,
-        // >=2 newlines, houston we have a problem
-        else if (work_top->kind == MD_ParseWorkKind_NodeChildrenStyleScan)
-        {
-            if (work_top->counted_newlines >= 2)
-            {
-                MD_Node* node = work_top->parent;
-                MD_Node* error = md_push_node(arena, MD_NodeKind_ErrorMarker, 0, lexeme, lexeme, token->range.min);
-                md_msg_list_pushf(arena, &msgs, error, MD_MsgKind_Warning,
-                                  "More than two newlines following \"%.*s\", which has implicitly-delimited children, "
-                                  "resulting in an empty list of children.", StrExpand(node->string));
-                MD_ParsePop();
-            }
-            
-            else MD_ParseNext(MD_ParseWorkKind_MainImplicit);
-            inc = 0;
-        }
-        
-        //- rjf: [main] }s, ]s, and )s -> pop
-        else if (work_top->kind == MD_ParseWorkKind_Main && token->flags & MD_TokenFlag_Reserved &&
-                 (MatchToken("}") || MatchToken("]") || MatchToken(")")))
-        {
-            MD_Node* parent = work_top->parent;
-            parent->flags |=   MD_NodeFlag_HasBraceRight*!!MatchToken("}");
-            parent->flags |= MD_NodeFlag_HasBracketRight*!!MatchToken("]");
-            parent->flags |=   MD_NodeFlag_HasParenRight*!!MatchToken(")");
-            MD_ParsePop();
-        }
-        
-        //- rjf: [main implicit] }s, ]s, and )s -> pop without advancing
-        else if (work_top->kind == MD_ParseWorkKind_MainImplicit && token->flags & MD_TokenFlag_Reserved &&
-                 (MatchToken("}") || MatchToken("]") || MatchToken(")")))
-            MD_ParseRetry();
-        
-        //- rjf: no consumption -> unexpected token! we don't know what to do with this.
-        else
-        {
-            MD_Node* error = md_push_node(arena, MD_NodeKind_ErrorMarker, 0, lexeme, lexeme, token->range.min);
-            md_msg_list_pushf(arena, &msgs, error, MD_MsgKind_Error, "Unexpected \"%.*s\" token.", StrExpand(lexeme));
-        }
-        
-        if (inc)
-            token++;
-    }
-    
-#undef MD_ParsePush
-#undef MD_ParsePop
-#undef LexemeStr
-#undef MatchToken
-    
-    //- rjf: fill & return
-    MD_ParseResult result = {0};
-    result.root = root;
-    result.msgs = msgs;
-    ScratchEnd(scratch);
-    return result;
-}
+/*
+decl
+- base type
+- args
+- tags
+
+var
+- base type
+- tags
+
+field
+- base type
+- tags
+
+args
+- base type
+- tags
+
+type
+- inheritance base type?
+- struct/enum/union?
+- args?
+- tags
+
+proc
+- return type (multiple?)
+- args
+- header vs body?
+- tags
+
+expr
+- tags
+- inside paren/bracket
+*/
 
 function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray array)
 {
@@ -1011,8 +807,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
 #define TokMatch(tok, str) StrCompare(Substr(text, (tok)->range.min, (tok)->range.max), StrLit(str), 0)
 #define HasFlags(flgs) (token->flags & (flgs))
         
-#define CL_IsTypeDecl(node) \
-    (((node)->flags & CL_NodeFlag_Decl) && ((node)->reference->flags & CL_NodeFlags_TypeKeyword))
+#define CL_IsTypeDecl(node) (((node)->flags & CL_NodeFlag_Decl) && ((node)->ref->flags & CL_NodeFlags_TypeKeyword))
         
         //- rjf: unpack token
         String lexeme = Substr(text, token->range.min, token->range.max);
@@ -1026,22 +821,22 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
         
         //- long: Enum Body (reuse this for array literal)
         else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(TokenFlag_Identifier) &&
-                 (work_top->parent->reference->flags & CL_NodeFlag_Enum))
+                 (work_top->parent->ref->flags & CL_NodeFlag_Enum))
         {
             CL_NodeFlags flags = CL_NodeFlagsFromToken(token->flags, lexeme);
             if (ALWAYS(flags & CL_NodeFlag_Identifier))
             {
                 CL_Node* node = CL_PushNode(arena, CL_NodeFlag_Decl, lexeme, token->range.min);
-                CL_NodePushChild(work_top->parent, body, node);
+                CL_NodePushChild(work_top->parent, node);
                 work_top->parent = node;
             }
         }
         else if ((work_top->parent->flags & CL_NodeFlag_Decl) && LexMatch(",") &&
-                 (work_top->next->parent->reference->flags & CL_NodeFlag_Enum))
+                 (work_top->next->parent->ref->flags & CL_NodeFlag_Enum))
         {
-            Assert(work_top->kind == CL_ParseWorkKind_Stmt);
             work_top->first_tag = work_top->last_tag = &cl_nilNode;
             work_top->parent = work_top->parent->parent;
+            Assert(work_top->kind == CL_ParseWorkKind_Stmt);
             Assert(work_top->parent == work_top->next->parent);
         }
         
@@ -1099,24 +894,24 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
             }
             
             if (isArg)
-                CL_NodePushChild(work_top->parent, args, decl);
+                CL_NodePushArg(work_top->parent, decl);
             else
-                CL_NodePushChild(work_top->parent, body, decl);
+                CL_NodePushChild(work_top->parent, decl);
             
             work_top->parent = decl;
             decl->flags |= CL_NodeFlag_Decl;
             if (work_top->last_tag->flags & CL_NodeFlags_TypeKeyword)
             {
-                decl->reference = work_top->last_tag;
+                decl->ref = work_top->last_tag;
                 DLLRemove_NPZ(&cl_nilNode, work_top->first_tag, work_top->last_tag, work_top->last_tag, next, prev);
             }
             else
-                decl->reference = CL_BaseTypeFromTag(work_top);
+                decl->ref = CL_BaseTypeFromTag(work_top);
             
-            if (CL_IsNil(decl->reference)) // @useless_paren
+            if (CL_IsNil(decl->ref)) // @useless_paren
                 Assert(work_top->next->kind == CL_ParseWorkKind_TypeExpr);
             else
-                decl->reference->parent = decl;
+                decl->ref->parent = decl;
             
             inc = 0;
         }
@@ -1144,7 +939,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
         //- long: Type's Body
         else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch("{") &&
                  (CL_WorkHasFlags(work_top, CL_NodeFlags_TypeKeyword|CL_NodeFlag_Typedef) ||
-                  !CL_IsNil(work_top->parent->reference)))
+                  !CL_IsNil(work_top->parent->ref)))
         {
             CL_ParseWorkPush(CL_ParseWorkKind_Stmt, work_top->parent);
         }
@@ -1200,25 +995,25 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
             
             else if (ALWAYS(work_top->next->kind != CL_ParseWorkKind_TypeExpr))
             {
-                CL_Node* base = work_top->parent->reference;
-                while (!CL_IsNil(base->reference))
-                    base = base->reference;
+                CL_Node* base = work_top->parent->ref;
+                while (!CL_IsNil(base->ref))
+                    base = base->ref;
                 
                 if (!CL_IsNil(base))
                 {
-                    CL_Node* firstTag = base->tags.first;
+                    CL_Node* firstTag = base->firstTag;
                     base = CL_PushNode(arena, base->flags, base->string, base->offset);
                     
                     for (CL_Node* tag = firstTag; !CL_IsNil(tag); tag = tag->next)
                     {
                         CL_Node* newTag = CL_PushNode(arena, tag->flags, tag->string, tag->offset);
-                        CL_NodePushChild(base, tags, newTag);
+                        CL_NodePushTag(base, newTag);
                     }
                 }
                 
                 work_top->first_tag = work_top->last_tag = base;
                 if (ALWAYS((work_top->parent->flags & CL_NodeFlag_Decl) ||
-                           work_top->parent->parent->reference == work_top->parent))
+                           work_top->parent->parent->ref == work_top->parent))
                     work_top->parent = work_top->next->parent;
             }
         }
@@ -1241,7 +1036,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
             
             if (!CL_IsNil(base))
             {
-                ptr->reference = base;
+                ptr->ref = base;
                 base->parent = ptr;
             }
             work_top->first_tag = work_top->last_tag = ptr;
@@ -1268,21 +1063,21 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
         
         else if (work_top->kind == CL_ParseWorkKind_TypeExpr && LexMatch(")"))
         {
-            CL_Node* base = work_top->parent->reference;
+            CL_Node* base = work_top->parent->ref;
             if (CL_IsNil(base)) // @useless_paren
                 base = work_top->parent;
             CL_ParseWorkPop();
             
             if (work_top->kind == CL_ParseWorkKind_TypeExpr)
             {
-                while (!CL_IsNil(base->reference))
-                    base = base->reference;
+                while (!CL_IsNil(base->ref))
+                    base = base->ref;
                 
                 work_top->parent = base;
-                base->reference = work_top->first_tag;
-                base->reference->parent = base;
+                base->ref = work_top->first_tag;
+                base->ref->parent = base;
                 
-                Assert(base->parent != base && base != base->reference && base->parent != base->reference);
+                Assert(base->parent != base && base != base->ref && base->parent != base->ref);
             }
             else if (ALWAYS(work_top->kind == CL_ParseWorkKind_Args))
                 CL_ParseWorkPop(); // NOTE(long): This can also be `inc = 0;`
@@ -1293,23 +1088,23 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
         {
             CL_Node* node = CL_PushNode(arena, CL_NodeFlag_Brack, lexeme, token->range.min);
             CL_Node* parent = work_top->parent;
-            node->reference = parent->reference;
+            node->ref = parent->ref;
             
             if (parent != root)
             {
-                while (parent->reference->flags & CL_NodeFlag_Brack)
-                    parent = parent->reference;
+                while (parent->ref->flags & CL_NodeFlag_Brack)
+                    parent = parent->ref;
                 
-                if (!CL_IsNil(parent->reference))
+                if (!CL_IsNil(parent->ref))
                 {
-                    parent->reference->parent = node;
-                    node->reference = parent->reference;
+                    parent->ref->parent = node;
+                    node->ref = parent->ref;
                 }
                 
-                parent->reference = node;
+                parent->ref = node;
                 node->parent = parent;
             }
-            else CL_NodePushChild(parent, body, node);
+            else CL_NodePushChild(parent, node);
             
             CL_ParseWorkPush(CL_ParseWorkKind_Expr, node);
         }
@@ -1317,7 +1112,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
             CL_ParseWorkPop();
         
         //- long: Expr
-        else if (((work_top->parent->parent->reference->flags & CL_NodeFlag_Enum) ||
+        else if (((work_top->parent->parent->ref->flags & CL_NodeFlag_Enum) ||
                   work_top->kind == CL_ParseWorkKind_TypeExpr) && LexMatch("="))
         {
             CL_ParseWorkPush(CL_ParseWorkKind_Expr, work_top->parent);
@@ -1325,7 +1120,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
         
         else if (work_top->kind == CL_ParseWorkKind_Expr && LexMatch(",") &&
                  (work_top->next->kind == CL_ParseWorkKind_TypeExpr ||
-                  (work_top->next->parent->parent->reference->flags & CL_NodeFlag_Enum)))
+                  (work_top->next->parent->parent->ref->flags & CL_NodeFlag_Enum)))
         {
             CL_ParseWorkPop();
             inc = 0;
@@ -1336,12 +1131,12 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
             CL_NodeFlags flags = CL_NodeFlagsFromToken(token->flags, lexeme);
             CL_Node* atom = CL_PushNode(arena, flags, lexeme, token->range.min);
             CL_Node* expr = work_top->parent;
-            Assert(expr->body.first == expr->body.last);
+            Assert(expr->first == expr->last);
             
             if (expr == work_top->next->parent && (expr->flags & CL_NodeFlag_Symbol))
-                expr->reference = atom;
+                expr->ref = atom;
             else
-                CL_NodePushChild(expr, body, atom);
+                CL_NodePushChild(expr, atom);
         }
         
         else if (work_top->kind == CL_ParseWorkKind_Expr && HasFlags(TokenFlag_Symbol))
@@ -1365,7 +1160,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
                     CL_ExprKind parentKind = cl_exprKindTable[parentOp];
                     if (parentKind == CL_ExprKind_Nil)
                     {
-                        Assert(CL_IsNil(parent->body.first) && !CL_IsNil(parent->reference));
+                        Assert(CL_IsNil(parent->first) && !CL_IsNil(parent->ref));
                         continue;
                     }
                     isUnary = parentKind != CL_ExprKind_Binary && parentKind != CL_ExprKind_BinaryRTL;
@@ -1383,42 +1178,41 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
                 {
                     if (parent->flags & CL_NodeFlag_Symbol) // unclosed op
                     {
-                        if (!CL_IsNil(parent->reference))
-                            CL_NodePushChild(expr, body, parent->reference);
-                        parent->reference = expr;
+                        if (!CL_IsNil(parent->ref))
+                            CL_NodePushChild(expr, parent->ref);
+                        parent->ref = expr;
                         expr->parent = parent;
                         pushExpr = 0;
                     }
                     
                     else // Max parent
                     {
-                        if (parent->body.last->flags & CL_NodeFlags_Atom)
+                        if (parent->last->flags & CL_NodeFlags_Atom)
                             popRight = 1;
-                        if (work_top->parent != work_top->next->parent && (parent->body.last->flags & CL_NodeFlag_Symbol))
+                        if (work_top->parent != work_top->next->parent && (parent->last->flags & CL_NodeFlag_Symbol))
                             popRight = 1;
                     }
                 }
                 
-                else if (parent->body.first != parent->body.last) // Binary operators
+                else if (parent->first != parent->last) // Binary operators
                 {
-                    Assert(parent->body.last == parent->body.first->next);
+                    Assert(parent->last == parent->first->next);
                     popRight = 1;
                 }
                 
-                else if (!CL_IsNil(parent->body.first) && isUnary) // Unary operators
+                else if (!CL_IsNil(parent->first) && isUnary) // Unary operators
                     popRight = 1;
                 
                 if (pushExpr)
                 {
                     if (popRight)
                     {
-                        CL_Node* parentRight = parent->body.last;
-                        DLLRemove_NPZ(&cl_nilNode, parent->body.first, parent->body.last, parentRight, next, prev);
-                        parent->body.count--;
-                        CL_NodePushChild(expr, body, parentRight);
+                        CL_Node* parentRight = parent->last;
+                        DLLRemove_NPZ(&cl_nilNode, parent->first, parent->last, parentRight, next, prev);
+                        CL_NodePushChild(expr, parentRight);
                     }
                     
-                    CL_NodePushChild(parent, body, expr);
+                    CL_NodePushChild(parent, expr);
                 }
                 
                 work_top->parent = expr;
@@ -1448,8 +1242,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
         else if (work_top->kind == CL_ParseWorkKind_Args && HasFlags(TokenFlag_Identifier))
             goto PUSH_TYPE_EXPR;
         
-        else if ((work_top->kind == CL_ParseWorkKind_Stmt || work_top->kind == CL_ParseWorkKind_Args) &&
-                 HasFlags(TokenFlag_Identifier))
+        else if (work_top->kind == CL_ParseWorkKind_Stmt && HasFlags(TokenFlag_Identifier))
         {
             CL_NodeFlags flags = CL_NodeFlagsFromToken(token->flags, lexeme);
             if (ALWAYS(flags))
@@ -1483,7 +1276,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
             if (!CL_IsNil(atom))
             {
                 Assert(atom->flags & CL_NodeFlags_Atom);
-                CL_NodePushChild(work_top->parent, body, atom);
+                CL_NodePushChild(work_top->parent, atom);
             }
             inc = 0;
         }
@@ -1493,7 +1286,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
             Assert(work_top->first_tag == work_top->last_tag);
             CL_Node* atom = CL_PushNode(arena, CL_NodeFlag_Numeric, lexeme, token->range.min);
             CL_ParseWorkPush(CL_ParseWorkKind_Expr, work_top->parent);
-            CL_NodePushChild(work_top->parent, body, atom);
+            CL_NodePushChild(work_top->parent, atom);
         }
         
         //- rjf: no consumption -> unexpected token! we don't know what to do with this.

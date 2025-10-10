@@ -1,4 +1,4 @@
-#define BASE_LIB_EXPORT_SYMBOLS 1
+//#define BASE_LIB_EXPORT_SYMBOLS 1
 #include "Base.h"
 #include "Base.c"
 #include <stdio.h>

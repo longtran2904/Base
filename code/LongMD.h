@@ -29,9 +29,9 @@ enum
     StringMatchFlags_RightSideSloppy  = (1 << 2),
 };
 
-StaticAssert(StringMatchFlags_CaseInsensitive  == MatchStr_IgnoreCase , CheckStringMatchFlags);
-StaticAssert(StringMatchFlags_SlashInsensitive == MatchStr_IgnoreSlash, CheckStringMatchFlags);
-StaticAssert(StringMatchFlags_RightSideSloppy  == MatchStr_RightSloppy, CheckStringMatchFlags);
+StaticAssert((u32)StringMatchFlags_CaseInsensitive  == (u32)MatchStr_IgnoreCase , CheckStringMatchFlags);
+StaticAssert((u32)StringMatchFlags_SlashInsensitive == (u32)MatchStr_IgnoreSlash, CheckStringMatchFlags);
+StaticAssert((u32)StringMatchFlags_RightSideSloppy  == (u32)MatchStr_RightSloppy, CheckStringMatchFlags);
 
 #define str8_lit StrLit
 #define push_str8fv StrPushfv

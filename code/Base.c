@@ -2513,7 +2513,10 @@ Logger BASE_SHARABLE(LogEnd)(Arena* arena)
 
 LogInfo BASE_SHARABLE(LogGetInfo)(void)
 {
-    return logThread.stack ? logThread.stack->info : (LogInfo){0};
+    LogInfo result = (LogInfo){0};
+    if (logThread.stack)
+        result = logThread.stack->info;
+    return result;
 }
 
 CHECK_PRINTF_FUNC(4) void BASE_SHARABLE(LogPushf)(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...)
@@ -2652,13 +2655,13 @@ BufferUninterleave(Arena *arena, void *in,
 // NOTE(long): 28301: annotations weren't found at the first declaration of a given function
 // I have zero idea what this warning does but it keep reports something stupid in winnt.h
 // winnt.h(3454) : warning C28301: No annotations for first declaration of '_mm_clflush'. See <no file>(0). 
-MSVC(WarnDisable(28301))
+MSVC(WarnDisable(28301 5105))
 #pragma push_macro("function")
 #undef function
 #include <Windows.h>
 #include <Userenv.h>
 #include <dwmapi.h>
-MSVC(WarnEnable(28301))
+MSVC(WarnEnable(28301 5105))
 #pragma pop_macro("function")
 
 //~ long: Memory Functions
@@ -2739,6 +2742,7 @@ global String win32TempPath = {0};
 
 #if BASE_LIB_RUNTIME_IMPORT
 #include "psapi.h"
+#include <dbghelp.h>
 
 #define RUNTIME_FUNCS(X) \
     X(GetScratch) \
@@ -2749,12 +2753,78 @@ global String win32TempPath = {0};
     X(LogFmtStd) \
     X(LogFmtANSIColor)
 
+#pragma comment(lib, "dbghelp.lib")
+
+typedef struct W32SymbolTable W32SymbolTable;
+struct W32SymbolTable
+{
+    String* names;
+    void** addrs;
+    u64 count;
+};
+
+function W32SymbolTable ImageGetExports(Arena* arena, void* mem)
+{
+    BYTE* base = (BYTE*)mem;
+    IMAGE_DOS_HEADER* dosHeader = (IMAGE_DOS_HEADER*)base;
+    IMAGE_NT_HEADERS* ntHeader = (IMAGE_NT_HEADERS*)(base + dosHeader->e_lfanew);
+    W32SymbolTable table = {0};
+    
+    if (dosHeader->e_magic == IMAGE_DOS_SIGNATURE && ntHeader->Signature == IMAGE_NT_SIGNATURE)
+    {
+        IMAGE_SECTION_HEADER* sections = IMAGE_FIRST_SECTION(ntHeader);
+        for (DWORD s = 0; s < ntHeader->FileHeader.NumberOfSections; s++)
+        {
+            u8* start = sections[s].VirtualAddress + base;
+            u8* end = start + sections[s].Misc.VirtualSize;
+            
+            Outf("%.8s: [%p, %p)", sections[s].Name, start, end);
+            if (sections[s].Characteristics & IMAGE_SCN_MEM_EXECUTE)
+                Outf(" Executable");
+            if (sections[s].Characteristics & IMAGE_SCN_MEM_WRITE)
+                Outf(" Writable");
+            Outf("\n");
+        }
+        
+        IMAGE_DATA_DIRECTORY exportData = ntHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+        if (exportData.Size > 0)
+        {
+            IMAGE_EXPORT_DIRECTORY* exports = (IMAGE_EXPORT_DIRECTORY*)(base + exportData.VirtualAddress);
+            DWORD* functions = (DWORD*)(base + exports->AddressOfFunctions);
+            DWORD* names = (DWORD*)(base + exports->AddressOfNames);
+            WORD* ordinals = (WORD*)(base + exports->AddressOfNameOrdinals);
+            
+            table.count = exports->NumberOfNames;
+            table.names = PushArray(arena, String, table.count);
+            table.addrs = PushArray(arena, void*, table.count);
+            
+            for (i32 i = 0; i < table.count; i++)
+            {
+                table.names[i] = StrFromCStr(base + names[i]);
+                table.addrs[i] = base + functions[ordinals[i]];
+            }
+        }
+    }
+    
+    return table;
+}
+
 BeforeMain(BaseInitRuntime)
 {
     b32 success = 0;
     HANDLE process = GetCurrentProcess();
     HMODULE modules[1024];
     DWORD needed = 0;
+    
+#ifdef LOAD_IMAGE_EXPORTS
+    HMODULE hDll = 0;
+    ALWAYS(GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)&BaseInitRuntime, &hDll));
+    WCHAR dllPath[MAX_PATH];
+    GetModuleFileNameW(hDll, dllPath, MAX_PATH);
+    Arena* arena = ArenaMake();
+    W32SymbolTable dllExports = ImageGetExports(arena, hDll);
+    DEBUG(dllExports);
+#endif
     
     if (EnumProcessModules(process, modules, sizeof(modules), &needed))
     {
@@ -2763,6 +2833,15 @@ BeforeMain(BaseInitRuntime)
             TCHAR moduleName[1024];
             DEBUG(moduleName, GetModuleFileNameEx(process, modules[i], moduleName, ArrayCount(moduleName)));
             
+#ifdef LOAD_IMAGE_EXPORTS
+            Outf("\n%s\n", moduleName);
+            BYTE* base = (BYTE*)modules[i];
+            W32SymbolTable exports = ImageGetExports(arena, modules[i]);
+            
+            for (i32 nameIdx = 0; nameIdx < exports.count; nameIdx++)
+                Outf("%-16.*s %p\n", StrExpand(exports.names[nameIdx]), exports.addrs[nameIdx]);
+            
+#else
 #define X(name) PrcCast(name, GetProcAddress(modules[i], Stringify(name)));
             RUNTIME_FUNCS(X)
 #undef X
@@ -2771,6 +2850,7 @@ BeforeMain(BaseInitRuntime)
             RUNTIME_FUNCS(X)
 #undef X
 #undef RUNTIME_FUNCS
+#endif
             
             success = 1;
         }

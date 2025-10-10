@@ -71,7 +71,6 @@ struct CL_NodeList
 {
     CL_Node* first;
     CL_Node* last;
-    u64 count;
 };
 
 struct CL_Node
@@ -79,20 +78,24 @@ struct CL_Node
     CL_Node* next;
     CL_Node* prev;
     CL_Node* parent;
-    CL_Node* reference;
+    CL_Node* first;
+    CL_Node* last;
     
-    CL_NodeList tags;
-    CL_NodeList args;
-    CL_NodeList body;
+    CL_Node* ref;
+    CL_Node* firstTag;
+    CL_Node* lastTag;
+    CL_Node* firstArg;
+    CL_Node* lastArg;
     
     String string;
     CL_NodeFlags flags;
+    u64 value;
     u64 offset;
 };
 
 global readonly CL_Node cl_nilNode = {
-    &cl_nilNode, &cl_nilNode, &cl_nilNode, &cl_nilNode,
-    { &cl_nilNode, &cl_nilNode, 0 }, { &cl_nilNode, &cl_nilNode, 0 }, { &cl_nilNode, &cl_nilNode, 0 },
+    &cl_nilNode, &cl_nilNode, &cl_nilNode, &cl_nilNode, &cl_nilNode,
+    &cl_nilNode, &cl_nilNode, &cl_nilNode, &cl_nilNode, &cl_nilNode,
 };
 
 typedef struct CL_ParseResult CL_ParseResult;
@@ -100,6 +103,103 @@ struct CL_ParseResult
 {
     CL_Node* root;
     CL_NodeList errors;
+};
+
+//~ @REF(long): Data Desk Types
+
+typedef enum
+{
+    DataDeskNodeType_Invalid,
+    DataDeskNodeType_Identifier,
+    DataDeskNodeType_NumericConstant,
+    DataDeskNodeType_StringConstant,
+    DataDeskNodeType_CharConstant,
+    DataDeskNodeType_BinaryOperator,
+    DataDeskNodeType_StructDeclaration,
+    DataDeskNodeType_UnionDeclaration,
+    DataDeskNodeType_EnumDeclaration,
+    DataDeskNodeType_FlagsDeclaration,
+    DataDeskNodeType_Declaration,
+    DataDeskNodeType_TypeUsage,
+    DataDeskNodeType_Tag,
+    DataDeskNodeType_ConstantDefinition,
+    DataDeskNodeType_ProcedureHeader,
+} DataDeskNodeType;
+
+typedef struct DataDeskNode DataDeskNode;
+struct DataDeskNode
+{
+    //- NOTE(rjf): AST Relationship Data
+    DataDeskNode* next;
+    DataDeskNode* prev;
+    DataDeskNode* parent;
+    DataDeskNodeType type;
+    //DataDeskNodeSubType sub_type;
+    
+    //- NOTE(rjf): String
+    union
+    {
+        int string_length;
+        int name_length;
+    };
+    union
+    {
+        char* string;
+        char* name;
+    };
+    
+    //- NOTE(rjf): File/Line Source Information
+    char* file;
+    int line;
+    
+    //- NOTE(rjf): Tag List
+    union
+    {
+        DataDeskNode* tag_list_head;
+        DataDeskNode* tag_list;
+        DataDeskNode* first_tag;
+    };
+    
+    //- NOTE(rjf): Children and node-specific children aliases
+    union
+    {
+        struct
+        {
+            DataDeskNode* children_list_head;
+            DataDeskNode* children_list_tail;
+        };
+        
+        struct
+        {
+            DataDeskNode* left;
+            DataDeskNode* right;
+        };
+        
+        DataDeskNode* operand;
+        DataDeskNode* reference;
+        DataDeskNode* expression;
+    };
+    
+    //- NOTE(rjf): Node-specific data shortcuts
+    union
+    {
+        struct
+        {
+            DataDeskNode* return_type;
+            DataDeskNode* first_parameter;
+        } procedure_header;
+        
+        struct
+        {
+            DataDeskNode* type;
+            DataDeskNode* initialization;
+        } declaration;
+        
+        struct
+        {
+            DataDeskNode* first_tag_parameter;
+        } tag;
+    };
 };
 
 //~ long: Meta Info Types

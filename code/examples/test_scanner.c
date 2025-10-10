@@ -7,16 +7,16 @@
 #include "CLex.h"
 #include "CLex.c"
 
-internal MD_TokenizeResult MD_TokenizeFromText(Arena *arena, String text)
+internal MD_TokenizeResult MD_TokenizeFromText(Arena* arena, String text)
 {
     ScratchBegin(scratch, arena);
     MD_TokenChunkList tokens = {0};
-    u8 *byte_first = text.str;
-    u8 *byte_opl = byte_first + text.size;
-    u8 *byte = byte_first;
+    u8* byte_first = text.str;
+    u8* byte_opl = byte_first + text.size;
+    u8* byte = byte_first;
     
     //- rjf: scan string & produce tokens
-    for (; byte < byte_opl;)
+    while (byte < byte_opl)
     {
         MD_TokenFlags flags = 0;
         u64 start = byte - byte_first;
@@ -202,10 +202,7 @@ internal MD_TokenizeResult MD_TokenizeFromText(Arena *arena, String text)
     }
     
     //- rjf: bake, fill & return
-    MD_TokenizeResult result = {0};
-    {
-        result.tokens = md_token_array_from_chunk_list(arena, &tokens);
-    }
+    MD_TokenizeResult result = {.tokens = md_token_array_from_chunk_list(arena, &tokens)};
     ScratchEnd(scratch);
     return result;
 }
@@ -215,11 +212,9 @@ internal TokenFlags MD_ScanRawString(Scanner* scanner)
     TokenFlags result = 0;
     u64 pos = scanner->pos;
     
-    if (ScannerParse(scanner, StrLit("\"\"\"")) ||
-        ScannerParse(scanner, StrLit("'''")) ||
-        ScannerParse(scanner, StrLit("```")))
+    if (ScannerParse(scanner, StrLit("\"\"\"")) || ScannerParse(scanner, StrLit("'''")) || ScannerParse(scanner, StrLit("```")))
     {
-        result |= TokenFlag_String;
+        result |= TokenFlag_String|TokenFlag_MultiLine;
         String style = ScannerRange(scanner, pos, scanner->pos);
         if (!ScannerAdvancePast(scanner, style, 0))
             result |= TokenFlag_Unterminated;
@@ -232,7 +227,7 @@ internal TokenArray MD_TokenArrayFromStr(Arena* arena, String text)
 {
     ScratchBegin(scratch, arena);
     Scanner scanner = {
-        .hook = MD_ScanRawString,
+        .rawStrParser = MD_ScanRawString,
         .source = text,
         .flags = (CL_Scan_Whitespace|CL_Scan_Newline|CL_Scan_Comments|CL_Nest_Comments|
                   CL_Scan_SingleQuotes|CL_Scan_DoubleQuotes|CL_Scan_Ticks|
@@ -284,17 +279,15 @@ internal TokenArray MD_TokenArrayFromStr(Arena* arena, String text)
         if (token.flags & TokenFlag_String)
         {
             token.user |= MD_TokenFlag_StringLiteral;
-            u8 style = lexeme.str[0];
+            if (token.flags & TokenFlag_MultiLine)
+                token.user |= MD_TokenFlag_StringTriplet;
             
-            switch (style)
+            switch (lexeme.str[0])
             {
                 case '\'': token.user |= MD_TokenFlag_StringSingleQuote; break;
-                case '"':  token.user |= MD_TokenFlag_StringDoubleQuote; break;
-                case '`':  token.user |= MD_TokenFlag_StringTick; break;
+                case  '"': token.user |= MD_TokenFlag_StringDoubleQuote; break;
+                case  '`': token.user |= MD_TokenFlag_StringTick;        break;
             }
-            
-            if (size >= 3 && lexeme.str[1] == style && lexeme.str[2] == style)
-                token.user |= MD_TokenFlag_StringTriplet;
         }
         
         if (token.flags & TokenFlag_Symbol)
@@ -313,6 +306,240 @@ internal TokenArray MD_TokenArrayFromStr(Arena* arena, String text)
     }
     
     TokenArray result = TokenArrayFromChunkList(arena, &tokens);
+    ScratchEnd(scratch);
+    return result;
+}
+
+internal MD_ParseResult MD_ParseFromTokens(Arena* arena, String filename, String text, MD_TokenArray tokens)
+{
+    ScratchBegin(scratch, arena);
+    
+    //- rjf: set up outputs
+    MD_MsgList msgs = {0};
+    MD_Node* root = md_push_node(arena, MD_NodeKind_File, 0, filename, text, 0);
+    
+    //- rjf: set up parse rule stack
+    typedef enum MD_ParseWorkKind
+    {
+        MD_ParseWorkKind_Main,
+        MD_ParseWorkKind_MainImplicit,
+        MD_ParseWorkKind_NodeOptionalFollowUp,
+        MD_ParseWorkKind_NodeChildrenStyleScan,
+    } MD_ParseWorkKind;
+    
+    typedef struct MD_ParseWorkNode MD_ParseWorkNode;
+    struct MD_ParseWorkNode
+    {
+        MD_ParseWorkNode* next;
+        MD_ParseWorkKind kind;
+        MD_Node* parent;
+        MD_Node* first_gathered_tag;
+        MD_Node* last_gathered_tag;
+        MD_NodeFlags gathered_node_flags;
+        S32 counted_newlines;
+    };
+    
+    MD_ParseWorkNode  first_work = { 0, MD_ParseWorkKind_Main, root, };
+    MD_ParseWorkNode broken_work = { 0, MD_ParseWorkKind_Main, root, };
+    MD_ParseWorkNode* work_top = &first_work;
+    MD_ParseWorkNode* work_free = 0;
+    
+#define MD_ParsePush(work_kind, work_parent) Stmnt(MD_ParseWorkNode* work_node = work_free;                           \
+                                                   if (!work_node) work_node = PushStruct(scratch, MD_ParseWorkNode); \
+                                                   else SLLStackPop(work_free);                                       \
+                                                   work_node->kind = (work_kind);                                     \
+                                                   work_node->parent = (work_parent);                                 \
+                                                   SLLStackPush(work_top, work_node))
+    
+#define MD_ParsePop() Stmnt(SLLStackPop(work_top); if (!work_top) work_top = &broken_work)
+#define MD_ParseNext(work_kind) Stmnt(MD_Node* UNIQUE(parent) = work_top->parent; \
+                                      MD_ParsePop(); MD_ParsePush((work_kind), UNIQUE(parent)))
+#define MD_ParseRetry() Stmnt(MD_ParsePop(); inc = 0)
+    
+#define LexemeStr(range) Substr(text, (range).min, (range).max)
+#define MatchToken(str) StrCompare(lexeme, StrLit(str), 0)
+#define MD_PushErrorNode(msg_kind, msg, ...) \
+    Stmnt(MD_Node* error = md_push_node(arena, MD_NodeKind_ErrorMarker, 0, lexeme, lexeme, token->range.min); \
+          md_msg_list_pushf(arena, &msgs, error, msg_kind, msg, ##__VA_ARGS__))
+    
+    //- rjf: parse
+    for (MD_Token* token = tokens.v,* opl = token + tokens.count; token < opl;)
+    {
+        b32 inc = 1;
+        
+        //- rjf: unpack token
+        String lexeme = LexemeStr(token[0].range);
+        if (0) { }
+        
+        //- rjf: comments/whitespace -> always no-op & inc
+        else if (HasAnyFlags(token->flags, MD_TokenFlag_Whitespace|MD_TokenGroup_Comment));
+        
+        //- rjf: [node follow up] : following label -> work top parent has children. we need
+        // to scan for explicit delimiters, else parse an implicitly delimited set of children
+        else if (work_top->kind == MD_ParseWorkKind_NodeOptionalFollowUp && MatchToken(":"))
+            MD_ParseNext(MD_ParseWorkKind_NodeChildrenStyleScan);
+        
+        //- rjf: [node follow up] anything but : following label -> node has no children. just
+        // pop & move on
+        else if (work_top->kind == MD_ParseWorkKind_NodeOptionalFollowUp)
+            MD_ParseRetry();
+        
+        //- rjf: [main] separators -> mark & inc
+        else if (work_top->kind == MD_ParseWorkKind_Main && (MatchToken(",") || MatchToken(";")))
+        {
+            MD_Node* parent = work_top->parent;
+            if (!md_node_is_nil(parent->last))
+            {
+                parent->last->flags           |=     MD_NodeFlag_IsBeforeComma*!!MatchToken(",");
+                parent->last->flags           |= MD_NodeFlag_IsBeforeSemicolon*!!MatchToken(";");
+                work_top->gathered_node_flags |=      MD_NodeFlag_IsAfterComma*!!MatchToken(",");
+                work_top->gathered_node_flags |=  MD_NodeFlag_IsAfterSemicolon*!!MatchToken(";");
+            }
+        }
+        
+        //- rjf: [main_implicit] separators -> pop
+        else if (work_top->kind == MD_ParseWorkKind_MainImplicit && (MatchToken(",") || MatchToken(";")))
+            MD_ParseRetry();
+        
+        //- rjf: [main, main_implicit] unexpected reserved tokens
+        else if ((work_top->kind == MD_ParseWorkKind_Main || work_top->kind == MD_ParseWorkKind_MainImplicit) &&
+                 (MatchToken("#") || MatchToken("\\") || MatchToken(":")))
+            MD_PushErrorNode(MD_MsgKind_Error, "Unexpected reserved symbol \"%.*s\".", StrExpand(lexeme));
+        
+        //- rjf: [main, main_implicit] tag signifier -> create new tag
+        else if ((work_top->kind == MD_ParseWorkKind_Main || work_top->kind == MD_ParseWorkKind_MainImplicit) &&
+                 MatchToken("@"))
+        {
+            if (token+1 >= opl || !(token[1].flags & MD_TokenGroup_Label))
+                MD_PushErrorNode(MD_MsgKind_Error, "Tag label expected after @ symbol.");
+            
+            else
+            {
+                String tag_name_raw = LexemeStr(token[1].range);
+                String tag_name = md_content_string_from_token_flags_str8(token[1].flags, tag_name_raw);
+                MD_Node* node = md_push_node(arena, MD_NodeKind_Tag, md_node_flags_from_token_flags(token[1].flags),
+                                             tag_name, tag_name_raw, token[0].range.min);
+                DLLPushBack_NPZ(&md_nil_node, work_top->first_gathered_tag, work_top->last_gathered_tag, node, next, prev);
+                
+                if (token+2 < opl && token[2].flags & MD_TokenFlag_Reserved && StrCompare(LexemeStr(token[2].range), StrLit("("), 0))
+                {
+                    token++;
+                    MD_ParsePush(MD_ParseWorkKind_Main, node);
+                }
+                token++;
+            }
+        }
+        
+        //- rjf: [main, main_implicit] label -> create new main
+        else if ((work_top->kind == MD_ParseWorkKind_Main || work_top->kind == MD_ParseWorkKind_MainImplicit) &&
+                 token->flags & MD_TokenGroup_Label)
+        {
+            String node_string_raw = lexeme;
+            String node_string = md_content_string_from_token_flags_str8(token->flags, node_string_raw);
+            MD_NodeFlags flags = md_node_flags_from_token_flags(token->flags)|work_top->gathered_node_flags;
+            MD_Node* node = md_push_node(arena, MD_NodeKind_Main, flags, node_string, node_string_raw, token[0].range.min);
+            
+            work_top->gathered_node_flags = 0;
+            node->first_tag = work_top->first_gathered_tag;
+            node->last_tag = work_top->last_gathered_tag;
+            for (MD_Node* tag = work_top->first_gathered_tag; !md_node_is_nil(tag); tag = tag->next)
+                tag->parent = node;
+            work_top->first_gathered_tag = work_top->last_gathered_tag = &md_nil_node;
+            
+            md_node_push_child(work_top->parent, node);
+            MD_ParsePush(MD_ParseWorkKind_NodeOptionalFollowUp, node);
+        }
+        
+        //- rjf: [main] {s, [s, and (s -> create new main
+        else if (work_top->kind == MD_ParseWorkKind_Main && (MatchToken("{") || MatchToken("[") || MatchToken("(")))
+        {
+            MD_NodeFlags flags = md_node_flags_from_token_flags(token->flags)|work_top->gathered_node_flags;
+            flags |=   MD_NodeFlag_HasBraceLeft*!!MatchToken("{");
+            flags |= MD_NodeFlag_HasBracketLeft*!!MatchToken("[");
+            flags |=   MD_NodeFlag_HasParenLeft*!!MatchToken("(");
+            MD_Node* node = md_push_node(arena, MD_NodeKind_Main, flags, StrLit(""), StrLit(""), token[0].range.min);
+            
+            work_top->gathered_node_flags = 0;
+            node->first_tag = work_top->first_gathered_tag;
+            node->last_tag = work_top->last_gathered_tag;
+            for (MD_Node* tag = work_top->first_gathered_tag; !md_node_is_nil(tag); tag = tag->next)
+                tag->parent = node;
+            work_top->first_gathered_tag = work_top->last_gathered_tag = &md_nil_node;
+            
+            md_node_push_child(work_top->parent, node);
+            MD_ParsePush(MD_ParseWorkKind_Main, node);
+        }
+        
+        //- rjf: [node children style scan] {s, [s, and (s -> explicitly delimited children
+        else if (work_top->kind == MD_ParseWorkKind_NodeChildrenStyleScan && token->flags & MD_TokenFlag_Reserved &&
+                 (MatchToken("{") || MatchToken("[") || MatchToken("(")))
+        {
+            MD_Node* parent = work_top->parent;
+            parent->flags |=   MD_NodeFlag_HasBraceLeft*!!MatchToken("{");
+            parent->flags |= MD_NodeFlag_HasBracketLeft*!!MatchToken("[");
+            parent->flags |=   MD_NodeFlag_HasParenLeft*!!MatchToken("(");
+            MD_ParseNext(MD_ParseWorkKind_Main);
+        }
+        
+        //- rjf: [node children style scan] count newlines
+        else if (work_top->kind == MD_ParseWorkKind_NodeChildrenStyleScan && token->flags & MD_TokenFlag_Newline)
+            work_top->counted_newlines++;
+        
+        //- rjf: [main_implicit] newline -> pop
+        else if (work_top->kind == MD_ParseWorkKind_MainImplicit && token->flags & MD_TokenFlag_Newline)
+            MD_ParsePop();
+        
+        //- rjf: [all but main_implicit] newline -> no-op & inc
+        else if (work_top->kind != MD_ParseWorkKind_MainImplicit && token->flags & MD_TokenFlag_Newline);
+        
+        //- rjf: [node children style scan] anything causing implicit set -> <2 newlines, all good,
+        // >=2 newlines, houston we have a problem
+        else if (work_top->kind == MD_ParseWorkKind_NodeChildrenStyleScan)
+        {
+            if (work_top->counted_newlines >= 2)
+            {
+                MD_PushErrorNode(MD_MsgKind_Warning,
+                                 "More than two newlines following \"%.*s\", which has implicitly-delimited children, "
+                                 "resulting in an empty list of children.", StrExpand(work_top->parent->string));
+                MD_ParsePop();
+            }
+            
+            else MD_ParseNext(MD_ParseWorkKind_MainImplicit);
+            inc = 0;
+        }
+        
+        //- rjf: [main] }s, ]s, and )s -> pop
+        else if (work_top->kind == MD_ParseWorkKind_Main && token->flags & MD_TokenFlag_Reserved &&
+                 (MatchToken("}") || MatchToken("]") || MatchToken(")")))
+        {
+            MD_Node* parent = work_top->parent;
+            parent->flags |=   MD_NodeFlag_HasBraceRight*!!MatchToken("}");
+            parent->flags |= MD_NodeFlag_HasBracketRight*!!MatchToken("]");
+            parent->flags |=   MD_NodeFlag_HasParenRight*!!MatchToken(")");
+            MD_ParsePop();
+        }
+        
+        //- rjf: [main implicit] }s, ]s, and )s -> pop without advancing
+        else if (work_top->kind == MD_ParseWorkKind_MainImplicit && token->flags & MD_TokenFlag_Reserved &&
+                 (MatchToken("}") || MatchToken("]") || MatchToken(")")))
+            MD_ParseRetry();
+        
+        //- rjf: no consumption -> unexpected token! we don't know what to do with this.
+        else MD_PushErrorNode(MD_MsgKind_Error, "Unexpected \"%.*s\" token.", StrExpand(lexeme));
+        
+        if (inc)
+            token++;
+    }
+    
+#undef MD_ParsePush
+#undef MD_ParsePop
+#undef LexemeStr
+#undef MatchToken
+    
+    //- rjf: fill & return
+    MD_ParseResult result = {0};
+    result.root = root;
+    result.msgs = msgs;
     ScratchEnd(scratch);
     return result;
 }
@@ -370,7 +597,7 @@ internal TokenArray CL_TokenizeFromText(Arena* arena, String text)
         //- long: Multi-line Comments
         else if (Check2Bytes("/*"))
         {
-            TokenInit(TokenFlag_Comment, 2);
+            TokenInit(TokenFlag_Comment|TokenFlag_MultiLine, 2);
             b32 closed = 0;
             while (!(closed = Check2Bytes("*/")))
                 ++byte;
@@ -624,7 +851,7 @@ int main(void)
         }
         
         CL_ParseResult parse = CL_ParseFromTokens(scratch, data, array);
-        CL_Node* node = parse.root->body.first;
+        CL_Node* node = parse.root->first;
         u32 indent = 0;
         
 #define NodeExpand(node) StrExpand((node)->string.size ? (node)->string : StrLit("<unnamed>"))
@@ -633,22 +860,22 @@ int main(void)
         Outf("%*s%.*s", indent * 2, "", NodeExpand(node));
         if (node->flags & CL_NodeFlag_Symbol)
         {
-            if (node->offset < node->body.first->offset)
-                Assert(node->body.first == node->body.last);
+            if (node->offset < node->first->offset)
+                Assert(node->first == node->last);
             if (!StrCompare(node->string, StrLit("("), 0))
-                Assert(!CL_IsNil(node->body.first));
+                Assert(!CL_IsNil(node->first));
             
             CL_ExprOpKind op = CL_ExprOpFromNode(node);
             Outf(" (%s)", GetEnumCStr(CL_ExprOpKind, op));
         }
         
-        for (CL_Node* base = node->reference; !CL_IsNil(base); base = base->reference)
+        for (CL_Node* base = node->ref; !CL_IsNil(base); base = base->ref)
         {
-            if (base == node->reference)
+            if (base == node->ref)
                 Outf(": ");
             Outf("%.*s", NodeExpand(base));
             
-            for (CL_Node* tag = base->tags.first; !CL_IsNil(tag); tag = tag->next)
+            for (CL_Node* tag = base->firstTag; !CL_IsNil(tag); tag = tag->next)
             {
                 if (CL_IsNil(tag->prev))
                     Outf(" (");
@@ -656,23 +883,23 @@ int main(void)
                 Outf(CL_IsNil(tag->next) ? ")" : ", ");
             }
             
-            if (!CL_IsNil(base->reference))
+            if (!CL_IsNil(base->ref))
                 Outf(" -> ");
         }
         Outf("\n");
         
         CL_Node* old = node;
-        if (!CL_IsNil(node->args.first))
+        if (!CL_IsNil(node->firstArg))
         {
             indent++;
             Outf("%*s<args>:\n", indent * 2, "");
-            node = node->args.first;
+            node = node->firstArg;
             indent++;
         }
         
-        else if (!CL_IsNil(node->body.first))
+        else if (!CL_IsNil(node->first))
         {
-            node = node->body.first;
+            node = node->first;
             indent++;
         }
         
@@ -682,12 +909,12 @@ int main(void)
         else for (CL_Node* parent = node->parent,* child = node; !CL_IsNil(parent); parent = parent->parent, child = child->parent)
         {
             indent--;
-            b32 isArg = child->parent->args.last == child;
+            b32 isArg = child->parent->lastArg == child;
             if (isArg)
             {
-                if (!CL_IsNil(parent->body.first))
+                if (!CL_IsNil(parent->first))
                 {
-                    node = parent->body.first;
+                    node = parent->first;
                     break;
                 }
                 indent--;

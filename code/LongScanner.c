@@ -235,9 +235,6 @@ function Token ScannerNext(Scanner* scanner)
             isPreproc = 0;
         }
         
-        //- long: Hook
-        else if (scanner->hook && (flags = scanner->hook(scanner)));
-        
         //- long: Single-line Comments
         else if (ScannerParse(scanner, scanner->commentDelim))
         {
@@ -249,7 +246,7 @@ function Token ScannerNext(Scanner* scanner)
         //- long: Multi-line Comments
         else if (ScannerParse(scanner, scanner->commentMulti))
         {
-            flags |= TokenFlag_Comment;
+            flags |= TokenFlag_Comment|TokenFlag_MultiLine;
             if (scanner->flags & CL_Nest_Comments)
             {
                 i64 nest = 1;
@@ -288,6 +285,9 @@ function Token ScannerNext(Scanner* scanner)
                 ScannerParseLine(scanner, scanner->flags & CL_Line_Cont_Preprocs ? scanner->lineContinuation : 0);
             }
         }
+        
+        //- long: Raw String
+        else if (scanner->rawStrParser && (flags = scanner->rawStrParser(scanner)));
         
         //- long: String Literals
         else if (ScannerParseStrDelim(scanner))
