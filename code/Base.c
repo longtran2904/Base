@@ -3165,7 +3165,7 @@ internal String W32ReadFile(Arena* arena, HANDLE file, r1u64 rng)
     r1u64 clampedRng;
     {
         u64 maxSize = 0;
-        GetFileSizeEx(file, (PLARGE_INTEGER)&maxSize); // TODO(long): Endianness
+        GetFileSizeEx(file, (PLARGE_INTEGER)&maxSize); // @ENDIANNESS
         clampedRng = R1U64(ClampTop(rng.min, maxSize), ClampTop(rng.max, maxSize));
         if (rng.min == 0 && rng.max == 0)
             clampedRng.max = maxSize;
@@ -3425,7 +3425,7 @@ function u64 OS_FileRead(OS_Handle file, r1u64 rng, void* buffer)
         r1u64 clampedRng;
         {
             u64 maxSize = 0;
-            GetFileSizeEx(handle, (PLARGE_INTEGER)&maxSize); // TODO(long): Endianness
+            GetFileSizeEx(handle, (PLARGE_INTEGER)&maxSize); // @ENDIANNESS
             
             clampedRng = R1U64(ClampTop(rng.min, maxSize), ClampTop(rng.max, maxSize));
             if (rng.min == 0 && rng.max == 0)
@@ -3519,7 +3519,7 @@ function b32 OS_FileReadAsync(OS_Handle file, r1u64 rng, void* buffer, void* use
         r1u64 clampedRng;
         {
             u64 maxSize = 0;
-            GetFileSizeEx(handle, (PLARGE_INTEGER)&maxSize); // TODO(long): Endianness
+            GetFileSizeEx(handle, (PLARGE_INTEGER)&maxSize); // @ENDIANNESS
             
             clampedRng = R1U64(ClampTop(rng.min, maxSize), ClampTop(rng.max, maxSize));
             if (rng.min == 0 && rng.max == 0)

@@ -105,11 +105,11 @@ del *.lib > NUL 2> NUL
 
 %compile% %opts% %warns% %code%\code\examples\demo.c         %out%demo.exe         %linker% %links%
 %compile% %opts% %warns% %code%\code\examples\test_base.c    %out%test_base.exe    %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\TestDLL.c      %out%test.dll   %dll% %linker% %links%
+:: %compile% %opts% %warns% %code%\code\examples\TestDLL.c      %out%test.dll   %dll% %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\demo_gfx.c     %out%demo_gfx.exe     %linker% %links%
 
 :: %compile% %opts% %warns% %code%\code\examples\lloc.c          %out%lloc.exe       %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\glob.c          %out%glob.exe       %linker% %links%
+%compile% %opts% %warns% %code%\code\examples\glob.c          %out%glob.exe       %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\test_glob.c     %out%test_glob.exe  %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\bench_mem.c     %out%bench_mem.exe  %linker% %links%
 :: %compile% %opts% %warns% %code%\code\examples\print_args.c    %out%args.exe       %linker% %links%

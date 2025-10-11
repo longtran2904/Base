@@ -567,7 +567,7 @@ int main(i32 argc, char** argv)
                     
                     b32 match = 0;
                     TIME_BLOCK(duration, globFileMs += duration)
-                        glob(userPattern, file, 0);
+                        match = glob(userPattern, file, 0);
                     
                     if (match)
                     {
@@ -577,6 +577,8 @@ int main(i32 argc, char** argv)
                 }
             }
             
+            if (matchCount)
+                Outf("\n");
             Outf("Found %llu match(es) in %llu ", matchCount, paths.nodeCount);
             if (globFile)
                 Outf("files (%.2f MiB)\n", DivF64(totalSize, MiB(1)));

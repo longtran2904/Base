@@ -1551,7 +1551,7 @@ function String StrListPopFront(StringList* list);
 
 function String StrPushfv(Arena* arena, char* fmt, va_list args);
 function String StrPushf (Arena* arena, CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(2);
-#define StrListPushf(arena, list, fmt, ...) StrListPush((arena), (list), StrPushf((arena), (fmt), __VA_ARGS__))
+#define StrListPushf(arena, list, fmt, ...) StrListPush((arena), (list), StrPushf((arena), (fmt), ##__VA_ARGS__))
 
 function String StrPad(Arena* arena, String str, char chr, u32 count, i32 dir);
 #define StrPadL(arena, str, chr, count) StrPad((arena), (str), (chr), (count), -1)
