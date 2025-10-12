@@ -3397,6 +3397,7 @@ function OS_Handle OS_FileOpen(String path, OS_AccessFlags flags, OS_Handle queu
     if (flags & AccessFlag_Write)   { access |= GENERIC_WRITE;share |= FILE_SHARE_WRITE|FILE_SHARE_DELETE;creation = CREATE_ALWAYS; }
     if (flags & AccessFlag_Append)  { access |= FILE_APPEND_DATA; creation = OPEN_ALWAYS; }
     if (flags & AccessFlag_Execute) { access |= GENERIC_EXECUTE; }
+    if (flags & AccessFlag_NoCache) { attributes |= FILE_FLAG_NO_BUFFERING; }
     if (is_async)                   { attributes |= FILE_FLAG_OVERLAPPED; }
     
     HANDLE file = 0;
@@ -3505,7 +3506,8 @@ function u64 OS_FileWaitAsync(OS_Handle queue, void** outUser, u64 timeoutMs)
     
     if (outUser)
         *outUser = entry->data;
-    SLLAtomicPush(freeEntry, entry);
+    if (entry)
+        SLLAtomicPush(freeEntry, entry);
     return (u64)result;
 }
 
@@ -3524,6 +3526,9 @@ function b32 OS_FileReadAsync(OS_Handle file, r1u64 rng, void* buffer, void* use
             clampedRng = R1U64(ClampTop(rng.min, maxSize), ClampTop(rng.max, maxSize));
             if (rng.min == 0 && rng.max == 0)
                 clampedRng.max = maxSize;
+            
+            clampedRng.min = AlignUpPow2(clampedRng.min, 4096);
+            clampedRng.max = AlignUpPow2(clampedRng.max, 4096);
         }
         
         u64 size = DimR1U64(clampedRng);

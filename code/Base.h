@@ -1882,10 +1882,11 @@ function b32   OSWriteList(String path, StringList* data);
 typedef Flags32 OS_AccessFlags;
 enum
 {
-    AccessFlag_Read    = (1<<0),
-    AccessFlag_Write   = (1<<1),
-    AccessFlag_Append  = (1<<2),
-    AccessFlag_Execute = (1<<3),
+    AccessFlag_Read    = 1<<0,
+    AccessFlag_Write   = 1<<1,
+    AccessFlag_Append  = 1<<2,
+    AccessFlag_Execute = 1<<3,
+    AccessFlag_NoCache = 1<<4,
 };
 
 // TODO(long): Replace OSxxxFile

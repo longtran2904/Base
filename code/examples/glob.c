@@ -242,13 +242,15 @@ function u64 GlobFile(String text, String file)
 
 // NOTE(long): Async reads are ~1.5x faster on my HDD drive, while ~3-5x faster on my SSD drive (~3GB tests)
 
-typedef struct FileEntry FileEntry;
-struct FileEntry
-{
-    String path;
-    String data;
-    OS_Handle file;
-};
+global OS_Handle iocp;
+global u64 desiredSize = MiB(512);
+
+global u64 pushFileMs;
+global u64 fileCount;
+global u64 totalSize;
+global u64 memoryUsage;
+
+#include <stdlib.h>
 
 typedef struct ThreadResult ThreadResult;
 struct ThreadResult
@@ -258,7 +260,17 @@ struct ThreadResult
     u64 matchCount;
 };
 
-global OS_Handle iocp;
+#define CHUNK_SIZE KiB(64)
+#define MAX_REQUESTS 32
+
+#if !CHUNK_SIZE
+typedef struct FileEntry FileEntry;
+struct FileEntry
+{
+    String path;
+    String data;
+    OS_Handle file;
+};
 
 // TODO(long): https://youtu.be/xbvaeBCbDDA?t=498
 // workSize is only used for 2 things:
@@ -267,13 +279,6 @@ global OS_Handle iocp;
 // The first one can be replaced with a single bool where one thread read and the other thread write
 // The second one can be replaced with each thread having a separate int
 global volatile u64 workSize;
-
-global u64 pushFileMs;
-global u64 fileCount;
-global u64 totalSize;
-global u64 memoryUsage;
-
-#include <stdlib.h>
 
 function void ThreadProc(void* arg)
 {
@@ -295,36 +300,294 @@ function void ThreadProc(void* arg)
                 info->matchCount += GlobFile(entry->data, entry->path);
             
             OS_FileClose(entry->file);
-            free(entry->data.str);
+            _aligned_free(entry->data.str);
             AtomicSub64(&workSize, entry->data.size);
         }
     }
 }
 
-function u64 ReadFileAsync(Arena* arena, String path)
+function u64 ReadFilesAsync(Arena* arena, StringList* paths)
 {
-    b32 success = 0;
-    OS_Handle file = OS_FileOpen(path, AccessFlag_Read, iocp);
-    u64 size = OS_FileProp(file).size;
-    
-    if (size)
+    u64 maxSize = 0;
+    StrListIter(paths, pathNode)
     {
-        FileEntry* entry = PushStruct(arena, FileEntry);
-        entry->path = path;
-        entry->file = file;
-        entry->data.size = size;
+        String path = pathNode->string;
         
-        void* buffer = entry->data.str = malloc(size);
-        if (!buffer)
-            Errf("ERROR: \"%.*s\" is too big (%.2f MiB)\n", StrExpand(path), DivF64(size, MiB(1)));
-        else if (!OS_FileReadAsync(file, R1U64Size(0, size), buffer, entry))
-            Errf("ERROR: \"%.*s\"\n", StrExpand(path));
-        else
-            success = 1;
+        TIME_BLOCK(duration, pushFileMs += duration)
+        {
+            OS_Handle file = OS_FileOpen(path, AccessFlag_Read|AccessFlag_NoCache, iocp);
+            u64 size = OS_FileProp(file).size;
+            
+            if (size)
+            {
+                FileEntry* entry = PushStruct(arena, FileEntry);
+                entry->path = path;
+                entry->file = file;
+                entry->data.size = size;
+                
+                void* buffer = entry->data.str = _aligned_malloc(AlignUpPow2(size, 4096), 4096);
+                if (!buffer)
+                    Errf("ERROR: \"%.*s\" is too big (%.2f MiB)\n", StrExpand(path), DivF64(size, MiB(1)));
+                else if (!OS_FileReadAsync(file, (r1u64){0}, buffer, entry))
+                    Errf("ERROR: \"%.*s\"\n", StrExpand(path));
+                
+                else
+                {
+                    fileCount++;
+                    totalSize += size;
+                    
+                    size = AtomicAdd64(&workSize, size);
+                    maxSize = Max(maxSize, size);
+                }
+            }
+        }
+        
+        while (workSize >= desiredSize)
+            _mm_pause();
     }
     
-    return success * size;
+    while (workSize)
+        /*_mm_pause()*/;
+    return maxSize;
 }
+
+#elif 1
+typedef struct FileEntry FileEntry;
+struct FileEntry
+{
+    String path;
+    u8* data;
+    u64 size;
+    u64 offset;
+    String leftover;
+    OS_Handle file;
+};
+
+global volatile u64 requestCount;
+
+function void ThreadProc(void* arg)
+{
+    volatile ThreadResult* info = arg;
+    Arena* arena = ArenaMake();
+    
+    while (1)
+    {
+        FileEntry* entry = 0;
+        TIME_BLOCK(duration, info->waitMs += duration)
+        {
+            u64 bytesRead = OS_FileWaitAsync(iocp, &entry, INFINITE);
+            if (bytesRead == 0)
+                Errf("ERROR: Failed to wait for file\n");
+        }
+        
+        if (ALWAYS(entry))
+        {
+            b32 successNext = 0;
+            
+            TIME_BLOCK(duration, info->workMs += duration)
+            {
+                ScratchBlock(scratch)
+                {
+                    u64 size = Min(entry->size - entry->offset, CHUNK_SIZE);
+                    u64 nextOffset = entry->offset + size;
+                    
+                    String data = Str(entry->data, size);
+                    data = StrJoin3(scratch, entry->leftover, data);
+                    entry->leftover = (String){0};
+                    
+                    if (nextOffset < entry->size)
+                    {
+                        i64 lastLine = StrFindArr(data, StrLit("\r\n"), MatchStr_LastMatch);
+                        if (lastLine != data.size - 1)
+                        {
+                            entry->leftover = StrCopy(arena, StrSkip(data, lastLine + 1));
+                            data = StrPrefix(data, lastLine);
+                        }
+                        
+                        successNext = OS_FileReadAsync(entry->file, R1U64Size(nextOffset, CHUNK_SIZE), entry->data, entry);
+                        if (successNext)
+                            entry->offset = nextOffset;
+                        else
+                            Errf("ERROR: \"%.*s\" (Size: %llu, Range: (%llu, %llu))\n", StrExpand(entry->path),
+                                 entry->size, entry->offset, nextOffset);
+                    }
+                    
+                    if (data.size)
+                        info->matchCount += GlobFile(data, entry->path);
+                }
+            }
+            
+            if (!successNext)
+            {
+                OS_FileClose(entry->file);
+                _aligned_free(entry->data);
+                AtomicDec64(&requestCount);
+            }
+        }
+    }
+}
+
+function u64 ReadFilesAsync(Arena* arena, StringList* paths)
+{
+    u64 maxSize = 0;
+    u64 stallMs = 0;
+    
+    StrListIter(paths, pathNode)
+    {
+        String path = pathNode->string;
+        
+        TIME_BLOCK(duration, pushFileMs += duration)
+        {
+            OS_Handle file = OS_FileOpen(path, AccessFlag_Read|AccessFlag_NoCache, iocp);
+            u64 size = OS_FileProp(file).size;
+            
+            FileEntry* entry = PushStruct(arena, FileEntry);
+            entry->path = path;
+            entry->file = file;
+            entry->size = size;
+            entry->offset = 0;
+            entry->data = _aligned_malloc(CHUNK_SIZE, 4096);
+            
+            if (!OS_FileReadAsync(file, R1U64(0, CHUNK_SIZE), entry->data, entry))
+                Errf("ERROR: \"%.*s\"\n", StrExpand(path));
+            
+            else
+            {
+                fileCount++;
+                totalSize += size;
+                maxSize = Max(size, maxSize);
+                AtomicInc64(&requestCount);
+            }
+        }
+        
+        TIME_BLOCK(duration, stallMs += duration)
+            while (requestCount >= MAX_REQUESTS)
+                _mm_pause();
+    }
+    
+    Outf("Total Stall: %llu ms\n", stallMs);
+    while (requestCount);
+    return maxSize;
+}
+
+#else
+typedef struct FileState FileState;
+struct FileState
+{
+    Arena* arena;
+    String path;
+    StringList lines;
+    OS_Handle file;
+    u64 size;
+    volatile u64 readCount;
+};
+
+typedef struct FileEntry FileEntry;
+struct FileEntry
+{
+    FileState* state;
+    String data;
+    u64 offset;
+};
+
+global volatile u64 requestCount;
+
+function void ThreadProc(void* arg)
+{
+    volatile ThreadResult* info = arg;
+    Arena* arena = ArenaMake();
+    
+    while (1)
+    {
+        FileEntry* entry = 0;
+        TIME_BLOCK(duration, info->waitMs += duration)
+        {
+            u64 bytesRead = OS_FileWaitAsync(iocp, &entry, INFINITE);
+            if (bytesRead == 0)
+                Errf("ERROR: Failed to wait for file\n");
+        }
+        
+        if (ALWAYS(entry))
+        {
+            FileState* state = entry->state;
+            String data = entry->data;
+            
+            TIME_BLOCK(duration, info->workMs += duration)
+            {
+                if (entry->offset + CHUNK_SIZE < state->size)
+                {
+                    i64 lastLine = StrFindArr(data, StrLit("\r\n"), MatchStr_LastMatch);
+                    if (lastLine != data.size - 1)
+                    {
+                        String leftover = StrCopy(state->arena, StrSkip(data, lastLine + 1));
+                        StrListPush(state->arena, &state->lines, leftover);
+                        data = StrPrefix(data, lastLine);
+                    }
+                }
+                
+                if (data.size)
+                    info->matchCount += GlobFile(data, state->path);
+            }
+            
+            _aligned_free(data.str);
+            if (AtomicDec64(&state->readCount) == 0)
+                OS_FileClose(state->file);
+            AtomicDec64(&requestCount);
+        }
+    }
+}
+
+function u64 ReadFilesAsync(Arena* arena, StringList* paths)
+{
+    u64 maxSize = 0;
+    u64 stallMs = 0;
+    
+    StrListIter(paths, pathNode)
+    {
+        TIME_BLOCK(duration, pushFileMs += duration)
+        {
+            String path = pathNode->string;
+            OS_Handle file = OS_FileOpen(path, AccessFlag_Read|AccessFlag_NoCache, iocp);
+            u64 size = OS_FileProp(file).size;
+            
+            FileState* state = PushStruct(arena, FileState);
+            state->arena = ArenaMake();
+            state->path = path;
+            state->file = file;
+            state->size = size;
+            state->readCount = (u64)Ceil_f32((f32)size / CHUNK_SIZE);
+            
+            FileEntry* entry = PushStruct(arena, FileEntry);
+            for (u64 offset = 0; offset < size; offset += CHUNK_SIZE)
+            {
+                entry->state = state;
+                entry->data.str = _aligned_malloc(CHUNK_SIZE, 4096);
+                entry->data.size = Min(size - entry->offset, CHUNK_SIZE);
+                entry->offset = offset;
+                
+                r1u64 range = R1U64Size(entry->offset, AlignUpPow2(entry->data.size, 4096));
+                if (OS_FileReadAsync(file, range, entry->data.str, entry))
+                {
+                    fileCount++;
+                    totalSize += size;
+                    maxSize = Max(size, maxSize);
+                    AtomicInc64(&requestCount);
+                    
+                    TIME_BLOCK(stallDuration, stallMs += stallDuration)
+                        while (requestCount >= MAX_REQUESTS)
+                            _mm_pause();
+                }
+                
+                else Errf("ERROR: \"%.*s\"\n", StrExpand(path));
+            }
+        }
+    }
+    
+    Outf("Total Stall: %llu ms\n", stallMs);
+    while (requestCount);
+    return maxSize;
+}
+#endif
 
 int main(i32 argc, char** argv)
 {
@@ -375,14 +638,13 @@ int main(i32 argc, char** argv)
     
     ScratchBegin(scratch);
     
-#define THREAD_COUNT 2
+#define THREAD_COUNT 1
     iocp = OS_PushFileQueue();
     ThreadResult results[THREAD_COUNT] = {0};
     for (u64 i = 0; i < THREAD_COUNT; ++i)
         OS_ThreadLaunch(ThreadProc, results + i);
     
     u64 ms = OSNowMS();
-    u64 desiredSize = MiB(512);
     
     StringList paths = {0};
     StringList errors = {0};
@@ -524,29 +786,8 @@ int main(i32 argc, char** argv)
                     if (flags & Glob_CLI_Debug)
                         Outf("Outstanding Buffer: %.2f MiB, Threads: %d\n", DivF64(desiredSize, MiB(1)), THREAD_COUNT);
                     
-                    u64 maxSize = 0;
-                    StrListIter(&paths, path)
-                    {
-                        u64 size = 0;
-                        TIME_BLOCK(duration, pushFileMs += duration)
-                            size = ReadFileAsync(scratch, path->string);
-                        
-                        if (size)
-                        {
-                            fileCount++;
-                            totalSize += size;
-                            
-                            size = AtomicAdd64(&workSize, size);
-                            if (size > maxSize)
-                                maxSize = size;
-                            
-                            while (workSize >= desiredSize)
-                                _mm_pause();
-                        }
-                    }
-                    
+                    u64 maxSize = ReadFilesAsync(scratch, &paths);
                     memoryUsage += maxSize;
-                    while (workSize);
                     
                     for (u64 i = 0; i < THREAD_COUNT; ++i)
                     {
