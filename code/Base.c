@@ -3550,7 +3550,7 @@ function b32 OS_FileReadAsync(OS_Handle file, r1u64 rng, void* buffer, void* use
                 
                 // NOTE(long): ReadFile will always zero out actualRead
                 DWORD readAmount = (u32)ClampTop(size - bytesRead, MAX_U32);
-                if (ReadFile(handle, PtrAdd(buffer, bytesRead), readAmount, &actualRead, &entry->overlapped))
+                if (NEVER(ReadFile(handle, PtrAdd(buffer, bytesRead), readAmount, &actualRead, &entry->overlapped)))
                     result = bytesRead == size; // The file is already cached in memory
                 else if (ALWAYS(GetLastError() == ERROR_IO_PENDING))
                     bytesRead += readAmount; // TODO(long): Test this on 4GB+ files
