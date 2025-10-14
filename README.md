@@ -13,6 +13,8 @@
 | **CLex**           | `CLex.h`, `CLex.c` | An experimental non-recursive C parser that parses types (without a type table) and expressions (with proper precedence). |
 | **Metagen**        | `Metagen.c`, `Metagen.h`, `Metamain.c`| A metaprogramming system that consumes [Metadesk](https://vimeo.com/650161731) files to generate code and data tables.<br>Inspired by [Ryan Fleury](https://www.rfleury.com/p/table-driven-code-generation). |
 
+*It still depends on `<string.h>` for `memset`, `memcpy`, and `memcmp`, and on `<math.h>` for `sin`, `cos`, `tan`, and `atan`.
+
 ## Examples
 Here are a few example programs built using the libraries above—some turned out more useful than I thought:
 
