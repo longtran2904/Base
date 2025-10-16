@@ -672,6 +672,9 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
             u64 newSize = AlignUpPow2(size + minSize, current->alignment);
             u64 newReserveSize = Max(current->cap, newSize);
             
+            // NOTE(long): The new size must be page-aligned (see ArenaPopTo for more info)
+            newReserveSize = AlignUpPow2(newReserveSize, ARCH_PAGE_SIZE);
+            
             void* memory = OSReserve(newReserveSize);
             if (OSCommit(memory, MEM_INITIAL_COMMIT))
             {
@@ -740,6 +743,7 @@ function void ArenaPopTo(Arena* arena, u64 pos)
     Arena* current = arena->curr;
     u64 currPos = current->basePos + current->pos;
     Assert(pos <= currPos);
+    
     if (pos < currPos)
     {
         u64 clampedPos = ClampBot(pos, sizeof(Arena));
@@ -753,8 +757,11 @@ function void ArenaPopTo(Arena* arena, u64 pos)
             AsanPoison(current, cap); // @RECONSIDER(long): Do I need to poison the decommitted memory?
             current = prev;
         }
-        
         arena->curr = current;
+        
+        // NOTE(long): nextCommitPos must be page-aligned here
+        // This is guaranteed only if basePos is also page-aligned
+        // Therefore, ArenaPush must always align the size of any newly grown chunk to the page size
         nextCommitPos -= current->basePos;
         
         if (nextCommitPos < current->commitPos)
@@ -765,16 +772,16 @@ function void ArenaPopTo(Arena* arena, u64 pos)
             current->commitPos = nextCommitPos;
             current->pos = ClampTop(current->pos, current->commitPos);
         }
+        
+        // NOTE(long): Technically speaking, this can happen when:
+        // 1. the user pushes a new chunk that surpasses the current cap
+        // When this happens, a new arena will be allocated to contain the allocation, leaving the old arena untouched
+        // This means the old arena could contain an uncommitted region from the commitPos to cap
+        // Later, the user can pop into that padded region, and because the region is never allocated, it is poisonous
+        // I can handle that case by actually allocating that region, but if this happens there's a bug somewhere
+        // Unless I have an actual use case here, I'm asserting this for now
         else if (NEVER(nextCommitPos > current->commitPos))
         {
-            // NOTE(long): Technically speaking, this can happen when:
-            // 1. the user pushes a new chunk that surpasses the current cap
-            // When this happens, a new arena will be allocated to contain the allocation, leaving the old arena untouched
-            // This means the old arena could contain an uncommitted region from the commitPos to cap
-            // Later, the user can pop into that padded region, and because the region is never allocated, it is poisonous
-            // I can handle that case by actually allocating that region, but if this happens there's a bug somewhere
-            // Unless I have an actual use case here, I'm asserting this for now
-            
             // 2. MEM_COMMIT_BLOCK_SIZE <= MEM_INITIAL_COMMIT
             // I never find a good use case for this, so I statically check for it here
             StaticAssert(MEM_COMMIT_BLOCK_SIZE <= MEM_INITIAL_COMMIT, checkMemDefault);
@@ -794,7 +801,7 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         AsanUnpoison(ptr, current->pos - newPos); // unpoison padding causes by alignment
 # else
         u64 alignedPos = AlignUpPow2(newPos, MEM_POISON_ALIGNMENT);
-        if (current->commitPos != alignedPos)
+        if (current->commitPos > alignedPos)
         {
             u8* commitPtr = PtrAdd(current, alignedPos);
             OSDecommit(commitPtr, current->commitPos - alignedPos);
@@ -2699,7 +2706,8 @@ function void OSDecommit(void* ptr, u64 size)
 {
     if (!VirtualFree(ptr, size, MEM_DECOMMIT))
     {
-        DEBUG(error, DWORD error = GetLastError());
+        DWORD error = GetLastError();
+        DEBUG(error);
         PANIC("Failed to decommit memory");
     }
 }

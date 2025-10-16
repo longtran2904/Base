@@ -214,22 +214,22 @@ enum
 
 global String userPattern;
 
-function u64 GlobFile(String text, String file, u64* lineCount)
+function u64 GlobFile(String text, String file, u64* lineNumber)
 {
     u64 matchCount = 0;
     Assert(text.size);
     if (text.str[text.size - 1] == '\r')
         text.size--;
     
-    u64 row = *lineCount + 1;
+    u64 row = *lineNumber;
     for (i64 index; text.size; text = StrSkip(text, index + 1), ++row)
     {
         index = StrFindChr(text, "\n");
         
-        if (index < 0)
-            break;
         if (index > 0 && text.str[index-1] == '\r')
             index--;
+        if (index < 0)
+            index = text.size;
         
         if (index > 0)
         {
@@ -242,7 +242,7 @@ function u64 GlobFile(String text, String file, u64* lineCount)
         }
     }
     
-    *lineCount = row;
+    *lineNumber = row;
     return matchCount;
 }
 
@@ -257,29 +257,35 @@ global u64 chunkSize = KiB(64);
 
 #include <stdlib.h>
 
-typedef struct ThreadResult ThreadResult;
-struct ThreadResult
+typedef struct MatchLine MatchLine;
+struct MatchLine
 {
-    u64 waitMs;
-    u64 workMs;
-    u64 matchCount;
+    MatchLine* next;
+    u64 line;
+    String text;
 };
 
-typedef struct LineBound LineBound;
-struct LineBound
+typedef struct FileBlock FileBlock;
+struct FileBlock
 {
-    LineBound* next;
     u64 offset;
+    u64 lineCount;
+    
     String prefix;
     String suffix;
+    String data;
+    
+    MatchLine* firstMatch;
+    MatchLine*  lastMatch;
+    u64 matchCount;
 };
 
 typedef struct FileState FileState;
 struct FileState
 {
     Arena* arena;
+    FileBlock* blocks;
     String path;
-    LineBound* bounds;
     OS_Handle file;
     u64 size;
     volatile u64 readCount;
@@ -294,21 +300,65 @@ struct FileEntry
     u64 offset;
 };
 
-function LineBound* LookupBound(FileState* state, u64 offset, b32* found)
+typedef struct ThreadResult ThreadResult;
+struct ThreadResult
 {
-    for (LineBound* bound = state->bounds; bound; bound = bound->next)
+    u64 waitMs;
+    u64 workMs;
+    u64 matchCount;
+};
+
+function void PushMatch(Arena* arena, FileBlock* block, String line)
+{
+    MatchLine* match = PushStruct(arena, MatchLine);
+    match->line = block->lineCount + 1;
+    match->text = StrCopy(arena, line);
+    
+    SLLQueuePush(block->firstMatch, block->lastMatch, match);
+    block->matchCount++;
+}
+
+function void GlobBlock(FileBlock* block, FileState* state)
+{
+    String text = block->data;
+    
+    if (block->offset > 0)
     {
-        if (bound->offset == offset)
+        i64 firstLine = StrFindChr(text, "\n");
+        if (firstLine > 0)
         {
-            *found = 1;
-            return bound;
+            block->prefix = StrCopy(state->arena, StrPrefix(text, firstLine));
+            text = StrSkip(text, firstLine + 1);
         }
     }
     
-    LineBound* node = PushStruct(state->arena, LineBound);
-    node->offset = offset;
-    SLLStackPush(state->bounds, node);
-    return node;
+    u64 nextOffset = block->offset + chunkSize;
+    if (nextOffset < state->size)
+    {
+        i64 lastLine = StrFindArr(text, StrLit("\n"), MatchStr_LastMatch);
+        if (lastLine != text.size - 1)
+        {
+            block->suffix = StrCopy(state->arena, StrSkip(text, lastLine + 1));
+            text = StrPrefix(text, lastLine);
+        }
+    }
+    
+    for (i64 index; text.size; text = StrSkip(text, index + 1), ++block->lineCount)
+    {
+        index = StrFindChr(text, "\n");
+        if (index < 0)
+            index = text.size;
+        
+        if (index > 0 && text.str[index-1] == '\r')
+            index--;
+        
+        if (index > 0)
+        {
+            String line = StrPrefix(text, index);
+            if (glob(userPattern, line, 0))
+                PushMatch(state->arena, block, line);
+        }
+    }
 }
 
 function void ThreadProc(void* arg)
@@ -330,70 +380,41 @@ function void ThreadProc(void* arg)
             FileState* state = entry->state;
             TIME_BLOCK(duration, info->workMs += duration)
             {
-                String data = entry->data;
-                
-                if (entry->offset > 0)
-                {
-                    i64 firstLine = StrFindChr(data, "\n");
-                    if (firstLine > 0)
-                    {
-                        b32 found = 0;
-                        LineBound* bound = LookupBound(state, entry->offset, &found);
-                        
-                        if (found)
-                        {
-                            data = StrJoin3(state->arena, bound->prefix, data);
-                            // TODO(long): free bound
-                        }
-                        else
-                        {
-                            bound->suffix = StrCopy(state->arena, StrChop(data, firstLine));
-                            data = StrSkip(data, firstLine + 1);
-                        }
-                    }
-                }
-                
-                u64 nextOffset = entry->offset + chunkSize;
-                if (nextOffset < state->size)
-                {
-                    i64 lastLine = StrFindArr(data, StrLit("\n"), MatchStr_LastMatch);
-                    if (lastLine != data.size - 1)
-                    {
-                        b32 found = 0;
-                        LineBound* bound = LookupBound(state, nextOffset, &found);
-                        
-                        if (found)
-                        {
-                            data = StrJoin3(state->arena, data, bound->suffix);
-                            // TODO(long): free bound
-                        }
-                        else
-                        {
-                            bound->prefix = StrCopy(state->arena, StrSkip(data, lastLine + 1));
-                            data = StrPrefix(data, lastLine);
-                        }
-                    }
-                }
-                
-                if (data.size)
-                    info->matchCount += GlobFile(data, state->path, &(u64){0});
+                FileBlock* block = state->blocks + (entry->offset/chunkSize);
+                block->offset = entry->offset;
+                block->data = entry->data;
+                GlobBlock(block, state);
             }
             
-            // NOTE(long): Pop after GlobFile to ensure the program
-            // exits only after all files have been fully globbed
             if (AtomicDec64(&state->readCount) == 0)
             {
-                for (LineBound* bound = state->bounds; bound; bound = bound->next)
+                String path = state->path;
+                u64 lineNumber = 1;
+                u64 blockCount = (u64)Ceil_f32(DivF32(state->size, chunkSize));
+                
+                for (u32 blockIdx = 0; blockIdx < blockCount; ++blockIdx)
                 {
-                    String line = StrJoin3(state->arena, bound->prefix, bound->suffix);
-                    if (line.size)
-                        info->matchCount += GlobFile(line, state->path, &(u64){0});
+                    FileBlock* block = state->blocks + blockIdx;
+                    if (blockIdx < blockCount-1)
+                    {
+                        String line = StrJoin3(state->arena, block->suffix, (block+1)->prefix);
+                        if (glob(userPattern, line, 0))
+                            PushMatch(state->arena, block, line);
+                    }
+                    
+                    for (MatchLine* line = block->firstMatch; line; line = line->next)
+                        Outf("%.*s(%lld): %.*s\n", StrExpand(path), line->line + lineNumber, StrExpand(line->text));
+                    
+                    info->matchCount += block->matchCount;
+                    lineNumber += block->lineCount;
                 }
                 
                 OS_FileClose(state->file);
                 ArenaRelease(state->arena);
             }
             
+            // NOTE(long): Pop after globbing to ensure the program
+            // exits only after all files have been fully globbed
             AtomicDec64(&requestCount);
             _aligned_free(entry->data.str);
         }
@@ -419,6 +440,7 @@ function u64 ReadFilesAsync(Arena* arena, StringList* paths)
         
         u64 readCount = (u64)Ceil_f32(DivF32(size, chunkSize));
         state->readCount = readCount;
+        state->blocks = PushArray(state->arena, FileBlock, readCount);
         
         for (u64 offset = 0; offset < size; offset += chunkSize)
         {
@@ -508,7 +530,7 @@ int main(i32 argc, char** argv)
     
     ScratchBegin(scratch);
     
-#define THREAD_COUNT 1
+#define THREAD_COUNT 4
     iocp = OS_PushFileQueue();
     ThreadResult results[THREAD_COUNT] = {0};
     for (u64 i = 0; i < THREAD_COUNT; ++i)
