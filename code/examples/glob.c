@@ -11,6 +11,8 @@
 #include "Base.c"
 #endif
 
+//~ long: Glob Library
+
 enum
 {
     GLOB_SYNTAX_ERROR = 1,
@@ -201,7 +203,10 @@ function b32 glob(String pattern, String text, Flags32* error)
 #undef SYNTAX_ERROR
 }
 
+//~ long: Glob Program
+
 #if !GLOB_STATIC_LIB
+
 enum
 {
     Glob_CLI_Help      = 1 << 0,
@@ -212,51 +217,18 @@ enum
     Glob_CLI_Recursive = 1 << 5,
 };
 
+global OS_Handle iocp;
 global String userPattern;
 
-function u64 GlobFile(String text, String file, u64* lineNumber)
-{
-    u64 matchCount = 0;
-    Assert(text.size);
-    if (text.str[text.size - 1] == '\r')
-        text.size--;
-    
-    u64 row = *lineNumber;
-    for (i64 index; text.size; text = StrSkip(text, index + 1), ++row)
-    {
-        index = StrFindChr(text, "\n");
-        
-        if (index > 0 && text.str[index-1] == '\r')
-            index--;
-        if (index < 0)
-            index = text.size;
-        
-        if (index > 0)
-        {
-            String line = StrPrefix(text, index);
-            if (glob(userPattern, line, 0))
-            {
-                matchCount++;
-                Outf("%.*s(%lld): %.*s\n", StrExpand(file), row, StrExpand(line));
-            }
-        }
-    }
-    
-    *lineNumber = row;
-    return matchCount;
-}
-
-global OS_Handle iocp;
 global u64 fileCount;
 global u64 totalSize;
-global u64 memoryUsage;
+global u64 loadFileMs;
 
 #define MAX_REQUESTS 32
 global volatile u64 requestCount;
 global u64 chunkSize = KiB(64);
 
-#include <stdlib.h>
-
+//- long: Block
 typedef struct MatchLine MatchLine;
 struct MatchLine
 {
@@ -268,43 +240,12 @@ struct MatchLine
 typedef struct FileBlock FileBlock;
 struct FileBlock
 {
-    u64 offset;
-    u64 lineCount;
-    
     String prefix;
     String suffix;
-    String data;
+    u64 lineCount;
     
     MatchLine* firstMatch;
     MatchLine*  lastMatch;
-    u64 matchCount;
-};
-
-typedef struct FileState FileState;
-struct FileState
-{
-    Arena* arena;
-    FileBlock* blocks;
-    String path;
-    OS_Handle file;
-    u64 size;
-    volatile u64 readCount;
-};
-
-typedef struct FileEntry FileEntry;
-struct FileEntry
-{
-    FileState* state;
-    String data;
-    String path;
-    u64 offset;
-};
-
-typedef struct ThreadResult ThreadResult;
-struct ThreadResult
-{
-    u64 waitMs;
-    u64 workMs;
     u64 matchCount;
 };
 
@@ -318,27 +259,51 @@ function void PushMatch(Arena* arena, FileBlock* block, String line)
     block->matchCount++;
 }
 
-function void GlobBlock(FileBlock* block, FileState* state)
+//- long: File
+typedef struct FileState FileState;
+struct FileState
 {
-    String text = block->data;
+    Arena* arena;
+    FileBlock* blocks;
+    String path;
+    OS_Handle handle;
+    u64 size;
+    volatile u64 readCount;
+};
+
+typedef struct FileEntry FileEntry;
+struct FileEntry
+{
+    FileState* file;
+    String data;
+    u64 offset;
+};
+
+function void GlobBlock(FileEntry* entry, FileState* file)
+{
+    FileBlock* block = file->blocks + (entry->offset/chunkSize);
+    String text = entry->data;
+    u64 offset = entry->offset;
     
-    if (block->offset > 0)
+    // NOTE(long): This doesn't handle long lines that span multiple chunks
+    // In the future, I should rewrite glob from a recursive to an iterative style
+    
+    if (offset > 0)
     {
         i64 firstLine = StrFindChr(text, "\n");
         if (firstLine > 0)
         {
-            block->prefix = StrCopy(state->arena, StrPrefix(text, firstLine));
+            block->prefix = StrCopy(file->arena, StrPrefix(text, firstLine));
             text = StrSkip(text, firstLine + 1);
         }
     }
     
-    u64 nextOffset = block->offset + chunkSize;
-    if (nextOffset < state->size)
+    if (offset + chunkSize < file->size)
     {
         i64 lastLine = StrFindArr(text, StrLit("\n"), MatchStr_LastMatch);
-        if (lastLine != text.size - 1)
+        if (lastLine != text.size - 1 && lastLine > 0)
         {
-            block->suffix = StrCopy(state->arena, StrSkip(text, lastLine + 1));
+            block->suffix = StrCopy(file->arena, StrSkip(text, lastLine + 1));
             text = StrPrefix(text, lastLine);
         }
     }
@@ -356,10 +321,19 @@ function void GlobBlock(FileBlock* block, FileState* state)
         {
             String line = StrPrefix(text, index);
             if (glob(userPattern, line, 0))
-                PushMatch(state->arena, block, line);
+                PushMatch(file->arena, block, line);
         }
     }
 }
+
+//- long: Thread
+typedef struct ThreadResult ThreadResult;
+struct ThreadResult
+{
+    u64 waitMs;
+    u64 workMs;
+    u64 matchCount;
+};
 
 function void ThreadProc(void* arg)
 {
@@ -377,84 +351,81 @@ function void ThreadProc(void* arg)
         
         if (ALWAYS(entry))
         {
-            FileState* state = entry->state;
+            FileState* file = entry->file;
             TIME_BLOCK(duration, info->workMs += duration)
-            {
-                FileBlock* block = state->blocks + (entry->offset/chunkSize);
-                block->offset = entry->offset;
-                block->data = entry->data;
-                GlobBlock(block, state);
-            }
+                GlobBlock(entry, file);
             
-            if (AtomicDec64(&state->readCount) == 0)
+            if (AtomicDec64(&file->readCount) == 0)
             {
-                String path = state->path;
-                u64 lineNumber = 1;
-                u64 blockCount = (u64)Ceil_f32(DivF32(state->size, chunkSize));
+                String path = file->path;
+                u64 line = 1;
+                u64 blockCount = (u64)Ceil_f32(DivF32(file->size, chunkSize));
+                FileBlock* block = file->blocks;
                 
-                for (u32 blockIdx = 0; blockIdx < blockCount; ++blockIdx)
+                // Print matches
+                for (u32 blockIdx = 0; blockIdx < blockCount; ++blockIdx, line += block->lineCount, ++block)
                 {
-                    FileBlock* block = state->blocks + blockIdx;
-                    if (blockIdx < blockCount-1)
+                    if (blockIdx < blockCount - 1)
                     {
-                        String line = StrJoin3(state->arena, block->suffix, (block+1)->prefix);
-                        if (glob(userPattern, line, 0))
-                            PushMatch(state->arena, block, line);
+                        String text = StrJoin3(file->arena, block->suffix, (block+1)->prefix);
+                        if (glob(userPattern, text, 0))
+                            PushMatch(file->arena, block, text);
                     }
                     
-                    for (MatchLine* line = block->firstMatch; line; line = line->next)
-                        Outf("%.*s(%lld): %.*s\n", StrExpand(path), line->line + lineNumber, StrExpand(line->text));
-                    
+                    for (MatchLine* match = block->firstMatch; match; match = match->next)
+                        Outf("%.*s(%lld): %.*s\n", StrExpand(path), match->line + line, StrExpand(match->text));
                     info->matchCount += block->matchCount;
-                    lineNumber += block->lineCount;
                 }
                 
-                OS_FileClose(state->file);
-                ArenaRelease(state->arena);
+                // Free file
+                OS_FileClose(file->handle);
+                ArenaRelease(file->arena);
             }
             
             // NOTE(long): Pop after globbing to ensure the program
             // exits only after all files have been fully globbed
             AtomicDec64(&requestCount);
-            _aligned_free(entry->data.str);
+            OSRelease(entry->data.str);
         }
     }
 }
 
-function u64 ReadFilesAsync(Arena* arena, StringList* paths)
+//- long: IO
+function void ReadFilesAsync(Arena* arena, StringList* paths)
 {
     u64 maxSize = 0;
-    u64  loadMs = OSNowMS();
+    loadFileMs = OSNowMS();
     
     StrListIter(paths, pathNode)
     {
         String path = pathNode->string;
-        OS_Handle file = OS_FileOpen(path, AccessFlag_Read|AccessFlag_NoCache, iocp);
-        u64 size = OS_FileProp(file).size;
+        OS_Handle handle = OS_FileOpen(path, AccessFlag_Read|AccessFlag_NoCache, iocp);
+        u64 size = OS_FileProp(handle).size;
         
-        FileState* state = PushStruct(arena, FileState);
-        state->arena = ArenaMake(1);
-        state->path = path;
-        state->file = file;
-        state->size = size;
+        Arena* fileArena = ArenaMake();
+        FileState* file = PushStruct(fileArena, FileState);
+        file->arena = fileArena;
+        file->path = path;
+        file->handle = handle;
+        file->size = size;
         
         u64 readCount = (u64)Ceil_f32(DivF32(size, chunkSize));
-        state->readCount = readCount;
-        state->blocks = PushArray(state->arena, FileBlock, readCount);
+        file->blocks = PushArray(file->arena, FileBlock, readCount);
+        file->readCount = readCount;
         
         for (u64 offset = 0; offset < size; offset += chunkSize)
         {
-            // NOTE(long): Can't use state->arena because ThreadProc might still be using it; not thread-safe
+            // NOTE(long): Can't use file->arena because ThreadProc might still be using it (it's not thread-safe)
             FileEntry* entry = PushStruct(arena, FileEntry);
-            entry->path = path;
-            entry->state = state;
+            entry->file = file;
             entry->offset = offset;
             
-            entry->data.size = Min(size - entry->offset, chunkSize);
-            u64 entrySize = AlignUpPow2(entry->data.size, 4096);
-            entry->data.str = _aligned_malloc(entrySize, 4096);
+            u64 entrySize = Min(size - entry->offset, chunkSize);
+            entrySize = AlignUpPow2(entrySize, 4096);
+            entry->data.size = entrySize;
+            entry->data.str = OSCommit(0, entrySize);
             
-            if (ALWAYS(OS_FileReadAsync(file, R1U64Size(entry->offset, entrySize), entry->data.str, entry)))
+            if (ALWAYS(OS_FileReadAsync(handle, R1U64Size(entry->offset, entrySize), entry->data.str, entry)))
             {
                 if (offset == 0)
                 {
@@ -474,11 +445,7 @@ function u64 ReadFilesAsync(Arena* arena, StringList* paths)
     
     while (requestCount)
         _mm_pause();
-    
-    loadMs = OSNowMS() - loadMs;
-    Outf("Bandwidth: %.2f MiB/s, Loaded Files: %llu (%.2f MiB)\n",
-         DivF64(totalSize, 1000 * loadMs), fileCount, DivF64(totalSize, MiB(1)));
-    return maxSize;
+    loadFileMs = OSNowMS() - loadFileMs;
 }
 
 int main(i32 argc, char** argv)
@@ -530,7 +497,7 @@ int main(i32 argc, char** argv)
     
     ScratchBegin(scratch);
     
-#define THREAD_COUNT 4
+#define THREAD_COUNT 2
     iocp = OS_PushFileQueue();
     ThreadResult results[THREAD_COUNT] = {0};
     for (u64 i = 0; i < THREAD_COUNT; ++i)
@@ -680,9 +647,7 @@ int main(i32 argc, char** argv)
                     if (flags & Glob_CLI_Debug)
                         Outf("Chunk size: %llu KiB, Threads: %d\n", chunkSize/KiB(1), THREAD_COUNT);
                     
-                    u64 maxSize = ReadFilesAsync(scratch, &paths);
-                    memoryUsage += maxSize;
-                    
+                    ReadFilesAsync(scratch, &paths);
                     for (u64 i = 0; i < THREAD_COUNT; ++i)
                     {
                         matchCount += results[i].matchCount;
@@ -714,18 +679,13 @@ int main(i32 argc, char** argv)
             
             if (matchCount)
                 Outf("\n");
-            Outf("Found %llu match(es) in %llu ", matchCount, paths.nodeCount);
-            if (globFile)
-                Outf("files (%.2f MiB)\n", DivF64(totalSize, MiB(1)));
-            else
-                Outf("file names\n");
+            Outf("Found %llu match(es) in %llu file%s\n", matchCount, paths.nodeCount, globFile ? "s" : " names");
             
             ms = OSNowMS() - ms;
             if (flags & Glob_CLI_Debug)
             {
-                memoryUsage += scratch->highWaterMark;
-                Outf("Total: %llums, Memory Usage: %.3f MiB, Loaded Files: %llu\n",
-                     ms, DivF64(memoryUsage, MiB(1)), fileCount);
+                Outf("Total: %llums, Bandwidth: %.2f MiB/s, Loaded Files: %llu (%.2f MiB)\n",
+                     ms, DivF64(totalSize, 1000 * loadFileMs), fileCount, DivF64(totalSize, MiB(1)));
                 
                 Outf("Iter File: %llums, ", iterFileMs);
                 if (globFile)
