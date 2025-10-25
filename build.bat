@@ -12,7 +12,10 @@ if "%msvc%"=="1"    set "clang=0" && echo [msvc compile]
 if "%clang%"=="1"   set "msvc=0" && echo [clang compile]
 
 :: --- Setup Build Path -------------------------------------------------------
-set code=%cd%
+set code=%cd%\code
+set libs=%cd%\dependencies
+set ftlib=%libs%\freetype-2.13.3
+set time=%cd%\ctime
 IF NOT EXIST build mkdir build
 pushd build
 
@@ -27,7 +30,7 @@ if "%clang%"=="1" (
 	:: --- base warnings ---
 	set warns=-Wall -Wextra -Werror -Wshadow -Wdouble-promotion -Wconversion -D_CRT_SECURE_NO_WARNINGS
 	set warns=!warns! -Wno-sign-conversion -Wno-pointer-sign -Wno-sign-compare -Wno-logical-not-parentheses -Wno-missing-braces
-	set warns=!warns! -Wno-initializer-overrides -Wno-missing-field-initializers -Wno-incompatible-pointer-types
+	set warns=!warns! -Wno-initializer-overrides -Wno-missing-field-initializers -Wno-incompatible-pointer-types -Wno-cast-function-type-mismatch
 
 	:: --- unused flags ---
 	set warns=!warns! -Wno-unused-local-typedef -Wno-unused-function -Wno-unused-variable
@@ -36,21 +39,22 @@ if "%clang%"=="1" (
 	:: --- GNU extensions ---
 	set warns=!warns! -Wno-gnu-null-pointer-arithmetic
 
-	:: TODO: Fix 4coder indentation please
+	:: TODO(long): Fix 4coder indentation please
 	set warns=!warns! -Wno-misleading-indentation
-	:: TODO: Fix UB please
+	:: TODO(long): Fix UB please
 	set warns=!warns! -Wno-null-pointer-subtraction
 
 	:: --- compile options ---
-	set opts=-fno-exceptions -fno-cxx-exceptions -fno-async-exceptions -fno-rtti -fno-rtti-data -g3 -fms-compatibility -fms-extensions
+	set opts=-fno-exceptions -fno-async-exceptions -fno-rtti -g3 -fms-compatibility -fms-extensions
 	set opts=!opts! -march=native
 	if "%asan%"=="1" set opts=!opts! -fsanitize=address
 	if "%release%"=="1" set opts=!opts! -O2
 
 	:: --- dependencies setup ---
-	set opts=!opts! -I%code%\code -I%code%\code\dependencies fast_float.o
-	set lib_opts=-fno-rtti -fno-exceptions -fno-cxx-exceptions -fno-async-exceptions -O2 -c
+	set opts=!opts! -I%code% -I%libs% -I%ftlib% %libs%\fast_float.o
+	set lib_opts=-fno-rtti -fno-exceptions -fno-async-exceptions -O2 -c
 	set links=-incremental:no -lKernel32.lib -lWinmm.lib -lUserenv.lib -lAdvapi32.lib -lUser32.lib -lGdi32.lib -lDwmapi.lib
+	set links=!links! -l%libs%freetype.lib
 )
 
 if "%msvc%"=="1" (
@@ -77,44 +81,47 @@ if "%msvc%"=="1" (
 	if "%release%"=="1" set opts=!opts! /O2
 
 	:: --- dependencies setup ---
-	set opts=!opts! /I%code%\code /I%code%\code\dependencies fast_float.obj
+	set opts=!opts! /I%code% /I%libs% /I%ftlib% %libs%\fast_float.obj
 	set lib_opts=/nologo /GR- /EHa- /O2 /c
 	set links=/incremental:no Kernel32.lib Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
+	set links=!links! %libs%\freetype.lib
 )
 
 :: --- Build Dependencies -----------------------------------------------------
+IF NOT EXIST "%libs%\freetype.lib" call %ftlib%\build_freetype.bat
+
 if "%msvc%"=="1" (
-IF NOT EXIST "fast_float.obj" cl %lib_opts% %code%\code\dependencies\fast_float.cpp
+	IF NOT EXIST "%libs%\fast_float.obj" cl %lib_opts% %libs%\fast_float.cpp /Fo%libs%\
 )
 
 if "%clang%"=="1" (
-IF NOT EXIST "fast_float.o" clang++ %lib_opts% %code%\code\dependencies\fast_float.cpp
+	IF NOT EXIST "%libs%\fast_float.o" clang++ %lib_opts% %libs%\fast_float.cpp -o%libs%\fast_float.o
 )
 
 :: --- Build Everything -------------------------------------------------------
-%code%\ctime -begin base.ctm
+%time% -begin base.ctm
 
 del *.pdb > NUL 2> NUL
 del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
 del *.lib > NUL 2> NUL
 
-:: %compile% %opts% %warns% %code%\code\examples\test_scanner.c %out%test_scanner.exe %linker% %links%
-:: %compile% %opts% %warns% %code%\code\Metamain.c              %out%metagen.exe      %linker% %links%
-:: %compile% %opts% %warns% %code%\code\retired\Meta.c           %out%Meta.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\test_scanner.c %out%test_scanner.exe %linker% %links%
+:: %compile% %opts% %warns% %code%\Metamain.c              %out%metagen.exe      %linker% %links%
+:: %compile% %opts% %warns% %code%\retired\Meta.c           %out%Meta.exe       %linker% %links%
 
-%compile% %opts% %warns% %code%\code\examples\demo.c         %out%demo.exe         %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\test_base.c    %out%test_base.exe    %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\TestDLL.c      %out%test.dll   %dll% %linker% %links%
-%compile% %opts% %warns% %code%\code\examples\demo_gfx.c     %out%demo_gfx.exe     %linker% %links%
+%compile% %opts% %warns% %code%\examples\demo.c         %out%demo.exe         %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\test_base.c    %out%test_base.exe    %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\TestDLL.c      %out%test.dll   %dll% %linker% %links%
+%compile% %opts% %warns% %code%\examples\demo_gfx.c     %out%demo_gfx.exe     %linker% %links%
 
-:: %compile% %opts% %warns% %code%\code\examples\lloc.c          %out%lloc.exe       %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\glob.c          %out%glob.exe       %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\test_glob.c     %out%test_glob.exe  %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\bench_mem.c     %out%bench_mem.exe  %linker% %links%
-:: %compile% %opts% %warns% %code%\code\examples\print_args.c    %out%args.exe       %linker% %links%
-:: %compile% %opts% %warns% %code%\code\retired\D3D11_Example.c  %out%d3d11_exp.exe  %linker% %links%
-:: %compile% %opts% %warns% %code%\code\retired\LongCompressor.c %out%compressor.exe %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\lloc.c          %out%lloc.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\glob.c          %out%glob.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\test_glob.c     %out%test_glob.exe  %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\bench_mem.c     %out%bench_mem.exe  %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\print_args.c    %out%args.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\retired\D3D11_Example.c  %out%d3d11_exp.exe  %linker% %links%
+:: %compile% %opts% %warns% %code%\retired\LongCompressor.c %out%compressor.exe %linker% %links%
 
 :: --- Cleanup Build ----------------------------------------------------------
 ren fast_float.obj fast_float.obj.temp > NUL 2> NUL
@@ -128,7 +135,7 @@ del *.ilk > NUL 2> NUL
 del *.exp > NUL 2> NUL
 del *.xml > NUL 2> NUL
 
-%code%\ctime -end base.ctm
+%time% -end base.ctm
 popd
 
 :: --- MSVC References --------------------------------------------------------
