@@ -1787,7 +1787,7 @@ function StringList StrListFromLogger(Arena* arena, Logger* logger);
 #define ErrorBegin(...) LogBegin(.level = LOG_ERROR, __VA_ARGS__)
 #define ErrorEnd(arena) LogEnd(arena)
 #define ErrorSet(error, errno) ((errno) = 1, ErrorFmt(error))
-#define ErrorFmt(error, ...) LogPush(LOG_ERROR, error, __VA_ARGS__)
+#define ErrorFmt(error, ...) LogPush(LOG_ERROR, error, ##__VA_ARGS__)
 
 //~ long: Buffer Functions
 
