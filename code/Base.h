@@ -808,16 +808,8 @@ typedef union v3f32 v3f32;
 union v3f32
 {
     struct { f32 x, y, z; };
-    struct
-    {
-        v2f32 xy;
-        f32 _z0;
-    };
-    struct
-    {
-        f32 _x0;
-        v2f32 yz;
-    };
+    struct { v2f32 xy; f32 _z0; };
+    struct { f32 _x0; v2f32 yz; };
     f32 v[3];
 };
 
@@ -825,20 +817,31 @@ typedef union v3i32 v3i32;
 union v3i32
 {
     struct { i32 x, y, z; };
-    struct
-    {
-        v2i32 xy;
-        i32 _z0;
-    };
-    struct
-    {
-        i32 _x0;
-        v2i32 yz;
-    };
+    struct { v2i32 xy; i32 _z0; };
+    struct { i32 _x0; v2i32 yz; };
     i32 v[3];
 };
 
-//- @CONSIDER(long): 4D Vectors/Colors
+//- long: 4D Vectors/Colors
+typedef union v4f32 v4f32;
+union v4f32
+{
+    struct { f32 x, y, z, w; };
+    struct { v2f32 xy; v2f32 zw; };
+    struct { v3f32 xyz; f32 _z0; };
+    struct { f32 _x0; v3f32 yzw; };
+    f32 v[4];
+};
+
+typedef union v4i32 v4i32;
+union v4i32
+{
+    struct { i32 x, y, z, w; };
+    struct { v2i32 xy; v2i32 zw; };
+    struct { v3i32 xyz; i32 _z0; };
+    struct { i32 _x0; v3i32 yzw; };
+    f32 v[4];
+};
 
 //- @CONSIDER(long): 2x2/3x3/4x4 Matrix
 

@@ -3,10 +3,20 @@
 
 #include "LongGFX.h"
 #include "LongGFX_Win32.c"
+
+#include "LongOGL.h"
 #include "LongGFX_OpenGL.h"
 #include "Win32_OpenGL.c"
+
 #include "LongGFX_D3D11.h"
 #include "Win32_D3D11.c"
+
+#include "LongFont.h"
+#include "LongFont.c"
+#include "LongFont_FreeType.c"
+
+#include "LongRender.h"
+#include "LongRender_OpenGL.c"
 
 enum
 {
@@ -24,7 +34,7 @@ function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
     {
         case Renderer_GL:
         {
-            BeginGLRender(window);
+            OGL_Begin(window);
             
             GFXFlags flags = GFXWindowGetFlags(window);
             if (flags & FLAG_WINDOW_MAXIMIZED)
@@ -39,7 +49,7 @@ function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
                 glClearColor(1.0f, 1.0f, 1.0f, 1.f);
             glClear(GL_COLOR_BUFFER_BIT);
             
-            GL_Float flts[4];
+            GLfloat flts[4];
             glGetFloatv(GL_VIEWPORT, flts);
             
 #if 0
@@ -51,7 +61,7 @@ function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
             glEnd();
 #endif
             
-            EndGLRender();
+            OGL_End();
         } break;
         
         case Renderer_D3D:
@@ -75,10 +85,18 @@ int WinMain(HINSTANCE hInstance,
     
     ScratchBlock(scratch)
     {
+        FNT_Font font = FNT_FontOpen(scratch, &(FNT_LoadParams){
+                                         .flags = FNT_RasterFlag_Smooth|FNT_RasterFlag_Hinted,
+                                         .size = 15,
+                                         .dpi = 96,
+                                         .path = StrLit("liberation-mono.ttf"),
+                                     });
+        FNT_Baked baked = FNT_FontBake(scratch, &font, &(FNT_Packer){.size = V2I32(512, 512)});
+        
         GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
         {
             GFXInit();
-            InitGL();
+            OGL_Init();
             //InitD3D11();
             
 #if 0
@@ -102,7 +120,7 @@ int WinMain(HINSTANCE hInstance,
             {
                 windows[i] = GFXCreateWindowEx(StrPushf(scratch, "Window: %u", i), CW_USEDEFAULT, CW_USEDEFAULT, w, h);
                 if (isGL)
-                    EquipGLWindow(windows[i]);
+                    OGL_WindowEquip(windows[i]);
                 else
                     EquipD3D11Window(windows[i]);
             }
@@ -124,7 +142,7 @@ int WinMain(HINSTANCE hInstance,
             if (!GFXPeekInput())
                 break;
             
-            DeferBlock(BeginGLRender(windows[0]), EndGLRender())
+            DeferBlock(OGL_Begin(windows[0]), OGL_End())
             {
                 char* glsl_vshader =
                     "#version 330\n"
@@ -200,33 +218,33 @@ int WinMain(HINSTANCE hInstance,
                     "out_color = vec4(c_base.xyz * sample, c_base.w * m);\n"
                     "}\n";
                 
-                GL_Enum error = glGetError();
+                GLenum error = glGetError();
                 DEBUG(error);
                 
-                GL_Shader vshader = GL_MakeShader(scratch, glsl_vshader, GL_VERTEX_SHADER);
-                GL_Shader fshader = GL_MakeShader(scratch, glsl_fshader, GL_FRAGMENT_SHADER);
+                OGL_Shader vshader = OGL_MakeShader(scratch, glsl_vshader, GL_VERTEX_SHADER);
+                OGL_Shader fshader = OGL_MakeShader(scratch, glsl_fshader, GL_FRAGMENT_SHADER);
                 
                 if (vshader.log.size) Outf(  "Vertex Shader:\n%s\n", (char*)vshader.log.str);
                 if (fshader.log.size) Outf("Fragment Shader:\n%s\n", (char*)fshader.log.str);
                 
-                GL_Uint program = 0;
+                GLuint program = 0;
                 if (vshader.handle && fshader.handle)
                 {
-                    GL_Shader glProgram = GL_MakeProgram(scratch, ArrayExpand(GL_Shader, vshader, fshader));
+                    OGL_Shader glProgram = OGL_MakeProgram(scratch, ArrayExpand(OGL_Shader, vshader, fshader));
                     if (glProgram.log.size) Outf("Program:\n%s\n", (char*)glProgram.log.str);
                     program = glProgram.handle;
                 }
                 
                 if (program)
                 {
-                    GL_Uint vao = 0;
+                    GLuint vao = 0;
                     glGenVertexArrays(1, &vao);
                     glBindVertexArray(vao);
                 }
                 
                 if (program)
                 {
-                    GL_Uint vertexBuffer = 0;
+                    GLuint vertexBuffer = 0;
                     glGenBuffers(1, &vertexBuffer);
                     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
                 }
@@ -234,32 +252,44 @@ int WinMain(HINSTANCE hInstance,
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
                 glEnable(GL_BLEND);
                 
-                GL_Uint texture = 0;
+                //u32 width = 1024, height = 1024;
+                u32 width = baked.size.x, height = baked.size.y;
+                GLuint texture = 0;
                 {
-                    u8* bitmap = PushArrayNZ(scratch, u8, 1024*1024);
-                    
-                    for (u32 y = 0; y < 1024; ++y)
-                    {
-                        for (u32 x = 0; x < 1024; ++x)
-                        {
-                            u32 p = ((x/40) + (y/40)) % 4;
-                            p *= 85;
-                            bitmap[x + y*1024] = (u8)p;
-                        }
-                    }
-                    
                     glGenTextures(1, &texture);
                     glBindTexture(GL_TEXTURE_2D, texture);
-                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 1024, 1024, 0, GL_RED, GL_UNSIGNED_BYTE, bitmap);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
                     
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                    
+                    for (FNT_Glyph* glyph = font.first; glyph; glyph = glyph->next)
+                    {
+                        i32 w = glyph->size.x, h = glyph->size.y;
+                        if (w == 0)
+                            continue;
+                        
+                        FNT_GlyphLayout* layout = FNT_GlyphFromCP(&baked, glyph->codepoint);
+                        v2i32 p = layout->xy.p0;
+                        glTexSubImage2D(GL_TEXTURE_2D, 0, p.x, p.y, w, h, GL_RED, GL_UNSIGNED_BYTE, glyph->bitmap);
+                    }
                 }
                 
                 glClearColor(1.f, 0.f, 1.f, 1.f);
                 glClear(GL_COLOR_BUFFER_BIT);
+                
+                glUseProgram(program);
+                
+                u32 screenWidth, screenHeight;
+                if (GFXWindowGetOuterRect(windows[0], 0, 0, &screenWidth, &screenHeight))
+                {
+                    glViewport(0, 0, screenWidth, screenHeight);
+                    GLint viewXform = glGetUniformLocation(program, "u_view_xform");
+                    glUniform2f(viewXform, 2.f/(f32)screenWidth, -2.f/(f32)screenHeight);
+                }
                 
                 f32 data[] = {
                     // [0]: v_pos_pattern
@@ -272,39 +302,30 @@ int WinMain(HINSTANCE hInstance,
                     
                     // [1]: four quad specifiers
                     200.f, 200.f, 300.f, 300.f,
-                    0.f/1024.f, 0.f/1024.f, 100.f/1024.f, 100.f/1024.f,
+                    0.f/(f32)width, 0.f/(f32)height, 100.f/(f32)width, 100.f/(f32)height,
                     10.f, 5.f,
                     1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
                     
                     100.f, 400.f, 400.f, 500.f,
-                    0.f/1024.f, 0.f/1024.f, 300.f/1024.f, 100.f/1024.f,
+                    0.f/(f32)width, 0.f/(f32)height, 300.f/(f32)width, 100.f/(f32)height,
                     20.f, 10000.f,
                     1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f, 1.f,
                     
                     600.f, 100.f, 700.f, 300.f,
-                    0.f/1024.f, 0.f/1024.f, 100.f/1024.f, 200.f/1024.f,
+                    0.f/(f32)width, 0.f/(f32)height, 100.f/(f32)width, 200.f/(f32)height,
                     0.f, 10000.f,
                     1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 0.f,
                     
                     600.f, 400.f, 800.f, 700.f,
-                    0.f/1024.f, 0.f/1024.f, 200.f/1024.f, 300.f/1024.f,
+                    0.f/(f32)width, 0.f/(f32)height, 200.f/(f32)width, 300.f/(f32)height,
                     5.f, 10000.f,
                     1.f, .2f, 0.f, 1.f, 1.f, 0.f, .2f, 1.f,
                 };
                 
-                GL_Size quadStride = 18;
+                GLsizei quadStride = 18;
                 glBufferData(GL_ARRAY_BUFFER, sizeof(data), data, GL_STREAM_DRAW);
-                glUseProgram(program);
                 
-                u32 width, height;
-                if (GFXWindowGetOuterRect(windows[0], 0, 0, &width, &height))
-                {
-                    glViewport(0, 0, width, height);
-                    GL_Int viewXform = glGetUniformLocation(program, "u_view_xform");
-                    glUniform2f(viewXform, 2.f/width, -2.f/height);
-                }
-                
-                GL_Int u_texture = glGetUniformLocation(program, "u_texture");
+                GLint u_texture = glGetUniformLocation(program, "u_texture");
                 glUniform1i(u_texture, 0);
                 
                 glActiveTexture(GL_TEXTURE0);
@@ -456,9 +477,9 @@ int WinMain(HINSTANCE hInstance,
         GFXErrorBlock(scratch, 1)
         {
             //FreeD3D11();
-            FreeGL();
-            InitGL();
-            FreeGL();
+            OGL_Free();
+            OGL_Init();
+            OGL_Free();
         }
     }
     

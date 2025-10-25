@@ -3,13 +3,25 @@
 #ifndef _LONG_O_S_G_L_H
 #define _LONG_O_S_G_L_H
 
-//~ NOTE(long): System OpenGL Functions
+//~ long: OGL System Functions
 
-function b32 InitGL(void);
-function b32 FreeGL(void);
-function b32 EquipGLWindow(GFXWindow window);
+function b32 OGL_Init(void);
+function b32 OGL_Free(void);
+function b32 OGL_WindowEquip(GFXWindow window);
 
-function void BeginGLRender(GFXWindow window);
-function void EndGLRender(void);
+function void OGL_Begin(GFXWindow window);
+function void OGL_End(void);
+
+//~ long: OGL Helper Functions
+
+typedef struct OGL_Shader OGL_Shader;
+struct OGL_Shader
+{
+    GLuint handle;
+    String log;
+};
+
+function OGL_Shader OGL_MakeShader(Arena* arena, char* src, GLenum type);
+function OGL_Shader OGL_MakeProgram(Arena* arena, OGL_Shader* shaders, u64 count);
 
 #endif //_LONG_O_S_G_L_H
