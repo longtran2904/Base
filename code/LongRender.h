@@ -33,7 +33,8 @@ function void R_Begin(GFXWindow window);
 function void R_End(void);
 
 function void R_Submit(R_QuadNode* first, u64 count, R_Texture* texture);
-function R_Texture* R_TextureCreate(void* data, u32 w, u32 h);
+function R_Texture* R_TextureCreate(u32 w, u32 h, void* data);
+function void       R_TextureUpdate(R_Texture* texture, r2i32 rect, void* data);
 function void       R_TextureDestroy(R_Texture* texture);
 function b32        R_TextureValid(R_Texture* texture);
 

@@ -85,19 +85,12 @@ int WinMain(HINSTANCE hInstance,
     
     ScratchBlock(scratch)
     {
-        FNT_Font font = FNT_FontOpen(scratch, &(FNT_LoadParams){
-                                         .flags = FNT_RasterFlag_Smooth|FNT_RasterFlag_Hinted,
-                                         .size = 15,
-                                         .dpi = 96,
-                                         .path = StrLit("liberation-mono.ttf"),
-                                     });
-        FNT_Baked baked = FNT_FontBake(scratch, &font, &(FNT_Packer){.size = V2I32(512, 512)});
-        
         GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
         {
             GFXInit();
             OGL_Init();
             //InitD3D11();
+            R_Init();
             
 #if 0
             ErrorFmt("Test Error 1");
@@ -136,230 +129,97 @@ int WinMain(HINSTANCE hInstance,
             }
         }
         
+        FNT_Font font = FNT_FontOpen(scratch, &(FNT_LoadParams){
+                                         .flags = FNT_RasterFlag_Smooth|FNT_RasterFlag_Hinted,
+                                         .size = 15,
+                                         .dpi = 96,
+                                         .path = StrLit("liberation-mono.ttf"),
+                                     });
+        
+        FNT_Baked baked = FNT_FontBake(scratch, &font, &(FNT_Packer){.size = V2I32(512, 512)});
+        R_Texture* texture = R_TextureCreate(baked.size.x, baked.size.y, 0);
+        
+        for (FNT_Glyph* glyph = font.first; glyph; glyph = glyph->next)
+        {
+            if (glyph->size.x == 0)
+                continue;
+            
+            FNT_GlyphLayout* layout = FNT_GlyphFromCP(&baked, glyph->codepoint);
+            R_TextureUpdate(texture, layout->xy, glyph->bitmap);
+        }
+        
+#if 0
+        u32 width = baked.size.x, height = baked.size.y;
+        GLuint texture = 0;
+        {
+            glGenTextures(1, &texture);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+            
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            
+            for (FNT_Glyph* glyph = font.first; glyph; glyph = glyph->next)
+            {
+                i32 w = glyph->size.x, h = glyph->size.y;
+                if (w == 0)
+                    continue;
+                
+                FNT_GlyphLayout* layout = FNT_GlyphFromCP(&baked, glyph->codepoint);
+                v2i32 p = layout->xy.p0;
+                glTexSubImage2D(GL_TEXTURE_2D, 0, p.x, p.y, w, h, GL_RED, GL_UNSIGNED_BYTE, glyph->bitmap);
+            }
+        }
+#endif
+        
         u32 count = 0;
         for (TempArena temp = TempBegin(scratch); ; TempEnd(temp))
         {
             if (!GFXPeekInput())
                 break;
             
-            DeferBlock(OGL_Begin(windows[0]), OGL_End())
+            DeferBlock(R_Begin(windows[0]), R_End())
             {
-                char* glsl_vshader =
-                    "#version 330\n"
-                    "uniform vec2 u_view_xform;\n"
-                    "layout (location = 0) in vec2 v_pos_pattern;\n"
-                    "layout (location = 1) in vec4 v_quad;\n"
-                    "layout (location = 2) in vec4 v_uv;\n"
-                    "layout (location = 3) in float v_radius;\n"
-                    "layout (location = 4) in float v_thick;\n"
-                    "layout (location = 5) in vec4 v_color0;\n"
-                    "layout (location = 6) in vec4 v_color1;\n"
-                    "out vec2 f_center;\n"
-                    "out vec2 f_extent;\n"
-                    "out vec2 f_pos;\n"
-                    "out float f_radius;\n"
-                    "out float f_thick;\n"
-                    "out vec4 f_color0;\n"
-                    "out vec4 f_color1;\n"
-                    "out float f_pos_pattern_y;\n"
-                    "out vec2 f_uv;\n"
-                    "void main(){\n"
-                    "vec2 center = (v_quad.xy + v_quad.zw)*0.5;\n"
-                    "vec2 extent = (v_quad.zw - v_quad.xy)*0.5;\n"
-                    "vec2 pos = center + extent * v_pos_pattern;\n"
-                    "vec2 norm_pos = pos*u_view_xform + vec2(-1.0, +1.0);\n"
-                    "vec2 uv_center = (v_uv.xy + v_uv.zw)*0.5;\n"
-                    "vec2 uv_extent = (v_uv.zw - v_uv.xy)*0.5;\n"
-                    "gl_Position = vec4(norm_pos, 0.0, 1.0);\n"
-                    "f_pos = pos;\n"
-                    "f_center = center;\n"
-                    "f_extent = extent;\n"
-                    "f_radius = v_radius;\n"
-                    "f_thick = v_thick;\n"
-                    "f_color0 = v_color0;\n"
-                    "f_color1 = v_color1;\n"
-                    "f_pos_pattern_y = v_pos_pattern.y;\n"
-                    "f_uv = uv_center + uv_extent*v_pos_pattern;\n"
-                    "}\n";
-                
-                char* glsl_fshader =
-                    "#version 330\n"
-                    "uniform sampler2D u_texture;\n"
-                    "in vec2 f_center;\n"
-                    "in vec2 f_extent;\n"
-                    "in vec2 f_pos;\n"
-                    "in float f_radius;\n"
-                    "in float f_thick;\n"
-                    "in vec4 f_color0;\n"
-                    "in vec4 f_color1;\n"
-                    "in float f_pos_pattern_y;\n"
-                    "in vec2 f_uv;\n"
-                    "out vec4 out_color;\n"
-                    "void main(){\n"
-                    // setup params
-                    "float r = f_radius;\n"
-                    "float thick = f_thick;\n"
-                    "float soft = 1.0;\n"
-                    // calculate signed distance
-                    "vec2 d2 = abs(f_pos - f_center) - f_extent + vec2(r, r) + vec2(soft, soft);\n"
-                    "float d_neg =    min(max(d2.x, d2.y), 0);\n"
-                    "float d_pos = length(max(d2, vec2(0, 0)));\n"
-                    // apply radius
-                    "float d = d_neg + d_pos - r;\n"
-                    // distance response curve
-                    "float half_thick = thick * 0.5;\n"
-                    "float d_mir = abs(d + half_thick) - half_thick;\n"
-                    "float m = smoothstep(soft, -soft, d_mir);\n"
-                    // blend color
-                    "float c_t = (f_pos_pattern_y + 1.0) * 0.5;\n"
-                    "vec4 c_base = f_color0 + (f_color1 - f_color0) * c_t;\n"
-                    // sample texture
-                    "float sample = texture(u_texture, f_uv).r;\n"
-                    "out_color = vec4(c_base.xyz * sample, c_base.w * m);\n"
-                    "}\n";
-                
-                GLenum error = glGetError();
-                DEBUG(error);
-                
-                OGL_Shader vshader = OGL_MakeShader(scratch, glsl_vshader, GL_VERTEX_SHADER);
-                OGL_Shader fshader = OGL_MakeShader(scratch, glsl_fshader, GL_FRAGMENT_SHADER);
-                
-                if (vshader.log.size) Outf(  "Vertex Shader:\n%s\n", (char*)vshader.log.str);
-                if (fshader.log.size) Outf("Fragment Shader:\n%s\n", (char*)fshader.log.str);
-                
-                GLuint program = 0;
-                if (vshader.handle && fshader.handle)
-                {
-                    OGL_Shader glProgram = OGL_MakeProgram(scratch, ArrayExpand(OGL_Shader, vshader, fshader));
-                    if (glProgram.log.size) Outf("Program:\n%s\n", (char*)glProgram.log.str);
-                    program = glProgram.handle;
-                }
-                
-                if (program)
-                {
-                    GLuint vao = 0;
-                    glGenVertexArrays(1, &vao);
-                    glBindVertexArray(vao);
-                }
-                
-                if (program)
-                {
-                    GLuint vertexBuffer = 0;
-                    glGenBuffers(1, &vertexBuffer);
-                    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-                }
-                
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                glEnable(GL_BLEND);
-                
-                //u32 width = 1024, height = 1024;
-                u32 width = baked.size.x, height = baked.size.y;
-                GLuint texture = 0;
-                {
-                    glGenTextures(1, &texture);
-                    glBindTexture(GL_TEXTURE_2D, texture);
-                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
-                    
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-                    
-                    for (FNT_Glyph* glyph = font.first; glyph; glyph = glyph->next)
+                f32 width = (f32)baked.size.x, height = (f32)baked.size.y;
+                R_Quad quads[4] = {
                     {
-                        i32 w = glyph->size.x, h = glyph->size.y;
-                        if (w == 0)
-                            continue;
-                        
-                        FNT_GlyphLayout* layout = FNT_GlyphFromCP(&baked, glyph->codepoint);
-                        v2i32 p = layout->xy.p0;
-                        glTexSubImage2D(GL_TEXTURE_2D, 0, p.x, p.y, w, h, GL_RED, GL_UNSIGNED_BYTE, glyph->bitmap);
-                    }
-                }
-                
-                glClearColor(1.f, 0.f, 1.f, 1.f);
-                glClear(GL_COLOR_BUFFER_BIT);
-                
-                glUseProgram(program);
-                
-                u32 screenWidth, screenHeight;
-                if (GFXWindowGetOuterRect(windows[0], 0, 0, &screenWidth, &screenHeight))
-                {
-                    glViewport(0, 0, screenWidth, screenHeight);
-                    GLint viewXform = glGetUniformLocation(program, "u_view_xform");
-                    glUniform2f(viewXform, 2.f/(f32)screenWidth, -2.f/(f32)screenHeight);
-                }
-                
-                f32 data[] = {
-                    // [0]: v_pos_pattern
-                    -1, +1,
-                    +1, +1,
-                    -1, -1,
-                    +1, +1,
-                    -1, -1,
-                    +1, -1,
+                        { 200.f, 200.f, 300.f, 300.f, },
+                        { 0.f/width, 0.f/height, 100.f/width, 100.f/height, },
+                        10.f, 5.f,
+                        { 1.f, 1.f, 1.f, 1.f, },
+                        { 1.f, 1.f, 1.f, 1.f, },
+                    },
                     
-                    // [1]: four quad specifiers
-                    200.f, 200.f, 300.f, 300.f,
-                    0.f/(f32)width, 0.f/(f32)height, 100.f/(f32)width, 100.f/(f32)height,
-                    10.f, 5.f,
-                    1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+                    {
+                        { 100.f, 400.f, 400.f, 500.f, },
+                        { 0.f/width, 0.f/height, 300.f/width, 100.f/height, },
+                        20.f, 10000.f,
+                        { 1.f, 1.f, 1.f, 1.f, },
+                        { 0.f, 0.f, 0.f, 1.f, },
+                    },
                     
-                    100.f, 400.f, 400.f, 500.f,
-                    0.f/(f32)width, 0.f/(f32)height, 300.f/(f32)width, 100.f/(f32)height,
-                    20.f, 10000.f,
-                    1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f, 1.f,
+                    {
+                        { 600.f, 100.f, 700.f, 300.f, },
+                        { 0.f/width, 0.f/height, 100.f/width, 200.f/height, },
+                        0.f, 10000.f,
+                        { 1.f, 1.f, 1.f, 1.f, },
+                        { 1.f, 1.f, 1.f, 0.f, },
+                    },
                     
-                    600.f, 100.f, 700.f, 300.f,
-                    0.f/(f32)width, 0.f/(f32)height, 100.f/(f32)width, 200.f/(f32)height,
-                    0.f, 10000.f,
-                    1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 0.f,
-                    
-                    600.f, 400.f, 800.f, 700.f,
-                    0.f/(f32)width, 0.f/(f32)height, 200.f/(f32)width, 300.f/(f32)height,
-                    5.f, 10000.f,
-                    1.f, .2f, 0.f, 1.f, 1.f, 0.f, .2f, 1.f,
+                    {
+                        { 600.f, 400.f, 800.f, 700.f, },
+                        { 0.f/width, 0.f/height, 200.f/width, 300.f/height, },
+                        5.f, 10000.f,
+                        { 1.f, .2f, 0.f, 1.f, },
+                        { 1.f, 0.f, .2f, 1.f, },
+                    },
                 };
                 
-                GLsizei quadStride = 18;
-                glBufferData(GL_ARRAY_BUFFER, sizeof(data), data, GL_STREAM_DRAW);
-                
-                GLint u_texture = glGetUniformLocation(program, "u_texture");
-                glUniform1i(u_texture, 0);
-                
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, texture);
-                
-                glEnableVertexAttribArray(0);
-                glVertexAttribDivisor(0, 0);
-                glVertexAttribPointer(0, 2, GL_FLOAT, false, 2*sizeof(f32), 0);
-                
-                glEnableVertexAttribArray(1);
-                glVertexAttribDivisor(1, 1);
-                glVertexAttribPointer(1, 4, GL_FLOAT, false, quadStride*sizeof(f32), PtrFromInt((12+0)*sizeof(f32)));
-                
-                glEnableVertexAttribArray(2);
-                glVertexAttribDivisor(2, 1);
-                glVertexAttribPointer(2, 4, GL_FLOAT, false, quadStride*sizeof(f32), PtrFromInt((12+4)*sizeof(f32)));
-                
-                glEnableVertexAttribArray(3);
-                glVertexAttribDivisor(3, 1);
-                glVertexAttribPointer(3, 1, GL_FLOAT, false, quadStride*sizeof(f32), PtrFromInt((12+8)*sizeof(f32)));
-                
-                glEnableVertexAttribArray(4);
-                glVertexAttribDivisor(4, 1);
-                glVertexAttribPointer(4, 1, GL_FLOAT, false, quadStride*sizeof(f32), PtrFromInt((12+9)*sizeof(f32)));
-                
-                glEnableVertexAttribArray(5);
-                glVertexAttribDivisor(5, 1);
-                glVertexAttribPointer(5, 4, GL_FLOAT, false, quadStride*sizeof(f32), PtrFromInt((12+10)*sizeof(f32)));
-                
-                glEnableVertexAttribArray(6);
-                glVertexAttribDivisor(6, 1);
-                glVertexAttribPointer(6, 4, GL_FLOAT, false, quadStride*sizeof(f32), PtrFromInt((12+14)*sizeof(f32)));
-                
-                glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 4);
+                R_QuadNode node = { .quads = quads, .count = ArrayCount(quads), };
+                R_Submit(&node, ArrayCount(quads), texture);
             }
             
             count++;

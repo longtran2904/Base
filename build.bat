@@ -124,13 +124,8 @@ del *.lib > NUL 2> NUL
 :: %compile% %opts% %warns% %code%\retired\LongCompressor.c %out%compressor.exe %linker% %links%
 
 :: --- Cleanup Build ----------------------------------------------------------
-ren fast_float.obj fast_float.obj.temp > NUL 2> NUL
-ren fast_float.o     fast_float.o.temp > NUL 2> NUL
 del *.obj > NUL 2> NUL
 del *.o   > NUL 2> NUL
-ren fast_float.obj.temp fast_float.obj > NUL 2> NUL
-ren   fast_float.o.temp fast_float.o   > NUL 2> NUL
-
 del *.ilk > NUL 2> NUL
 del *.exp > NUL 2> NUL
 del *.xml > NUL 2> NUL

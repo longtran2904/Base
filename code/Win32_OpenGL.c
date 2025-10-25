@@ -1,21 +1,4 @@
 
-//~ NOTE(long): Win32 OpenGL
-
-typedef struct W32OpenGLWindow W32OpenGLWindow;
-struct W32OpenGLWindow
-{
-    int dummy;
-};
-
-global W32OpenGLWindow w32OpenGLSlots[GFX_MAX_WINDOW_SLOTS] = {0};
-global HMODULE w32OpenGLModule = 0;
-global HGLRC w32OpenGLContext = 0;
-global int w32OpenGLPixelFormat = 0;
-
-global HDC  w32RenderDC = 0;
-global HWND w32RenderWnd = 0;
-#define BOOTSTRAP_WINDOW_CLASS_NAME "LongOpenGLBootstrap"
-
 //~ NOTE(long): OpenGL Helpers
 
 function OGL_Shader OGL_MakeShader(Arena* arena, char* src, GLenum type)
@@ -68,6 +51,24 @@ function OGL_Shader OGL_MakeProgram(Arena* arena, OGL_Shader* shaders, u64 count
     
     return (OGL_Shader){ program, Str(buffer, length) };
 }
+
+//~ NOTE(long): Win32 OpenGL
+
+typedef struct W32OpenGLWindow W32OpenGLWindow;
+struct W32OpenGLWindow
+{
+    int dummy;
+};
+
+global W32OpenGLWindow w32OpenGLSlots[GFX_MAX_WINDOW_SLOTS] = {0};
+global HMODULE w32OpenGLModule = 0;
+global HGLRC w32OpenGLContext = 0;
+global int w32OpenGLPixelFormat = 0;
+
+global HDC  w32RenderDC = 0;
+global HWND w32RenderWnd = 0;
+global HWND w32CoreWnd = 0;
+#define BOOTSTRAP_WINDOW_CLASS_NAME "LongOpenGLBootstrap"
 
 //~ NOTE(long): OpenGL API
 
@@ -215,16 +216,15 @@ function b32 OGL_Init(void)
         ReleaseDC(bootstrapWindow, dc);
     }
     
-	HWND dummyWindow = 0;
     if (!error)
-        dummyWindow = CreateWindow(GRAPHICS_WINDOW_CLASS_NAME, "LongDummy",
-                                   0, 0, 0, 0, 0,
-                                   0, 0, W32GetInstance(), 0);
+        w32CoreWnd = CreateWindow(GRAPHICS_WINDOW_CLASS_NAME, "LongDummy",
+                                  0, 0, 0, 0, 0,
+                                  0, 0, W32GetInstance(), 0);
     
-	if (dummyWindow)
+	if (w32CoreWnd)
 	{
 		// Create real context
-		HDC dc = GetDC(dummyWindow);
+		HDC dc = GetDC(w32CoreWnd);
 		
         int formatAttribsI[] = {
             WGL_DRAW_TO_WINDOW_ARB, TRUE,
@@ -287,7 +287,7 @@ function b32 OGL_Init(void)
 #undef X
 		}
 		
-		ReleaseDC(dummyWindow, dc);
+		ReleaseDC(w32CoreWnd, dc);
 	}
 	
     // Clean up "temps"
@@ -298,8 +298,10 @@ function b32 OGL_Init(void)
         if (bootstrapWindow && !DestroyWindow(bootstrapWindow))
             ErrorSet("Failed to destroy the bootstrap window", error);
 		
-		if (dummyWindow && !DestroyWindow(dummyWindow))
+#if 0
+		if (w32CoreWnd && !DestroyWindow(w32CoreWnd))
 			ErrorSet("Failed to destroy the dummy context", error);
+#endif
         
         if (atom && !UnregisterClass(BOOTSTRAP_WINDOW_CLASS_NAME, instance))
             ErrorSet("Failed to unregister the bootstrap class", error);
