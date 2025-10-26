@@ -87,11 +87,11 @@ struct FNT_GlyphLayout
 typedef struct FNT_Baked FNT_Baked;
 struct FNT_Baked
 {
-#define FNT_CP_SLOT_COUNT 128
     FNT_MapSlot* slots;
     FNT_GlyphLayout* glyphs;
     
-    u32 count;
+    u32 slotCount;
+    u32 glyphCount;
     v2i32 size;
     
     FNT_Metrics metrics;

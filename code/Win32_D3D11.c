@@ -76,10 +76,10 @@ struct W32D3D11Window
 
 global W32D3D11Window w32D3D11Slots[GFX_MAX_WINDOW_SLOTS] = {0};
 
-global ID3D11Device* device = 0;
-global ID3D11DeviceContext* ctx = 0;
-global ID3D11Debug* dbg = 0;
-global IDXGISwapChain* w32D3D11SwapChain = 0;
+global ID3D11Device* d3d11Device = 0;
+global ID3D11DeviceContext* d3d11Ctx = 0;
+global ID3D11Debug* d3d11Dbg = 0;
+global IDXGISwapChain* dxgiSwapChain = 0;
 
 HMODULE dxgiModule = 0;
 HMODULE d3d11Module = 0;
@@ -162,21 +162,21 @@ function b32 InitD3D11(void)
     }
     
     {
-        // -- Create device --
+        // -- Create d3d11Device --
         if (!error)
         {
             HRESULT result = w32D3D11CreateDevice(0, D3D_DRIVER_TYPE_HARDWARE, 0, D3D11_CREATE_DEVICE_DEBUG,
-                                                  0, 0, D3D11_SDK_VERSION, &device, 0, &ctx);
+                                                  0, 0, D3D11_SDK_VERSION, &d3d11Device, 0, &d3d11Ctx);
             if (result != S_OK)
                 ErrorSet("Failed to create device", error);
         }
         
-        // -- Create dbg --
+        // -- Create d3d11Dbg --
         if (!error)
         {
-            HRESULT result = ID3D11Device_QueryInterface(device, iid_ID3D11Debug, &dbg);
+            HRESULT result = ID3D11Device_QueryInterface(d3d11Device, iid_ID3D11Debug, &d3d11Dbg);
             if (result != S_OK)
-                ErrorSet("Failed to query dbg", error);
+                ErrorSet("Failed to query debug", error);
         }
     }
     
@@ -199,9 +199,9 @@ function b32 InitD3D11(void)
 #undef X
         
         // Clear globals
-        device = 0;
-        ctx = 0;
-        dbg = 0;
+        d3d11Device = 0;
+        d3d11Ctx = 0;
+        d3d11Dbg = 0;
 		
         dxgiModule = 0;
         d3d11Module = 0;
@@ -216,8 +216,8 @@ function void W32CloseD3D11Window(GFXWindow window)
     W32D3D11Window* slot = w32D3D11Slots + window - 1;
     if (slot->swapchain)
         IDXGISwapChain_Release(slot->swapchain);
-    ID3D11DeviceContext_ClearState(ctx);
-    ID3D11DeviceContext_Flush(ctx);
+    ID3D11DeviceContext_ClearState(d3d11Ctx);
+    ID3D11DeviceContext_Flush(d3d11Ctx);
     ZeroStruct(slot);
 }
 
@@ -257,7 +257,7 @@ function b32 EquipD3D11Window(GFXWindow window)
 					.Windowed = true,
 				};
 				
-				IDXGIFactory_CreateSwapChain(factory, (IUnknown*)device, &swapChainDesc, &swapchain);
+				IDXGIFactory_CreateSwapChain(factory, (IUnknown*)d3d11Device, &swapChainDesc, &swapchain);
 				if (!swapchain)
 					ErrorSet("Failed to create swapchain", error);
 				
@@ -287,13 +287,13 @@ function b32 FreeD3D11()
     
     // Cleanup D3D11
     {
-        if (device) ID3D11Device_Release(device);
+        if (d3d11Device) ID3D11Device_Release(d3d11Device);
         else ErrorSet("The graphics device has already been released", error);
         
-        if (ctx) ID3D11DeviceContext_Release(ctx);
+        if (d3d11Ctx) ID3D11DeviceContext_Release(d3d11Ctx);
         else ErrorSet("The graphics context has already been released", error);
         
-        if (dbg) ID3D11Debug_Release(dbg);
+        if (d3d11Dbg) ID3D11Debug_Release(d3d11Dbg);
         else ErrorSet("The grahpics debugger has already been released", error);
     }
     
@@ -326,10 +326,10 @@ function b32 FreeD3D11()
     
     // Cleanup globals
     {
-        w32D3D11SwapChain = 0;
-        device = 0;
-        ctx = 0;
-        dbg = 0;
+        dxgiSwapChain = 0;
+        d3d11Device = 0;
+        d3d11Ctx = 0;
+        d3d11Dbg = 0;
         
         dxgiModule = 0;
         d3d11Module = 0;
@@ -341,14 +341,14 @@ function b32 FreeD3D11()
 
 function ID3D11DeviceContext* GetD3D11DeviceCtx(void)
 {
-    return ctx;
+    return d3d11Ctx;
 }
 
 function ID3D11RenderTargetView* BeginD3D11Render(GFXWindow window)
 {
 	ID3D11RenderTargetView* result = 0;
 	
-	if (GFXWindowIsValid(window) && w32D3D11SwapChain == 0)
+	if (GFXWindowIsValid(window) && dxgiSwapChain == 0)
 	{
 		W32D3D11Window* slot = w32D3D11Slots + window - 1;
 		ID3D11Texture2D* buffer = 0;
@@ -356,11 +356,11 @@ function ID3D11RenderTargetView* BeginD3D11Render(GFXWindow window)
 		if (bufferResult == S_OK)
 		{
 			ID3D11RenderTargetView* view = 0;
-			DWORD viewResult = ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource*)buffer, 0, &view);
+			DWORD viewResult = ID3D11Device_CreateRenderTargetView(d3d11Device, (ID3D11Resource*)buffer, 0, &view);
             if (viewResult == S_OK)
 			{
 				result = view;
-				w32D3D11SwapChain = slot->swapchain;
+				dxgiSwapChain = slot->swapchain;
 			}
 		}
 		
@@ -373,10 +373,10 @@ function ID3D11RenderTargetView* BeginD3D11Render(GFXWindow window)
 
 function void EndD3D11Render(ID3D11RenderTargetView* view)
 {
-	if (w32D3D11SwapChain)
+	if (dxgiSwapChain)
 	{
-		IDXGISwapChain_Present(w32D3D11SwapChain, 0, 0);
+		IDXGISwapChain_Present(dxgiSwapChain, 0, 0);
 		ID3D11RenderTargetView_Release(view);
-		w32D3D11SwapChain = 0;
+		dxgiSwapChain = 0;
 	}
 }

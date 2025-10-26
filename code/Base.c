@@ -399,6 +399,36 @@ function v3i32 NormV3I32(v3i32 v)                 { return ScaleV3I32(v, (i32)(1
 function v3i32 LerpV3I32(v3i32 a, v3i32 b, f32 t) { return (v3i32){ LerpInt(a.x, b.x, t), LerpInt(a.y, b.y, t), LerpInt(a.z, b.z, t) }; }
 function v3i32 CrossV3I32(v3i32 a, v3i32 b)       { return (v3i32){ a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x }; }
 
+function v4f32 V4F32(f32 x, f32 y, f32 z, f32 w)  { return (v4f32){ x, y, z, w }; }
+function v4f32 AddV4F32(v4f32 a, v4f32 b)         { return (v4f32){ a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w }; }
+function v4f32 SubV4F32(v4f32 a, v4f32 b)         { return (v4f32){ a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w }; }
+function v4f32 MulV4F32(v4f32 a, v4f32 b)         { return (v4f32){ a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w }; }
+function v4f32 DivV4F32(v4f32 a, v4f32 b)         { return (v4f32){ a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w }; }
+function v4f32 ScaleV4F32(v4f32 v, f32 s)         { return (v4f32){ v.x * s, v.y * s, v.z * s, v.w * s }; }
+function f32 DotV4F32(v4f32 a, v4f32 b)           { return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w; }
+function f32 SqrMagV4F32(v4f32 v)                 { return v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w; }
+function f32 MagV4F32(v4f32 v)                    { return Sqrt_f32(SqrMagV4F32(v)); }
+function v4f32 NormV4F32(v4f32 v)                 { return ScaleV4F32(v, 1.f/MagV4F32(v)); }
+function v4f32 LerpV4F32(v4f32 a, v4f32 b, f32 t)
+{
+    return (v4f32){ Lerp(a.x, b.x, t), Lerp(a.y, b.y, t), Lerp(a.z, b.z, t), Lerp(a.w, b.w, t) };
+}
+
+function v4i32 V4I32(i32 x, i32 y, i32 z, i32 w)  { return (v4i32){ x, y, z, w }; }
+function v4i32 AddV4I32(v4i32 a, v4i32 b)         { return (v4i32){ a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w }; }
+function v4i32 SubV4I32(v4i32 a, v4i32 b)         { return (v4i32){ a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w }; }
+function v4i32 MulV4I32(v4i32 a, v4i32 b)         { return (v4i32){ a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w }; }
+function v4i32 DivV4I32(v4i32 a, v4i32 b)         { return (v4i32){ a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w }; }
+function v4i32 ScaleV4I32(v4i32 v, i32 s)         { return (v4i32){ v.x * s, v.y * s, v.z * s, v.w * s }; }
+function i32 DotV4I32(v4i32 a, v4i32 b)           { return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w; }
+function i32 SqrMagV4I32(v4i32 v)                 { return v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w; }
+function i32 MagV4I32(v4i32 v)                    { return (i32)Sqrt_f32((f32)SqrMagV4I32(v)); }
+function v4i32 NormV4I32(v4i32 v)                 { return ScaleV4I32(v, (i32)(1.f/(f32)MagV4I32(v))); }
+function v4i32 LerpV4I32(v4i32 a, v4i32 b, f32 t)
+{
+    return (v4i32){ LerpInt(a.x, b.x, t), LerpInt(a.y, b.y, t), LerpInt(a.z, b.z, t), LerpInt(a.w, b.w, t) };
+}
+
 //- long: Range Functions
 function r1i32 R1I32(i32 min, i32 max)          { return (r1i32){ min, max }; }
 function r1i32 R1I32Size(i32 min, i32 size)     { return R1I32(min, min + size); }

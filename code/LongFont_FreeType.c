@@ -15,8 +15,8 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
     
     //- long: FreeType Init
     FT_Library ft = {0};
-    FT_Error init_error = FT_Init_FreeType(&ft);
-    error = init_error;
+    FT_Error initError = FT_Init_FreeType(&ft);
+    error = initError;
     
     FT_Face face = {0};
     if (!error)
@@ -32,9 +32,9 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
     //- long: Sizing
     if (!error)
     {
-        FT_F26Dot6 char_size = params->size << 6;
+        FT_F26Dot6 charSize = params->size << 6;
         FT_UInt dpi = (FT_UInt)params->dpi;
-        error = FT_Set_Char_Size(face, char_size, char_size, dpi, dpi);
+        error = FT_Set_Char_Size(face, charSize, charSize, dpi, dpi);
     }
     
     //- long: Metrics Calculation
@@ -52,33 +52,33 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
     //- long: Codepoint -> Glyph
     if (!error)
     {
-        FT_UInt glyph_index = 0;
-        FT_ULong codepoint = FT_Get_First_Char(face, &glyph_index);
+        FT_UInt glyphIdx = 0;
+        FT_ULong codepoint = FT_Get_First_Char(face, &glyphIdx);
         
-        while (glyph_index != 0)
+        while (glyphIdx != 0)
         {
             FNT_Glyph* glyph = PushStruct(arena, FNT_Glyph);
             glyph->codepoint = codepoint;
-            glyph->index = glyph_index;
+            glyph->index = glyphIdx;
             
             SLLQueuePush(font.first, font.last, glyph);
-            codepoint = FT_Get_Next_Char(face, codepoint, &glyph_index);
+            codepoint = FT_Get_Next_Char(face, codepoint, &glyphIdx);
         }
     }
     
     //- long: Glyph Rasterization
     if (!error)
     {
-        u32 load_flags = FT_LOAD_RENDER;
+        u32 loadFlags = FT_LOAD_RENDER;
         if (params->flags & FNT_RasterFlag_Hinted)
-            load_flags |= FT_LOAD_FORCE_AUTOHINT|(FT_LOAD_TARGET_LIGHT*
-                                                  ((params->flags & FNT_RasterFlag_Light) == FNT_RasterFlag_Light));
+            loadFlags |= FT_LOAD_FORCE_AUTOHINT|(FT_LOAD_TARGET_LIGHT*
+                                                 ((params->flags & FNT_RasterFlag_Light) == FNT_RasterFlag_Light));
         else
-            load_flags |= FT_LOAD_NO_AUTOHINT|FT_LOAD_NO_HINTING;
+            loadFlags |= FT_LOAD_NO_AUTOHINT|FT_LOAD_NO_HINTING;
         
         for (FNT_Glyph* glyph = font.first; glyph; glyph = glyph->next)
         {
-            if (FT_Load_Glyph(face, glyph->index, load_flags))
+            if (FT_Load_Glyph(face, glyph->index, loadFlags))
                 continue;
             
             FT_GlyphSlot ftGlyph = face->glyph;
@@ -90,29 +90,34 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
             glyph->size = V2I32(bitmap.width, bitmap.rows);
             Assert((bitmap.width == 0 && bitmap.rows == 0) || (bitmap.width != 0 && bitmap.rows != 0));
             
-            u8* dst = glyph->bitmap = PushArray(arena, u8, bitmap.width * bitmap.rows);
-            u8* src_line = bitmap.buffer;
-            if (bitmap.pitch < 0)
-                src_line += -bitmap.pitch*(bitmap.rows - 1);
-            
-            for (u32 y = 0; y < bitmap.rows; ++y)
+            u8* srcLine = bitmap.buffer;
+            if (srcLine)
             {
-                u8* src = src_line;
-                for (u32 x = 0; x < bitmap.width; ++x)
+                u8* dst = glyph->bitmap = PushArray(arena, u8, bitmap.width * bitmap.rows);
+                if (bitmap.pitch < 0)
+                    srcLine += -bitmap.pitch*(bitmap.rows - 1);
+                
+                for (u32 y = 0; y < bitmap.rows; ++y)
                 {
-                    u8 pixel = *src++;
-                    if (!(params->flags & FNT_RasterFlag_Smooth))
-                        pixel = (pixel >= 128) * 255;
-                    *dst++ = pixel;
+                    u8* src = srcLine;
+                    for (u32 x = 0; x < bitmap.width; ++x)
+                    {
+                        u8 pixel = *src++;
+                        if (!(params->flags & FNT_RasterFlag_Smooth))
+                            pixel = (pixel >= 128) * 255;
+                        *dst++ = pixel;
+                    }
+                    
+                    srcLine += bitmap.pitch;
                 }
                 
-                src_line += bitmap.pitch;
+                //glyph->offset.y -= bitmap.rows;
             }
         }
     }
     
     //- long: Clean up
-    if (!init_error)
+    if (!initError)
         FT_Done_FreeType(ft);
     
     if (error)

@@ -543,7 +543,7 @@
 // The ((~x+1) & 31) (or (-x & 31) to ignore warnings) is a safe (A >> (32 - x)) shift
 // https://nrk.neocities.org/notes#c-safe-bitwise-rotation
 #define RoundUpPow2(x) (1 << ((~clz32((x)-1)+1) & 31)) // or (1 << (32 - clz32(x-1)))
-#define RoundDownPow2(x) (1 << (31 - clz32(x-1)))
+#define RoundDownPow2(x) (1 << (31 - clz32(x)))
 // @CONSIDER(long): 64-bit version
 
 #define AlignUpPow2(x, p) (((x) + (p) - 1)&~((p) - 1))
@@ -1295,6 +1295,7 @@ function f64 Atan_f64(f64 x);
 function f64 Atan2_f64(f64 x, f64 y);
 
 //- long: Vector Functions
+#define V2F32V(v) V2F32((f32)(v).x, (f32)(v).y)
 function v2f32 V2F32(f32 x, f32 y);
 function v2f32 AddV2F32(v2f32 a, v2f32 b);
 function v2f32 SubV2F32(v2f32 a, v2f32 b);
@@ -1309,18 +1310,7 @@ function v2f32 V2F32Angle(f32 theta, f32 radius);
 function v2f32 NormV2F32(v2f32 v);
 function v2f32 LerpV2F32(v2f32 a, v2f32 b, f32 t);
 
-function v2i64 V2I64(i64 x, i64 y);
-function v2i64 AddV2I64(v2i64 a, v2i64 b);
-function v2i64 SubV2I64(v2i64 a, v2i64 b);
-function v2i64 MulV2I64(v2i64 a, v2i64 b);
-function v2i64 DivV2I64(v2i64 a, v2i64 b);
-function v2i64 ScaleV2I64(v2i64 v, i64 s);
-function i64 DotV2I64(v2i64 a, v2i64 b);
-function i64 SqrMagV2I64(v2i64 v);
-function i64 MagV2I64(v2i64 v);
-function v2i64 NormV2I64(v2i64 v);
-function v2i64 LerpV2I64(v2i64 a, v2i64 b, f32 t);
-
+#define V2I32V(v) V2I32((i32)(v).x, (i32)(v).y)
 function v2i32 V2I32(i32 x, i32 y);
 function v2i32 AddV2I32(v2i32 a, v2i32 b);
 function v2i32 SubV2I32(v2i32 a, v2i32 b);
@@ -1333,6 +1323,20 @@ function i32 MagV2I32(v2i32 v);
 function v2i32 NormV2I32(v2i32 v);
 function v2i32 LerpV2I32(v2i32 a, v2i32 b, f32 t);
 
+#define V2I64V(v) V2I64((i64)(v).x, (i64)(v).y)
+function v2i64 V2I64(i64 x, i64 y);
+function v2i64 AddV2I64(v2i64 a, v2i64 b);
+function v2i64 SubV2I64(v2i64 a, v2i64 b);
+function v2i64 MulV2I64(v2i64 a, v2i64 b);
+function v2i64 DivV2I64(v2i64 a, v2i64 b);
+function v2i64 ScaleV2I64(v2i64 v, i64 s);
+function i64 DotV2I64(v2i64 a, v2i64 b);
+function i64 SqrMagV2I64(v2i64 v);
+function i64 MagV2I64(v2i64 v);
+function v2i64 NormV2I64(v2i64 v);
+function v2i64 LerpV2I64(v2i64 a, v2i64 b, f32 t);
+
+#define V3F32V(v) V3F32((f32)(v).x, (f32)(v).y, (f32)(v).z)
 function v3f32 V3F32(f32 x, f32 y, f32 z);
 function v3f32 AddV3F32(v3f32 a, v3f32 b);
 function v3f32 SubV3F32(v3f32 a, v3f32 b);
@@ -1346,6 +1350,7 @@ function v3f32 NormV3F32(v3f32 v);
 function v3f32 LerpV3F32(v3f32 a, v3f32 b, f32 t);
 function v3f32 CrossV3F32(v3f32 a, v3f32 b);
 
+#define V3I32V(v) V3I32((i32)(v).x, (i32)(v).y, (i32)(v).z)
 function v3i32 V3I32(i32 x, i32 y, i32 z);
 function v3i32 AddV3I32(v3i32 a, v3i32 b);
 function v3i32 SubV3I32(v3i32 a, v3i32 b);
@@ -1359,7 +1364,41 @@ function v3i32 NormV3I32(v3i32 v);
 function v3i32 LerpV3I32(v3i32 a, v3i32 b, f32 t);
 function v3i32 CrossV3I32(v3i32 a, v3i32 b);
 
+#define V4F32FromV2(xy, zw) V4F32((f32)(xy).x, (f32)(xy).y, (f32)(zw).x, (f32)(zw).y)
+#define V4F32FromV3(xyz, w) V4F32((f32)(xyz).x, (f32)(xyz).y, (f32)(xyz).z, (f32)w)
+#define V4F32FromV4(v) V4F32((f32)(v).x, (f32)(v).y, (f32)(v).z, (f32)(v).w)
+function v4f32 V4F32(f32 x, f32 y, f32 z, f32 w);
+function v4f32 AddV4F32(v4f32 a, v4f32 b);
+function v4f32 SubV4F32(v4f32 a, v4f32 b);
+function v4f32 MulV4F32(v4f32 a, v4f32 b);
+function v4f32 DivV4F32(v4f32 a, v4f32 b);
+function v4f32 ScaleV4F32(v4f32 v, f32 s);
+function f32 DotV4F32(v4f32 a, v4f32 b);
+function f32 SqrMagV4F32(v4f32 v);
+function f32 MagV4F32(v4f32 v);
+function v4f32 NormV4F32(v4f32 v);
+function v4f32 LerpV4F32(v4f32 a, v4f32 b, f32 t);
+function v4f32 CrossV4F32(v4f32 a, v4f32 b);
+
+#define V4I32FromV2(xy, zw) V4I32((i32)(xy).x, (i32)(xy).y, (i32)(zw).x, (i32)(zw).y)
+#define V4I32FromV3(xyz, w) V4I32((i32)(xyz).x, (i32)(xyz).y, (i32)(xyz).z, (i32)w)
+#define V4I32FromV4(v) V4I32((i32)(v).x, (i32)(v).y, (i32)(v).z, (i32)(v).w)
+function v4i32 V4I32(i32 x, i32 y, i32 z, i32 w);
+function v4i32 AddV4I32(v4i32 a, v4i32 b);
+function v4i32 SubV4I32(v4i32 a, v4i32 b);
+function v4i32 MulV4I32(v4i32 a, v4i32 b);
+function v4i32 DivV4I32(v4i32 a, v4i32 b);
+function v4i32 ScaleV4I32(v4i32 v, i32 s);
+function i32 DotV4I32(v4i32 a, v4i32 b);
+function i32 SqrMagV4I32(v4i32 v);
+function i32 MagV4I32(v4i32 v);
+function v4i32 NormV4I32(v4i32 v);
+function v4i32 LerpV4I32(v4i32 a, v4i32 b, f32 t);
+function v4i32 CrossV4I32(v4i32 a, v4i32 b);
+
 //- long: Range Functions
+#define R1I32V(v) R1I32((i32)(v).x, (i32)(v).y)
+#define R1I32R(r) R1I32((i32)(r).min, (i32)(r).max)
 function r1i32 R1I32(i32 min, i32 max);
 function r1i32 R1I32Size(i32 min, i32 size);
 function r1i32 ShiftR1I32(r1i32 r, i32 x);
@@ -1371,6 +1410,8 @@ function r1i32 UnionR1I32(r1i32 a, r1i32 b);
 function r1i32 IntersectR1I32(r1i32 a, r1i32 b);
 function i32 ClampR1I32(r1i32 r, i32 v);
 
+#define R1U64V(v) R1U64((u64)(v).x, (u64)(v).y)
+#define R1U64R(r) R1U64((u64)(r).min, (u64)(r).max)
 function r1u64 R1U64(u64 min, u64 max);
 function r1u64 R1U64Size(u64 min, u64 size);
 function r1u64 ShiftR1U64(r1u64 r, u64 x);
@@ -1382,6 +1423,8 @@ function r1u64 UnionR1U64(r1u64 a, r1u64 b);
 function r1u64 IntersectR1U64(r1u64 a, r1u64 b);
 function u64 ClampR1U64(r1u64 r, u64 v);
 
+#define R1F32V(v) R1F32((f32)(v).x, (f32)(v).y)
+#define R1F32R(r) R1F32((f32)(r).min, (f32)(r).max)
 function r1f32 R1F32(f32 min, f32 max);
 function r1f32 R1F32Size(f32 min, f32 size);
 function r1f32 ShiftR1F32(r1f32 r, f32 x);
@@ -1393,7 +1436,9 @@ function r1f32 UnionR1F32(r1f32 a, r1f32 b);
 function r1f32 IntersectR1F32(r1f32 a, r1f32 b);
 function f32 ClampR1F32(r1f32 r, f32 v);
 
-#define R2I32P(x, y, z, w) R2I32(V2I32((x), (y)), V2I32((z), (w)))
+#define R2I32P(x, y, z, w) R2I32(V2I32((i32)(x), (i32)(y)), V2I32((i32)(z), (i32)(w)))
+#define R2I32V(v) R2I32P((v).x, (v).y, (v).z, (v).w)
+#define R2I32R(r) R2I32P((r).x0, (r).y0, (r).x1, (r).y1)
 function r2i32 R2I32(v2i32 min, v2i32 max);
 function r2i32 R2I32Size(v2i32 min, v2i32 size);
 function r2i32 ShiftR2I32(r2i32 r, v2i32 x);
@@ -1405,7 +1450,9 @@ function r2i32 UnionR2I32(r2i32 a, r2i32 b);
 function r2i32 IntersectR2I32(r2i32 a, r2i32 b);
 function v2i32 ClampR2I32(r2i32 r, v2i32 v);
 
-#define R2F32P(x, y, z, w) R2F32(V2F32((x), (y)), V2F32((z), (w)))
+#define R2F32P(x, y, z, w) R2F32(V2F32((f32)(x), (f32)(y)), V2F32((f32)(z), (f32)(w)))
+#define R2F32V(v) R2F32P((v).x, (v).y, (v).z, (v).w)
+#define R2F32R(r) R2F32P((r).x0, (r).y0, (r).x1, (r).y1)
 function r2f32 R2F32(v2f32 min, v2f32 max);
 function r2f32 R2F32Size(v2f32 min, v2f32 size);
 function r2f32 ShiftR2F32(r2f32 r, v2f32 x);

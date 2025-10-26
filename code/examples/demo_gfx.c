@@ -12,10 +12,12 @@
 #include "Win32_D3D11.c"
 
 #include "LongFont.h"
+#include "LongIcons.h"
 #include "LongFont.c"
 #include "LongFont_FreeType.c"
 
 #include "LongRender.h"
+#include "LongRender.c"
 #include "LongRender_OpenGL.c"
 
 enum
@@ -67,6 +69,7 @@ function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
         case Renderer_D3D:
         {
             ID3D11RenderTargetView* view = BeginD3D11Render(window);
+            ID3D11DeviceContext* ctx = GetD3D11DeviceCtx();
             ID3D11DeviceContext_ClearRenderTargetView(ctx, view, MidnightBlue);
             ID3D11DeviceContext_OMSetRenderTargets(ctx, 1, &view, 0);
             EndD3D11Render(view);
@@ -129,51 +132,27 @@ int WinMain(HINSTANCE hInstance,
             }
         }
         
-        FNT_Font font = FNT_FontOpen(scratch, &(FNT_LoadParams){
-                                         .flags = FNT_RasterFlag_Smooth|FNT_RasterFlag_Hinted,
-                                         .size = 15,
-                                         .dpi = 96,
-                                         .path = StrLit("liberation-mono.ttf"),
-                                     });
+        String paths[] = {
+            StrLit("data/liberation-mono.ttf"),
+            StrLit("data/Inconsolata-Regular.ttf"),
+            StrLit("data/JetBrainsMono-Regular.ttf"),
+            StrLit("data/MonaspaceNeon-Regular.otf"),
+            StrLit("data/unifont-16.0.04.otf"),
+            StrLit("data/fontello.ttf"),
+        };
         
-        FNT_Baked baked = FNT_FontBake(scratch, &font, &(FNT_Packer){.size = V2I32(512, 512)});
-        R_Texture* texture = R_TextureCreate(baked.size.x, baked.size.y, 0);
+        FNT_LoadParams params = {
+            .flags = FNT_RasterFlag_Smooth|FNT_RasterFlag_Hinted,
+            .size = 15, .dpi = 96,
+        };
         
-        for (FNT_Glyph* glyph = font.first; glyph; glyph = glyph->next)
+        R_Font fonts[ArrayCount(paths)] = {0};
+        for (u32 i = 0; i < ArrayCount(paths); ++i)
         {
-            if (glyph->size.x == 0)
-                continue;
-            
-            FNT_GlyphLayout* layout = FNT_GlyphFromCP(&baked, glyph->codepoint);
-            R_TextureUpdate(texture, layout->xy, glyph->bitmap);
+            params.path = paths[i];
+            FNT_Font looseFont = FNT_FontOpen(scratch, &params);
+            fonts[i] = R_FontBakeTexture(scratch, &looseFont, &(FNT_Packer){.size = V2I32(512, 512)});
         }
-        
-#if 0
-        u32 width = baked.size.x, height = baked.size.y;
-        GLuint texture = 0;
-        {
-            glGenTextures(1, &texture);
-            glBindTexture(GL_TEXTURE_2D, texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
-            
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            
-            for (FNT_Glyph* glyph = font.first; glyph; glyph = glyph->next)
-            {
-                i32 w = glyph->size.x, h = glyph->size.y;
-                if (w == 0)
-                    continue;
-                
-                FNT_GlyphLayout* layout = FNT_GlyphFromCP(&baked, glyph->codepoint);
-                v2i32 p = layout->xy.p0;
-                glTexSubImage2D(GL_TEXTURE_2D, 0, p.x, p.y, w, h, GL_RED, GL_UNSIGNED_BYTE, glyph->bitmap);
-            }
-        }
-#endif
         
         u32 count = 0;
         for (TempArena temp = TempBegin(scratch); ; TempEnd(temp))
@@ -183,43 +162,60 @@ int WinMain(HINSTANCE hInstance,
             
             DeferBlock(R_Begin(windows[0]), R_End())
             {
-                f32 width = (f32)baked.size.x, height = (f32)baked.size.y;
-                R_Quad quads[4] = {
-                    {
-                        { 200.f, 200.f, 300.f, 300.f, },
-                        { 0.f/width, 0.f/height, 100.f/width, 100.f/height, },
-                        10.f, 5.f,
-                        { 1.f, 1.f, 1.f, 1.f, },
-                        { 1.f, 1.f, 1.f, 1.f, },
-                    },
-                    
-                    {
-                        { 100.f, 400.f, 400.f, 500.f, },
-                        { 0.f/width, 0.f/height, 300.f/width, 100.f/height, },
-                        20.f, 10000.f,
-                        { 1.f, 1.f, 1.f, 1.f, },
-                        { 0.f, 0.f, 0.f, 1.f, },
-                    },
-                    
-                    {
-                        { 600.f, 100.f, 700.f, 300.f, },
-                        { 0.f/width, 0.f/height, 100.f/width, 200.f/height, },
-                        0.f, 10000.f,
-                        { 1.f, 1.f, 1.f, 1.f, },
-                        { 1.f, 1.f, 1.f, 0.f, },
-                    },
-                    
-                    {
-                        { 600.f, 400.f, 800.f, 700.f, },
-                        { 0.f/width, 0.f/height, 200.f/width, 300.f/height, },
-                        5.f, 10000.f,
-                        { 1.f, .2f, 0.f, 1.f, },
-                        { 1.f, 0.f, .2f, 1.f, },
-                    },
-                };
+                R_QuadList list = {0};
                 
-                R_QuadNode node = { .quads = quads, .count = ArrayCount(quads), };
-                R_Submit(&node, ArrayCount(quads), texture);
+                R_QuadPush(scratch, &list, &(R_Quad){
+                               R2F32P(200.f, 200.f, 300.f, 300.f), (r2f32){0},
+                               10.f, 5.f, 1.f,
+                               V4F32(1.f, .2f, 0.f, 1.f), V4F32(1.f, 0.f, .2f, 1.f)
+                           });
+                
+                R_QuadPush(scratch, &list, &(R_Quad){
+                               R2F32P(100.f, 400.f, 400.f, 500.f), (r2f32){0},
+                               20.f, 10000.f, 1.f,
+                               V4F32(1.f, 1.f, 1.f, 1.f), V4F32(0.f, 0.f, 0.f, 1.f)
+                           });
+                
+                R_QuadPush(scratch, &list, &(R_Quad){
+                               R2F32P(600.f, 100.f, 700.f, 300.f), (r2f32){0},
+                               0.f, 10000.f, 1.f,
+                               V4F32(1.f, 1.f, 1.f, 1.f), V4F32(1.f, 1.f, 1.f, 0.f)
+                           });
+                
+                R_QuadPush(scratch, &list, &(R_Quad){
+                               R2F32Size(V2F32(600.f, 400.f), V2F32V(fonts[0].baked.size)), R2F32P(0.f, 0.f, 1.f, 1.f),
+                               0.f, 10000.f, 1.f,
+                               V4F32(1.f, 1.f, 1.f, 1.f), V4F32(1.f, 1.f, 1.f, 1.f)
+                           });
+                
+                R_Submit(list.first, list.totalCount, fonts[0].texture);
+                
+                DeferBlock(R_CtxBegin(), R_CtxEnd())
+                {
+                    v4f32 c0 = V4F32(0.9f, 0.1f, 0.0f, 1.0f);
+                    v4f32 c1 = V4F32(0.8f, 0.0f, 0.0f, 1.0f);
+                    v4f32 c2 = V4F32(0.1f, 0.9f, 0.0f, 1.0f);
+                    v4f32 c3 = V4F32(0.0f, 0.9f, 0.1f, 1.0f);
+                    
+                    R_CtxPushRect(R2F32P( 5,  5, 45, 45), (r2f32){0}, 5.f, 10000.f, 1.f, c0, c1);
+                    R_CtxPushRect(R2F32P(55,  5, 95, 45), (r2f32){0}, 5.f, 10000.f, 1.f, c0, c1);
+                    R_CtxPushRect(R2F32P( 5, 50, 45, 70), (r2f32){0}, 0.f, 10000.f, 1.f, c2, c3);
+                    R_CtxPushRect(R2F32P(55, 50, 95, 70), (r2f32){0}, 0.f, 10000.f, 1.f, c3, c2);
+                    
+                    R_CtxPushStr(&fonts[1], StrLit("The quick brown fox jumps over the lazy dog."),
+                                 V2F32(25.f, 50.f), V4F32(1.0f, 1.0f, 0.5f, 1.0f));
+                    
+                    R_CtxPushRect(R2F32P( 5, 105, 45, 145), (r2f32){0}, 5.f, 10000.f, 1.f, c0, c1);
+                    R_CtxPushRect(R2F32P(55, 105, 95, 145), (r2f32){0}, 5.f, 10000.f, 1.f, c0, c1);
+                    R_CtxPushRect(R2F32P( 5, 150, 45, 170), (r2f32){0}, 0.f, 10000.f, 1.f, c2, c1);
+                    R_CtxPushRect(R2F32P(55, 150, 95, 170), (r2f32){0}, 0.f, 10000.f, 1.f, c1, c2);
+                    
+                    R_CtxPushStr(&fonts[2], StrLit("Hello, world!"),
+                                 V2F32(25.f, 150.f), V4F32(1.0f, 1.0f, 0.5f, 1.0f));
+                    
+                    R_CtxPushChar(&fonts[ArrayCount(fonts)-1], ICON_FOLDER, V2F32(25, 250), V4F32(.8f, 0.f, .4f, 1.f));
+                    R_CtxPushChar(&fonts[ArrayCount(fonts)-1], ICON_CANCEL, V2F32(50, 250), V4F32(.8f, 0.f, .4f, 1.f));
+                }
             }
             
             count++;

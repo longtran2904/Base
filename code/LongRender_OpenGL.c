@@ -26,54 +26,67 @@ global char* glsl_vshader =
 "layout (location = 2) in vec4 v_uv;\n"
 "layout (location = 3) in float v_radius;\n"
 "layout (location = 4) in float v_thick;\n"
-"layout (location = 5) in vec4 v_color0;\n"
-"layout (location = 6) in vec4 v_color1;\n"
-"out vec2 f_center;\n"
-"out vec2 f_extent;\n"
+"layout (location = 5) in float v_soft;\n"
+"layout (location = 6) in vec4 v_color0;\n"
+"layout (location = 7) in vec4 v_color1;\n"
+"flat out vec2 f_center;\n"
+"flat out vec2 f_extent;\n"
 "out vec2 f_pos;\n"
-"out float f_radius;\n"
-"out float f_thick;\n"
-"out vec4 f_color0;\n"
-"out vec4 f_color1;\n"
+"flat out float f_radius;\n"
+"flat out float f_thick;\n"
+"flat out float f_soft;\n"
+"flat out vec4 f_color0;\n"
+"flat out vec4 f_color1;\n"
 "out float f_pos_pattern_y;\n"
 "out vec2 f_uv;\n"
+"flat out float f_override_sample;\n"
 "void main(){\n"
+// compute normalized pos
 "vec2 center = (v_quad.xy + v_quad.zw)*0.5;\n"
 "vec2 extent = (v_quad.zw - v_quad.xy)*0.5;\n"
 "vec2 pos = center + extent * v_pos_pattern;\n"
 "vec2 norm_pos = pos*u_view_xform + vec2(-1.0, +1.0);\n"
+// compute uv coords
 "vec2 uv_center = (v_uv.xy + v_uv.zw)*0.5;\n"
 "vec2 uv_extent = (v_uv.zw - v_uv.xy)*0.5;\n"
+"vec2 uv = uv_center + uv_extent*v_pos_pattern;\n"
+"float override_sample = 0;\n"
+"if (v_uv.z == 0) { override_sample = 1.0; }\n"
+// fill outputs
 "gl_Position = vec4(norm_pos, 0.0, 1.0);\n"
 "f_pos = pos;\n"
 "f_center = center;\n"
 "f_extent = extent;\n"
 "f_radius = v_radius;\n"
 "f_thick = v_thick;\n"
+"f_soft = v_soft;\n"
 "f_color0 = v_color0;\n"
 "f_color1 = v_color1;\n"
 "f_pos_pattern_y = v_pos_pattern.y;\n"
-"f_uv = uv_center + uv_extent*v_pos_pattern;\n"
+"f_uv = uv;\n"
+"f_override_sample = override_sample;\n"
 "}\n";
 
 global char* glsl_fshader =
 "#version 330\n"
 "uniform sampler2D u_texture;\n"
-"in vec2 f_center;\n"
-"in vec2 f_extent;\n"
+"flat in vec2 f_center;\n"
+"flat in vec2 f_extent;\n"
 "in vec2 f_pos;\n"
-"in float f_radius;\n"
-"in float f_thick;\n"
-"in vec4 f_color0;\n"
-"in vec4 f_color1;\n"
+"flat in float f_radius;\n"
+"flat in float f_thick;\n"
+"flat in float f_soft;\n"
+"flat in vec4 f_color0;\n"
+"flat in vec4 f_color1;\n"
 "in float f_pos_pattern_y;\n"
 "in vec2 f_uv;\n"
+"flat in float f_override_sample;\n"
 "out vec4 out_color;\n"
 "void main(){\n"
 // setup params
 "float r = f_radius;\n"
 "float thick = f_thick;\n"
-"float soft = 1.0;\n"
+"float soft = f_soft;\n"
 // calculate signed distance
 "vec2 d2 = abs(f_pos - f_center) - f_extent + vec2(r, r) + vec2(soft, soft);\n"
 "float d_neg =    min(max(d2.x, d2.y), 0);\n"
@@ -89,6 +102,7 @@ global char* glsl_fshader =
 "vec4 c_base = f_color0 + (f_color1 - f_color0) * c_t;\n"
 // sample texture
 "float sample = texture(u_texture, f_uv).r;\n"
+"sample = max(sample, f_override_sample);\n"
 "out_color = vec4(c_base.xyz * sample, c_base.w * m);\n"
 "}\n";
 
@@ -165,7 +179,7 @@ function void R_Begin(GFXWindow window)
         oglRenderer.dim = V2I32(w, h);
     }
     
-    glClearColor(0, 0, 0, 1);
+    glClearColor(1, 0, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
@@ -234,13 +248,17 @@ function void R_Submit(R_QuadNode* first, u64 count, R_Texture* texturePtr)
     
     glEnableVertexAttribArray(5);
     glVertexAttribDivisor(5, 1);
-    glVertexAttribPointer(5, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, c0)));
+    glVertexAttribPointer(5, 1, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, softness)));
     
     glEnableVertexAttribArray(6);
     glVertexAttribDivisor(6, 1);
-    glVertexAttribPointer(6, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, c1)));
+    glVertexAttribPointer(6, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, c0)));
     
-    glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 4);
+    glEnableVertexAttribArray(7);
+    glVertexAttribDivisor(7, 1);
+    glVertexAttribPointer(7, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, c1)));
+    
+    glDrawArraysInstanced(GL_TRIANGLES, 0, 6, (GLsizei)count);
 }
 
 function R_Texture* R_TextureCreate(u32 w, u32 h, void* data)

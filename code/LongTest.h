@@ -17,7 +17,7 @@ struct TestCtx
     i32 testCount;
     i32 passCount;
 };
-global TestCtx ctx; // TODO(long): Change from using a global to using a stack
+global TestCtx testCtx; // TODO(long): Change from using a global to using a stack
 
 function void TestBegin(char* name, i32 padding);
 function void TestEnd(i32 padding);
@@ -42,14 +42,14 @@ function void TestBegin(char* name, i32 padding)
     i32 spaces = ClampBot(padding - (i32)str.size, 0);
     LT_PRINTF("\"%.*s\"%.*s [", StrExpand(str), spaces, " ------------------------------");
     
-    ctx.testCount = 0;
-    ctx.passCount = 0;
+    testCtx.testCount = 0;
+    testCtx.passCount = 0;
 }
 
 function b32 TestResult(b32 result)
 {
-    ctx.testCount++;
-    ctx.passCount += !!result;
+    testCtx.testCount++;
+    testCtx.passCount += !!result;
     LT_PRINTF(result ? "." : "X");
     
     LT_ASSERT(result);
@@ -58,10 +58,11 @@ function b32 TestResult(b32 result)
 
 function void TestEnd(i32 padding)
 {
-    i32 spaces = ClampBot(padding - ctx.testCount, 0);
+    i32 spaces = ClampBot(padding - testCtx.testCount, 0);
     
     LT_PRINTF("]%.*s ", spaces, "                                                                                ");
-    LT_PRINTF("[%2i/%-2i] %2i passed, %2i tests, ", ctx.passCount, ctx.testCount, ctx.passCount, ctx.testCount);
-    LT_PRINTF(ctx.testCount == ctx.passCount ? "SUCCESS ( )\n" : "FAILED (X)\n");
+    LT_PRINTF("[%2i/%-2i] %2i passed, %2i tests, ",
+              testCtx.passCount, testCtx.testCount, testCtx.passCount, testCtx.testCount);
+    LT_PRINTF(testCtx.testCount == testCtx.passCount ? "SUCCESS ( )\n" : "FAILED (X)\n");
 }
 #endif // LONG_TEST_IMPLEMENTATION
