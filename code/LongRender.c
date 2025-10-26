@@ -56,7 +56,7 @@ function void R_StrPush(Arena* arena, R_QuadList* list, FNT_Baked* font, String 
         
         r2i32 xyTex = R2I32Size(layout->offset, DimR2I32(layout->xy));
         r2f32 xy = ShiftR2F32(R2F32R(xyTex), pos);
-        pos.x += layout->advance;
+        pos.x += (f32)layout->advance;
         
         R_QuadPush(arena, list, &(R_Quad){ xy, layout->uv, 0.f, 10000.f, 0.f, color, color });
     }
@@ -66,7 +66,7 @@ function void R_StrPush(Arena* arena, R_QuadList* list, FNT_Baked* font, String 
 
 threadvar R_Ctx* drawCtx;
 
-function void R_CtxBegin()
+function void R_CtxBegin(void)
 {
     if (drawCtx == 0)
     {
@@ -80,7 +80,7 @@ function void R_CtxBegin()
     drawCtx->font.texture = 0;
 }
 
-function void R_CtxEnd()
+function void R_CtxEnd(void)
 {
     R_Submit(drawCtx->list.first, drawCtx->list.totalCount, drawCtx->font.texture);
     ArenaPopTo(drawCtx->arena, drawCtx->basePos);
@@ -98,7 +98,7 @@ function void R_CtxPushStr(R_Font* font, String str, v2f32 p, v4f32 color)
 {
     R_Ctx* ctx = drawCtx;
     if (ctx->font.texture && ctx->font.texture != font->texture)
-        R_CtxEnd(ctx);
+        R_CtxEnd();
     
     ctx->font = *font;
     R_StrPush(ctx->arena, &ctx->list, &font->baked, str, p, color);
@@ -108,7 +108,7 @@ function void R_CtxPushChar(R_Font* font, u32 codepoint, v2f32 p, v4f32 color)
 {
     R_Ctx* ctx = drawCtx;
     if (ctx->font.texture && ctx->font.texture != font->texture)
-        R_CtxEnd(ctx);
+        R_CtxEnd();
     ctx->font = *font;
     
     FNT_GlyphLayout* layout = FNT_GlyphFromCP(&font->baked, codepoint);

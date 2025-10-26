@@ -77,10 +77,12 @@ function R_Font R_FontBakeTexture(Arena* arena, FNT_Font* font, FNT_Packer* pack
 
 //~ long: Context Functions
 
-function void R_CtxBegin();
-function void R_CtxEnd();
+function void R_CtxBegin(void);
+function void R_CtxEnd(void);
 
 #define R_CtxPushRect(...) R_CtxPushQuad(&(R_Quad){__VA_ARGS__})
+#define R_CtxPushLine(x, y, color) R_CtxPushRect(R2F32P((x), (y).min, (x) + 1.f, (y).max), \
+                                                 (r2f32){0}, 0.f, 10000.f, 0.f, (color), (color))
 function void R_CtxPushQuad(R_Quad* quad);
 function void R_CtxPushStr(R_Font* font, String str, v2f32 p, v4f32 color);
 

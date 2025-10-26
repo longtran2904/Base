@@ -2905,7 +2905,6 @@ BeforeMain(BaseInit)
         LARGE_INTEGER perfFreq = {0};
         if (QueryPerformanceFrequency(&perfFreq))
             win32TicksPerSecond = ((u64)perfFreq.HighPart << 32) | perfFreq.LowPart;
-        timeBeginPeriod(1);
     }
     
     win32PermArena = ArenaMake();

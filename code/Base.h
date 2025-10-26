@@ -2008,6 +2008,10 @@ function String OSGetTempDir(void);
 
 //~ long: Time
 
+// NOTE(long): For higher precision, consider exposing native ticks instead of converting to ms
+// Though in that case, CPU-specific instructions or another OS API might be preferable
+// For example, RDTSC or CREATE_WAITABLE_TIMER_HIGH_RESOLUTION on Windows
+// https://x.com/SheriefFYI/status/1811902718341955917
 function void OSSleepMS(u32 ms);
 function  u64 OSNowMS(void);
 function  u64 OSNowUS(void);

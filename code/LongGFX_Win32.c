@@ -144,6 +144,13 @@ function b32 GFXInit(void)
                        }))
         ErrorSet("Failed to resgister class", error);
     
+    // NOTE(long): This lowers the Windows scheduler’s interrupt timeout
+    // Primarily affects Sleep accuracy, but also influences thread scheduling
+    // https://x.com/longtran2904/status/1812184029514629495
+    // It should only be used for performance-intensive apps, not lightweight ones
+    // Currently, graphical apps automatically use it, though this may change later
+    timeBeginPeriod(1);
+    
     return !error;
 }
 
@@ -421,6 +428,31 @@ function b32 GFXPeekInput(void)
     MSG msg = {0};
     while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
         DispatchMessage(&msg);
+    
+    return result;
+}
+
+function u64 GFXWindowRefreshRate(GFXWindow window)
+{
+    u64 result = 0;
+    if (GFXWindowIsValid(window))
+    {
+        W32Window* slot = W32WindowFromGFXHandle(window);
+        
+        if (slot->wnd)
+        {
+            HMONITOR monitor = MonitorFromWindow(slot->wnd, MONITOR_DEFAULTTOPRIMARY);
+            MONITORINFOEXW info = {sizeof(info)};
+            
+            if (GetMonitorInfoW(monitor, (LPMONITORINFO)&info))
+            {
+                DEVMODEW devmode = {};
+                devmode.dmSize = sizeof(devmode);
+                if (EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &devmode))
+                    result = ClampBot(devmode.dmDisplayFrequency, 24);
+            }
+        }
+    }
     
     return result;
 }

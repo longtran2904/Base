@@ -31,15 +31,14 @@ global char* glsl_vshader =
 "layout (location = 7) in vec4 v_color1;\n"
 "flat out vec2 f_center;\n"
 "flat out vec2 f_extent;\n"
-"out vec2 f_pos;\n"
 "flat out float f_radius;\n"
 "flat out float f_thick;\n"
 "flat out float f_soft;\n"
 "flat out vec4 f_color0;\n"
 "flat out vec4 f_color1;\n"
+"flat out float f_override_sample;\n"
 "out float f_pos_pattern_y;\n"
 "out vec2 f_uv;\n"
-"flat out float f_override_sample;\n"
 "void main(){\n"
 // compute normalized pos
 "vec2 center = (v_quad.xy + v_quad.zw)*0.5;\n"
@@ -54,7 +53,6 @@ global char* glsl_vshader =
 "if (v_uv.z == 0) { override_sample = 1.0; }\n"
 // fill outputs
 "gl_Position = vec4(norm_pos, 0.0, 1.0);\n"
-"f_pos = pos;\n"
 "f_center = center;\n"
 "f_extent = extent;\n"
 "f_radius = v_radius;\n"
@@ -62,9 +60,9 @@ global char* glsl_vshader =
 "f_soft = v_soft;\n"
 "f_color0 = v_color0;\n"
 "f_color1 = v_color1;\n"
+"f_override_sample = override_sample;\n"
 "f_pos_pattern_y = v_pos_pattern.y;\n"
 "f_uv = uv;\n"
-"f_override_sample = override_sample;\n"
 "}\n";
 
 global char* glsl_fshader =
@@ -72,23 +70,25 @@ global char* glsl_fshader =
 "uniform sampler2D u_texture;\n"
 "flat in vec2 f_center;\n"
 "flat in vec2 f_extent;\n"
-"in vec2 f_pos;\n"
 "flat in float f_radius;\n"
 "flat in float f_thick;\n"
 "flat in float f_soft;\n"
 "flat in vec4 f_color0;\n"
 "flat in vec4 f_color1;\n"
+"flat in float f_override_sample;\n"
+"layout(origin_upper_left) in vec4 gl_FragCoord;\n"
 "in float f_pos_pattern_y;\n"
 "in vec2 f_uv;\n"
-"flat in float f_override_sample;\n"
 "out vec4 out_color;\n"
 "void main(){\n"
+// setup pos
+"vec2 pos = gl_FragCoord.xy;\n"
 // setup params
 "float r = f_radius;\n"
 "float thick = f_thick;\n"
 "float soft = f_soft;\n"
 // calculate signed distance
-"vec2 d2 = abs(f_pos - f_center) - f_extent + vec2(r, r) + vec2(soft, soft);\n"
+"vec2 d2 = abs(pos - f_center) - f_extent + vec2(r, r) + vec2(soft, soft);\n"
 "float d_neg =    min(max(d2.x, d2.y), 0);\n"
 "float d_pos = length(max(d2, vec2(0, 0)));\n"
 // apply radius
@@ -96,7 +96,8 @@ global char* glsl_fshader =
 // distance response curve
 "float half_thick = thick * 0.5;\n"
 "float d_mir = abs(d + half_thick) - half_thick;\n"
-"float m = smoothstep(soft, -soft, d_mir);\n"
+"float epsilon = 0.01;\n"
+"float m = smoothstep(soft + epsilon, -soft - epsilon, d_mir);\n"
 // blend color
 "float c_t = (f_pos_pattern_y + 1.0) * 0.5;\n"
 "vec4 c_base = f_color0 + (f_color1 - f_color0) * c_t;\n"
@@ -179,7 +180,7 @@ function void R_Begin(GFXWindow window)
         oglRenderer.dim = V2I32(w, h);
     }
     
-    glClearColor(1, 0, 1, 1);
+    glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 }
 

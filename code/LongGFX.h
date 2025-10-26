@@ -7,19 +7,22 @@
 #define GFX_MAX_WINDOW_SLOTS 64
 #endif
 
-//~ NOTE(long): GFX Types
+//~ long: GFX Types
 
 typedef u64 GFXWindow;
 typedef void GFXDestroyWindow(GFXWindow window);
 typedef void GFXResizeWindow(GFXWindow window, u32 width, u32 height);
 
-//~ NOTE(long): Setup GFX
+//~ long: Setup GFX
 
 function b32 GFXInit(void);
 function b32 GFXWaitForInput(void);
 function b32 GFXPeekInput(void);
 
-//~ NOTE(long): Setup Window
+// TODO(long): Query other monitor (DPI, size) and system (double-click, blink) info
+function u64 GFXWindowRefreshRate(GFXWindow window);
+
+//~ long: Setup Window
 
 function GFXWindow GFXCreateWindowEx(String title, i32 x, i32 y, i32 width, i32 height);
 function void GFXShowWindow(GFXWindow window);
@@ -30,7 +33,7 @@ function void GFXCloseWindow(GFXWindow window);
 function void* GFXWindowGetEquipment(GFXWindow window);
 function void  GFXWindowEquipData(GFXWindow window, void* ptr, GFXDestroyWindow* destroy);
 
-//~ NOTE(long): Setup User Data
+//~ long: Setup User Data
 
 function GFXResizeWindow* GFXGetResizeFunc(void);
 function void             GFXSetResizeFunc(GFXResizeWindow* func);
@@ -38,7 +41,7 @@ function void             GFXSetResizeFunc(GFXResizeWindow* func);
 function void* GFXWindowGetUserData(GFXWindow window);
 function void  GFXWindowSetUserData(GFXWindow window, void* data);
 
-//~ NOTE(long): Get/Set Window's Values
+//~ long: Get/Set Window's Values
 
 function b32 GFXWindowIsValid(GFXWindow window);
 function b32 GFXWindowIsEquipped(GFXWindow window);
@@ -83,7 +86,7 @@ function b32 GFXWindowSetOuterRect(GFXWindow window, i32 x, i32 y, i32 w, i32 h)
 function b32 GFXWindowGetInnerRect(GFXWindow window, i32* x, i32* y, i32* w, i32* h);
 function b32 GFXWindowGetOuterRect(GFXWindow window, i32* x, i32* y, i32* w, i32* h);
 
-//~ NOTE(long): Error/Message Box
+//~ long: Error/Message Box
 
 function void GFXMessageBox(String title, String message);
 function void GFXErrorBox(Logger* logger, i32 code);
