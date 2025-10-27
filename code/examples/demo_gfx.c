@@ -35,6 +35,7 @@ struct Rect
 {
     v2f32 p0;
     v2f32 p1;
+    v2f32 vel;
     v4f32 c;
 };
 
@@ -46,6 +47,7 @@ struct Vertex
     
     v2f32 p0;
     v2f32 p1;
+    v2f32 vel;
 };
 
 global char glsl_vert_vshader[] =
@@ -54,27 +56,44 @@ global char glsl_vert_vshader[] =
 "layout (location = 0) in vec2 v_p;\n"
 "layout (location = 1) in vec4 v_c;\n"
 "layout (location = 2) in vec4 v_rect;\n"
+"layout (location = 3) in vec2 v_vel;\n"
 "out vec4 f_c;\n"
 "out vec4 f_rect;\n"
+"out vec2 f_vel;\n"
 "void main(){\n"
 "vec2 norm_pos = v_p*u_view_xform + vec2(-1.0, -1.0);\n"
 "gl_Position = vec4(norm_pos, 0.0, 1.0);\n"
 "f_c = v_c;\n"
 "f_rect = v_rect;\n"
+"f_vel = v_vel;\n"
 "}\n";
 
 global char glsl_vert_fshader[] =
 "#version 330\n"
 "in vec4 f_c;\n"
 "in vec4 f_rect;\n"
+"in vec2 f_vel;\n"
 "in vec4 gl_FragCoord;\n"
 "out vec4 out_color;\n"
 "void main(){\n"
 "float frag_min_x = gl_FragCoord.x - 0.5;\n"
 "float frag_max_x = gl_FragCoord.x + 0.5;\n"
-"float cover_min_x = max(f_rect.x, frag_min_x);\n"
-"float cover_max_x = min(f_rect.z, frag_max_x);\n"
-"float a = cover_max_x - cover_min_x;\n"
+// spatial coverage
+"float sp_cover_min_x = max(f_rect.x, frag_min_x);\n"
+"float sp_cover_max_x = min(f_rect.z, frag_max_x);\n"
+"float sp_a = sp_cover_max_x - sp_cover_min_x;\n"
+// temporal coverage
+"float tm_rect_min_x = min(f_rect.x, f_rect.x - f_vel.x);\n"
+"float tm_rect_max_x = max(f_rect.z, f_rect.z - f_vel.x);\n"
+"float tm_cover_min_x = max(tm_rect_min_x, frag_min_x);\n"
+"float tm_cover_max_x = min(tm_rect_max_x, frag_max_x);\n"
+"float tm_a = tm_cover_max_x - tm_cover_min_x;\n"
+// tail strength
+"float speed_sqr = f_vel.x*f_vel.x + f_vel.y*f_vel.y;\n"
+"float speed_clamped = max(1, sqrt(speed_sqr));\n"
+"float tail_strength = 1/speed_clamped;\n"
+// combine alpha
+"float a = tm_a * tail_strength;\n"
 "out_color = vec4(f_c.xyz, f_c.a * a);\n"
 "}\n";
 
@@ -102,6 +121,9 @@ function void DrawGeometry(Vertex* v, u32 count, v2f32 windim)
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 4, GL_FLOAT, 0, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, p0)));
     
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 2, GL_FLOAT, 0, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, vel)));
+    
     glDrawArrays(GL_TRIANGLES, 0, count);
 }
 
@@ -112,12 +134,31 @@ function void DrawRects(Rect* r, u32 count, v2f32 windim)
         Vertex* v = PushArray(scratch, Vertex, count*6);
         for (u32 i = 0; i < count; ++i)
         {
-            v2f32 p0 = r[i].p0;
-            v2f32 p1 = r[i].p1;
-            v4f32  c = r[i].c;
+            v2f32  p0 = r[i].p0;
+            v2f32  p1 = r[i].p1;
+            v2f32 vel = r[i].vel;
+            v4f32 col = r[i].c;
             
-            v2f32 p0g = V2F32(Floor_f32(p0.x), Floor_f32(p0.y));
-            v2f32 p1g = V2F32( Ceil_f32(p1.x),  Ceil_f32(p1.y));
+            f32 boost = .15f;
+            f32 boostScale = 1.f - boost;
+            
+            if (-1.f <= vel.x && vel.x <= -0.01f)
+                vel.x = (vel.x + 1.f)*boostScale - 1.f;
+            else if (0.01f <= vel.x && vel.x <= 1.f)
+                vel.x = (vel.x - 1.f)*boostScale + 1.f;
+            
+            if (-1.f <= vel.y && vel.y <= -0.01f)
+                vel.y = (vel.y + 1.f)*boostScale - 1.f;
+            else if (0.01f <= vel.y && vel.y <= 1.f)
+                vel.y = (vel.y - 1.f)*boostScale + 1.f;
+            
+            v2f32 p0pre = SubV2F32(p0, vel);
+            v2f32 p1pre = SubV2F32(p1, vel);
+            v2f32 p0c = V2F32(Min(p0.x, p0pre.x), Min(p0.y, p0pre.y));
+            v2f32 p1c = V2F32(Max(p1.x, p1pre.x), Max(p1.y, p1pre.y));
+            
+            v2f32 p0g = V2F32(Floor_f32(p0c.x), Floor_f32(p0c.y));
+            v2f32 p1g = V2F32( Ceil_f32(p1c.x),  Ceil_f32(p1c.y));
             
             Vertex* vv = v + i*6;
             vv[0].p = p0g;
@@ -129,9 +170,10 @@ function void DrawRects(Rect* r, u32 count, v2f32 windim)
             
             for (u32 j = 0; j < 6; ++j)
             {
-                vv[j].p0 = p0;
-                vv[j].p1 = p1;
-                vv[j].c  = c;
+                vv[j].p0  = p0;
+                vv[j].p1  = p1;
+                vv[j].vel = vel;
+                vv[j].c   = col;
             }
         }
         
@@ -354,47 +396,37 @@ int WinMain(HINSTANCE hInstance,
 #endif
                 
 #if 1
-                f32 t = DivF32(frameIdx % (fps*10), fps*10);
+                u64 frameLoop = fps*10;
+                f32 t = DivF32(frameIdx % frameLoop, frameLoop);
+                f32 tPrev = 0;
+                if (frameIdx > 0)
+                    tPrev = DivF32((frameIdx-1) % frameLoop, frameLoop);
                 
                 v4f32 c0 = V4F32(1.f, 1.f, 1.f, 1.f);
                 f32 thick = 1.f;
                 f32 xMoving = 5.f + Sin_f32(t*TAU_F32)*4.f;
+                f32 xMovingPrev = 5.f + Sin_f32(tPrev*TAU_F32)*4.f;
+                f32 xVel = xMoving - xMovingPrev;
                 r1f32 y1 = R1F32(-6.f, 4.f);
                 r1f32 y2 = R1F32(5.f, 15.f);
                 
-                f32 patterns[3*5] = {
-                    xMoving, y1.min, y1.max,
-                    1.00f, y2.min, y2.max,
-                    3.25f, y2.min, y2.max,
-                    5.50f, y2.min, y2.max,
-                    7.75f, y2.min, y2.max,
+                f32 patterns[4*5] = {
+                    xMoving, xVel, y1.min, y1.max,
+                    1.0000f, 0.0f, y2.min, y2.max,
+                    3.2500f, 0.0f, y2.min, y2.max,
+                    5.5000f, 0.0f, y2.min, y2.max,
+                    7.7500f, 0.0f, y2.min, y2.max,
                 };
                 
-#if 0
-                Vertex testGeometry[6*5] = {0};
-                for (u64 i = 0; i < 5; ++i)
-                {
-                    f32 x = patterns[3*i + 0];
-                    r1f32 y = R1F32(patterns[3*i + 1], patterns[3*i + 2]);
-                    
-                    testGeometry[6*i + 0].p = V2F32(x +     0, y.min);
-                    testGeometry[6*i + 1].p = V2F32(x +     0, y.max);
-                    testGeometry[6*i + 2].p = V2F32(x + thick, y.min);
-                    testGeometry[6*i + 3].p = V2F32(x +     0, y.max);
-                    testGeometry[6*i + 4].p = V2F32(x + thick, y.min);
-                    testGeometry[6*i + 5].p = V2F32(x + thick, y.max);
-                }
-                
-#else
                 Rect testRects[5] = {0};
                 for (u64 i = 0; i < ArrayCount(testRects); ++i)
                 {
-                    f32 x = patterns[3*i + 0];
-                    testRects[i].p0 = V2F32(x        , patterns[3*i + 1]);
-                    testRects[i].p1 = V2F32(x + thick, patterns[3*i + 2]);
+                    f32 x = patterns[4*i + 0];
+                    testRects[i].vel = V2F32(patterns[4*i + 1], 0);
+                    testRects[i].p0 = V2F32(x        , patterns[4*i + 2]);
+                    testRects[i].p1 = V2F32(x + thick, patterns[4*i + 3]);
                     testRects[i].c  = c0;
                 }
-#endif
                 
                 // draw "test" geometry
                 {
@@ -404,26 +436,15 @@ int WinMain(HINSTANCE hInstance,
                     glClear(GL_COLOR_BUFFER_BIT);
 #endif
                     
-#if 0
-                    Vertex shiftedGeometry[ArrayCount(testGeometry)] = {0};
-                    for (u64 i = 0; i < ArrayCount(shiftedGeometry); ++i)
-                    {
-                        shiftedGeometry[i].p = AddV2F32(testGeometry[i].p, V2F32(100, 100));
-                        shiftedGeometry[i].c = c0;
-                        
-                    }
-                    DrawGeometry(shiftedGeometry, ArrayCount(shiftedGeometry), windowDim);
-                    
-#else
                     Rect shiftedRects[ArrayCount(testRects)] = {0};
                     for (u64 i = 0; i < ArrayCount(shiftedRects); ++i)
                     {
-                        shiftedRects[i].p0 = AddV2F32(testRects[i].p0, V2F32(100, 100));
-                        shiftedRects[i].p1 = AddV2F32(testRects[i].p1, V2F32(100, 100));
-                        shiftedRects[i].c = testRects[i].c;
+                        shiftedRects[i].p0  = AddV2F32(testRects[i].p0, V2F32(100, 100));
+                        shiftedRects[i].p1  = AddV2F32(testRects[i].p1, V2F32(100, 100));
+                        shiftedRects[i].vel = testRects[i].vel;
+                        shiftedRects[i].c   = testRects[i].c;
                     }
                     DrawRects(shiftedRects, ArrayCount(shiftedRects), windowDim);
-#endif
                     
 #if MULTI_SAMPLE
                     glBindFramebuffer(GL_READ_FRAMEBUFFER, msaaFbuffer);
@@ -460,19 +481,7 @@ int WinMain(HINSTANCE hInstance,
                         f32 outlineSize = 10.f*size + 2.f;
                         v2f32 p00 = SubV2F32(botleft, V2F32(2.f, 2.f));
                         v2f32 p11 = AddV2F32(botleft, V2F32(outlineSize, outlineSize));
-                        
-#if 0
-                        v2f32 p01 = V2F32(p11.x, p00.y);
-                        v2f32 p10 = V2F32(p00.x, p11.y);
-                        
-                        Vertex v[6] = { {p00}, {p01}, {p10}, {p01}, {p10}, {p11}, };
-                        for (u64 i = 0; i < ArrayCount(v); ++i)
-                            v[i].c = V4F32(1, 1, 1, 1);
-                        DrawGeometry(v, ArrayCount(v), windowDim);
-                        
-#else
-                        DrawRects(&(Rect){ p00, p11, V4F32(1, 1, 1, 1) }, 1, windowDim);
-#endif
+                        DrawRects(&(Rect){ p00, p11, .c = V4F32(1, 1, 1, 1) }, 1, windowDim);
                     }
                     
                     // main grid
@@ -488,33 +497,11 @@ int WinMain(HINSTANCE hInstance,
                             u8* colorPtr = buf + 4*(x + 10*y);
                             v4f32 color = V4F32((f32)colorPtr[0]/255.f, (f32)colorPtr[1]/255.f,
                                                 (f32)colorPtr[2]/255.f, (f32)colorPtr[3]/255.f);
-                            
-#if 0
-                            Vertex v[6];
-                            v[0].p = p00; v[1].p = p01; v[2].p = p10;
-                            v[3].p = p01; v[4].p = p10; v[5].p = p11;
-                            for (u32 i = 0; i < 6; ++i)
-                                v[i].c = color;
-                            
-                            DrawGeometry(v, ArrayCount(v), windowDim);
-                            
-#else
-                            DrawRects(&(Rect){ p00, p11, color }, 1, windowDim);
-#endif
+                            DrawRects(&(Rect){ p00, p11, .c = color }, 1, windowDim);
                         }
                     }
                     
                     // "fine" geometry
-#if 0
-                    Vertex fineGeometry[ArrayCount(testGeometry)];
-                    for (u64 i = 0; i < ArrayCount(fineGeometry); ++i)
-                    {
-                        fineGeometry[i].p = AddV2F32(botleft, ScaleV2F32(testGeometry[i].p, size));
-                        fineGeometry[i].c = V4F32(1.f, 0.f, 1.f, .25f);
-                    }
-                    DrawGeometry(fineGeometry, ArrayCount(fineGeometry), windowDim);
-                    
-#else
                     Rect fineRects[ArrayCount(testRects)];
                     for (u64 i = 0; i < ArrayCount(fineRects); ++i)
                     {
@@ -522,8 +509,8 @@ int WinMain(HINSTANCE hInstance,
                         fineRects[i].p1 = AddV2F32(botleft, ScaleV2F32(testRects[i].p1, size));
                         fineRects[i].c  = V4F32(1.f, 0.f, 1.f, .25f);
                     }
+                    
                     DrawRects(fineRects, ArrayCount(fineRects), windowDim);
-#endif
                 }
             }
             
