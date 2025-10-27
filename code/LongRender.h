@@ -80,9 +80,9 @@ function R_Font R_FontBakeTexture(Arena* arena, FNT_Font* font, FNT_Packer* pack
 function void R_CtxBegin(void);
 function void R_CtxEnd(void);
 
-#define R_CtxPushRect(...) R_CtxPushQuad(&(R_Quad){__VA_ARGS__})
-#define R_CtxPushLine(x, y, color) R_CtxPushRect(R2F32P((x), (y).min, (x) + 1.f, (y).max), \
-                                                 (r2f32){0}, 0.f, 10000.f, 0.f, (color), (color))
+#define R_CtxPushRect(...) R_CtxPushQuad(&(R_Quad){ .thickness = 10000.f, .softness = 1.f, __VA_ARGS__})
+#define R_CtxPushLine(x, y, color) R_CtxPushRect(.xy = R2F32P((x), (y).min, (x) + 1.f, (y).max), \
+                                                 .c0 = (color), .c1 = (color))
 function void R_CtxPushQuad(R_Quad* quad);
 function void R_CtxPushStr(R_Font* font, String str, v2f32 p, v4f32 color);
 

@@ -141,6 +141,7 @@ function void R_Init(void)
     glEnable(GL_BLEND);
     
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
     
     GLuint texture = 0;
     {

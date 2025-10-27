@@ -30,6 +30,115 @@ function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
     OGL_End();
 }
 
+typedef struct Rect Rect;
+struct Rect
+{
+    v2f32 p0;
+    v2f32 p1;
+    v4f32 c;
+};
+
+typedef struct Vertex Vertex;
+struct Vertex
+{
+    v2f32 p;
+    v4f32 c;
+    
+    v2f32 p0;
+    v2f32 p1;
+};
+
+global char glsl_vert_vshader[] =
+"#version 330\n"
+"uniform vec2 u_view_xform;\n"
+"layout (location = 0) in vec2 v_p;\n"
+"layout (location = 1) in vec4 v_c;\n"
+"layout (location = 2) in vec4 v_rect;\n"
+"out vec4 f_c;\n"
+"out vec4 f_rect;\n"
+"void main(){\n"
+"vec2 norm_pos = v_p*u_view_xform + vec2(-1.0, -1.0);\n"
+"gl_Position = vec4(norm_pos, 0.0, 1.0);\n"
+"f_c = v_c;\n"
+"f_rect = v_rect;\n"
+"}\n";
+
+global char glsl_vert_fshader[] =
+"#version 330\n"
+"in vec4 f_c;\n"
+"in vec4 f_rect;\n"
+"in vec4 gl_FragCoord;\n"
+"out vec4 out_color;\n"
+"void main(){\n"
+"float frag_min_x = gl_FragCoord.x - 0.5;\n"
+"float frag_max_x = gl_FragCoord.x + 0.5;\n"
+"float cover_min_x = max(f_rect.x, frag_min_x);\n"
+"float cover_max_x = min(f_rect.z, frag_max_x);\n"
+"float a = cover_max_x - cover_min_x;\n"
+"out_color = vec4(f_c.xyz, f_c.a * a);\n"
+"}\n";
+
+OGL_Shader vert_vshader = {0};
+OGL_Shader vert_fshader = {0};
+OGL_Shader vert_program = {0};
+GLint vert_viewTransform = -1;
+
+GLuint msaaFbuffer = 0;
+GLuint msaaTexture = 0;
+
+function void DrawGeometry(Vertex* v, u32 count, v2f32 windim)
+{
+    glBufferData(GL_ARRAY_BUFFER, count*sizeof(*v), v, GL_STREAM_DRAW);
+    
+    glUseProgram(vert_program.handle);
+    glUniform2f(vert_viewTransform, 2.f/windim.x, 2.f/windim.y);
+    
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, 0, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, p)));
+    
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_FLOAT, 0, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, c)));
+    
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 4, GL_FLOAT, 0, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, p0)));
+    
+    glDrawArrays(GL_TRIANGLES, 0, count);
+}
+
+function void DrawRects(Rect* r, u32 count, v2f32 windim)
+{
+    ScratchBlock(scratch)
+    {
+        Vertex* v = PushArray(scratch, Vertex, count*6);
+        for (u32 i = 0; i < count; ++i)
+        {
+            v2f32 p0 = r[i].p0;
+            v2f32 p1 = r[i].p1;
+            v4f32  c = r[i].c;
+            
+            v2f32 p0g = V2F32(Floor_f32(p0.x), Floor_f32(p0.y));
+            v2f32 p1g = V2F32( Ceil_f32(p1.x),  Ceil_f32(p1.y));
+            
+            Vertex* vv = v + i*6;
+            vv[0].p = p0g;
+            vv[1].p = V2F32(p0g.x, p1g.y);
+            vv[2].p = V2F32(p1g.x, p0g.y);
+            vv[3].p = V2F32(p0g.x, p1g.y);
+            vv[4].p = V2F32(p1g.x, p0g.y);
+            vv[5].p = p1g;
+            
+            for (u32 j = 0; j < 6; ++j)
+            {
+                vv[j].p0 = p0;
+                vv[j].p1 = p1;
+                vv[j].c  = c;
+            }
+        }
+        
+        DrawGeometry(v, count*6, windim);
+    }
+}
+
 int WinMain(HINSTANCE hInstance,
             HINSTANCE hPrevInstance,
             LPSTR lpCmdLine,
@@ -50,7 +159,7 @@ int WinMain(HINSTANCE hInstance,
         GFXSetResizeFunc(WindowResizeHandler);
         
         GFXWindow window = 0;
-        GFXErrorBlock(scratch, 1)
+        GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
         {
             window = GFXCreateWindowEx(StrLit("My Window"), CW_USEDEFAULT, CW_USEDEFAULT, 1200, 800);
             OGL_WindowEquip(window);
@@ -101,7 +210,7 @@ int WinMain(HINSTANCE hInstance,
         u64 prevFrame = 0;
         u64 frameBegin = OSNowUS();
         
-        u64 fps = GFXWindowRefreshRate(window)/4;
+        u64 fps = GFXWindowRefreshRate(window);
         //u64 fps = 10;
         u64 delta = MB(1)/fps;
         u64 markLoop = 120*delta;
@@ -111,16 +220,61 @@ int WinMain(HINSTANCE hInstance,
         u64  endHistory[60] = {0};
         b8   badHistory[60] = {0};
         
+#define MULTI_SAMPLE 0
+        
+        GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
+        {
+            vert_vshader = OGL_MakeShader(scratch, glsl_vert_vshader, GL_VERTEX_SHADER);
+            if (vert_vshader.log.size > 0)
+                ErrorFmt("VERTEX:\n%.*s", StrExpand(vert_vshader.log));
+            
+            vert_fshader = OGL_MakeShader(scratch, glsl_vert_fshader, GL_FRAGMENT_SHADER);
+            if (vert_fshader.log.size > 0)
+                ErrorFmt("FRAGMENT:\n%.*s", StrExpand(vert_fshader.log));
+            
+            vert_program = OGL_MakeProgram(scratch, ArrayExpand(OGL_Shader, vert_vshader, vert_fshader));
+            if (vert_program.log.size > 0)
+                ErrorFmt("Program:\n%.*s", StrExpand(vert_program.log));
+            
+            vert_viewTransform = glGetUniformLocation(vert_program.handle, "u_view_xform");
+            
+#if MULTI_SAMPLE
+            // setup a multi-sample texture
+            glGenTextures(1, &msaaTexture);
+            glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, msaaTexture);
+            glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 16, GL_RGB, 2048, 2048, true);
+            if (glGetError() || msaaTexture == 0)
+                ErrorFmt("Failed to setup multi-sample texture");
+            
+            // setup a frame buffer
+            glGenFramebuffers(1, &msaaFbuffer);
+            glBindFramebuffer(GL_FRAMEBUFFER, msaaFbuffer);
+            glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, msaaTexture, 0);
+            if (glGetError() || msaaFbuffer == 0)
+                ErrorFmt("Failed to setup multi-sample framebuffer");
+            
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#endif
+        }
+        
         for (TempArena temp = TempBegin(scratch); ; TempEnd(temp))
         {
             if (!GFXPeekInput())
+                break;
+            if (!GFXWindowIsValid(window))
                 break;
             
             lineX += 0.05f;
             markHistory[frameIdx % ArrayCount(markHistory)] = frameBegin;
             
+            v2i32 screenDim = {0};
+            v2f32 windowDim = {0};
+            if (GFXWindowGetInnerRect(window, 0, 0, &screenDim.x, &screenDim.y))
+                windowDim = V2F32V(screenDim);
+            
             DeferBlock(R_Begin(window), R_End())
             {
+#if 0
                 R_QuadList list = {0};
                 
                 R_QuadPush(scratch, &list, &(R_Quad){
@@ -152,17 +306,17 @@ int WinMain(HINSTANCE hInstance,
                     
                     R_CtxPushLine(lineX, R1F32(300, 400), V4F32(1, 1, 1, 1));
                     
-                    R_CtxPushRect(R2F32P( 5,  5, 45, 45), (r2f32){0}, 5.f, 10000.f, 1.f, c0, c1);
-                    R_CtxPushRect(R2F32P(55,  5, 95, 45), (r2f32){0}, 5.f, 10000.f, 1.f, c0, c1);
-                    R_CtxPushRect(R2F32P( 5, 50, 45, 70), (r2f32){0}, 0.f, 10000.f, 1.f, c2, c3);
-                    R_CtxPushRect(R2F32P(55, 50, 95, 70), (r2f32){0}, 0.f, 10000.f, 1.f, c3, c2);
+                    R_CtxPushRect(.xy = R2F32P( 5,  5, 45, 45), .radius = 5.f, .c0 = c0, .c1 = c1);
+                    R_CtxPushRect(.xy = R2F32P(55,  5, 95, 45), .radius = 5.f, .c0 = c0, .c1 = c1);
+                    R_CtxPushRect(.xy = R2F32P( 5, 50, 45, 70), .radius = 0.f, .c0 = c2, .c1 = c3);
+                    R_CtxPushRect(.xy = R2F32P(55, 50, 95, 70), .radius = 0.f, .c0 = c3, .c1 = c2);
                     R_CtxPushStr(&fonts[1], StrLit("The quick brown fox jumps over the lazy dog."),
                                  V2F32(25.f, 50.f), V4F32(1.0f, 1.0f, 0.5f, 1.0f));
                     
-                    R_CtxPushRect(R2F32P( 5, 105, 45, 145), (r2f32){0}, 5.f, 10000.f, 1.f, c0, c1);
-                    R_CtxPushRect(R2F32P(55, 105, 95, 145), (r2f32){0}, 5.f, 10000.f, 1.f, c0, c1);
-                    R_CtxPushRect(R2F32P( 5, 150, 45, 170), (r2f32){0}, 0.f, 10000.f, 1.f, c2, c1);
-                    R_CtxPushRect(R2F32P(55, 150, 95, 170), (r2f32){0}, 0.f, 10000.f, 1.f, c1, c2);
+                    R_CtxPushRect(.xy = R2F32P( 5, 105, 45, 145), .radius = 5.f, .c0 = c0, .c1 = c1);
+                    R_CtxPushRect(.xy = R2F32P(55, 105, 95, 145), .radius = 5.f, .c0 = c0, .c1 = c1);
+                    R_CtxPushRect(.xy = R2F32P( 5, 150, 45, 170), .radius = 0.f, .c0 = c2, .c1 = c1);
+                    R_CtxPushRect(.xy = R2F32P(55, 150, 95, 170), .radius = 0.f, .c0 = c1, .c1 = c2);
                     R_CtxPushStr(&fonts[2], StrLit("Hello, world!"),
                                  V2F32(25.f, 150.f), V4F32(1.0f, 1.0f, 0.5f, 1.0f));
                     
@@ -193,14 +347,185 @@ int WinMain(HINSTANCE hInstance,
                         R_CtxPushLine( xEnd,  yEnd, color);
                         
                         if (*badPtr)
-                            R_CtxPushRect(R2F32P(xMark-2, yMark.min-2, xMark+3, yMark.min+3), (r2f32){0},
-                                          0.5f, 10000.f, 1.f, V4F32(1, 0, 0, 1), V4F32(1, 0, 0, 1));
+                            R_CtxPushRect(.xy = R2F32P(xMark-2, yMark.min-2, xMark+3, yMark.min+3),
+                                          .radius = 0.5f, .c0 = V4F32(1, 0, 0, 1), .c1 = V4F32(1, 0, 0, 1));
                     }
                 }
+#endif
+                
+#if 1
+                f32 t = DivF32(frameIdx % (fps*10), fps*10);
+                
+                v4f32 c0 = V4F32(1.f, 1.f, 1.f, 1.f);
+                f32 thick = 1.f;
+                f32 xMoving = 5.f + Sin_f32(t*TAU_F32)*4.f;
+                r1f32 y1 = R1F32(-6.f, 4.f);
+                r1f32 y2 = R1F32(5.f, 15.f);
+                
+                f32 patterns[3*5] = {
+                    xMoving, y1.min, y1.max,
+                    1.00f, y2.min, y2.max,
+                    3.25f, y2.min, y2.max,
+                    5.50f, y2.min, y2.max,
+                    7.75f, y2.min, y2.max,
+                };
+                
+#if 0
+                Vertex testGeometry[6*5] = {0};
+                for (u64 i = 0; i < 5; ++i)
+                {
+                    f32 x = patterns[3*i + 0];
+                    r1f32 y = R1F32(patterns[3*i + 1], patterns[3*i + 2]);
+                    
+                    testGeometry[6*i + 0].p = V2F32(x +     0, y.min);
+                    testGeometry[6*i + 1].p = V2F32(x +     0, y.max);
+                    testGeometry[6*i + 2].p = V2F32(x + thick, y.min);
+                    testGeometry[6*i + 3].p = V2F32(x +     0, y.max);
+                    testGeometry[6*i + 4].p = V2F32(x + thick, y.min);
+                    testGeometry[6*i + 5].p = V2F32(x + thick, y.max);
+                }
+                
+#else
+                Rect testRects[5] = {0};
+                for (u64 i = 0; i < ArrayCount(testRects); ++i)
+                {
+                    f32 x = patterns[3*i + 0];
+                    testRects[i].p0 = V2F32(x        , patterns[3*i + 1]);
+                    testRects[i].p1 = V2F32(x + thick, patterns[3*i + 2]);
+                    testRects[i].c  = c0;
+                }
+#endif
+                
+                // draw "test" geometry
+                {
+#if MULTI_SAMPLE
+                    glBindFramebuffer(GL_FRAMEBUFFER, msaaFbuffer);
+                    glClearColor(0.f, 0.f, 0.f, 1.f);
+                    glClear(GL_COLOR_BUFFER_BIT);
+#endif
+                    
+#if 0
+                    Vertex shiftedGeometry[ArrayCount(testGeometry)] = {0};
+                    for (u64 i = 0; i < ArrayCount(shiftedGeometry); ++i)
+                    {
+                        shiftedGeometry[i].p = AddV2F32(testGeometry[i].p, V2F32(100, 100));
+                        shiftedGeometry[i].c = c0;
+                        
+                    }
+                    DrawGeometry(shiftedGeometry, ArrayCount(shiftedGeometry), windowDim);
+                    
+#else
+                    Rect shiftedRects[ArrayCount(testRects)] = {0};
+                    for (u64 i = 0; i < ArrayCount(shiftedRects); ++i)
+                    {
+                        shiftedRects[i].p0 = AddV2F32(testRects[i].p0, V2F32(100, 100));
+                        shiftedRects[i].p1 = AddV2F32(testRects[i].p1, V2F32(100, 100));
+                        shiftedRects[i].c = testRects[i].c;
+                    }
+                    DrawRects(shiftedRects, ArrayCount(shiftedRects), windowDim);
+#endif
+                    
+#if MULTI_SAMPLE
+                    glBindFramebuffer(GL_READ_FRAMEBUFFER, msaaFbuffer);
+                    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+                    
+                    glBlitFramebuffer(0, 0, screenDim.x, screenDim.y, 0, 0, screenDim.x, screenDim.y,
+                                      GL_COLOR_BUFFER_BIT, GL_NEAREST);
+                    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#endif
+                }
+#endif
+                
+#if 0
+                DrawGeometry(ArrayExpand(Vertex,
+                                         { AddV2F32(V2F32( 0.f,  0.f), V2F32(100, 100)), V4F32(1.f, 1.f, 1.f, 1.f), },
+                                         { AddV2F32(V2F32( 0.f, 10.f), V2F32(100, 100)), V4F32(1.f, 1.f, 0.f, 1.f), },
+                                         { AddV2F32(V2F32(10.f,  0.f), V2F32(100, 100)), V4F32(1.f, 0.f, 0.f, 1.f), },
+                                         { AddV2F32(V2F32( 0.f, 10.f), V2F32(100, 100)), V4F32(1.f, 1.f, 0.f, 1.f), },
+                                         { AddV2F32(V2F32(10.f,  0.f), V2F32(100, 100)), V4F32(1.f, 0.f, 0.f, 1.f), },
+                                         { AddV2F32(V2F32(10.f, 10.f), V2F32(100, 100)), V4F32(0.f, 0.f, 0.f, 1.f), }),
+                             windowDim);
+#endif
+                
+                // read 10x10 block
+                u8 buf[10*10*4];
+                glReadPixels(100, 100, 10, 10, GL_RGBA, GL_UNSIGNED_BYTE, buf);
+                
+                {
+                    v2f32 botleft = V2F32(600.f, 100.f);
+                    f32 size = 20.f;
+                    
+                    // outline
+                    {
+                        f32 outlineSize = 10.f*size + 2.f;
+                        v2f32 p00 = SubV2F32(botleft, V2F32(2.f, 2.f));
+                        v2f32 p11 = AddV2F32(botleft, V2F32(outlineSize, outlineSize));
+                        
+#if 0
+                        v2f32 p01 = V2F32(p11.x, p00.y);
+                        v2f32 p10 = V2F32(p00.x, p11.y);
+                        
+                        Vertex v[6] = { {p00}, {p01}, {p10}, {p01}, {p10}, {p11}, };
+                        for (u64 i = 0; i < ArrayCount(v); ++i)
+                            v[i].c = V4F32(1, 1, 1, 1);
+                        DrawGeometry(v, ArrayCount(v), windowDim);
+                        
+#else
+                        DrawRects(&(Rect){ p00, p11, V4F32(1, 1, 1, 1) }, 1, windowDim);
+#endif
+                    }
+                    
+                    // main grid
+                    for (u32 y = 0; y < 10; ++y)
+                    {
+                        for (u32 x = 0; x < 10; ++x)
+                        {
+                            v2f32 p00 = AddV2F32(botleft, V2F32(x*size, y*size));
+                            v2f32 p01 = AddV2F32(p00, V2F32(1*size, 0.f));
+                            v2f32 p10 = AddV2F32(p00, V2F32(0.f, size));
+                            v2f32 p11 = V2F32(p01.x, p10.y);
+                            
+                            u8* colorPtr = buf + 4*(x + 10*y);
+                            v4f32 color = V4F32((f32)colorPtr[0]/255.f, (f32)colorPtr[1]/255.f,
+                                                (f32)colorPtr[2]/255.f, (f32)colorPtr[3]/255.f);
+                            
+#if 0
+                            Vertex v[6];
+                            v[0].p = p00; v[1].p = p01; v[2].p = p10;
+                            v[3].p = p01; v[4].p = p10; v[5].p = p11;
+                            for (u32 i = 0; i < 6; ++i)
+                                v[i].c = color;
+                            
+                            DrawGeometry(v, ArrayCount(v), windowDim);
+                            
+#else
+                            DrawRects(&(Rect){ p00, p11, color }, 1, windowDim);
+#endif
+                        }
+                    }
+                    
+                    // "fine" geometry
+#if 0
+                    Vertex fineGeometry[ArrayCount(testGeometry)];
+                    for (u64 i = 0; i < ArrayCount(fineGeometry); ++i)
+                    {
+                        fineGeometry[i].p = AddV2F32(botleft, ScaleV2F32(testGeometry[i].p, size));
+                        fineGeometry[i].c = V4F32(1.f, 0.f, 1.f, .25f);
+                    }
+                    DrawGeometry(fineGeometry, ArrayCount(fineGeometry), windowDim);
+                    
+#else
+                    Rect fineRects[ArrayCount(testRects)];
+                    for (u64 i = 0; i < ArrayCount(fineRects); ++i)
+                    {
+                        fineRects[i].p0 = AddV2F32(botleft, ScaleV2F32(testRects[i].p0, size));
+                        fineRects[i].p1 = AddV2F32(botleft, ScaleV2F32(testRects[i].p1, size));
+                        fineRects[i].c  = V4F32(1.f, 0.f, 1.f, .25f);
+                    }
+                    DrawRects(fineRects, ArrayCount(fineRects), windowDim);
+#endif
+                }
             }
-            
-            if (!GFXWindowIsValid(window))
-                break;
             
             {
                 u64 targetEnd = frameBegin + delta;
