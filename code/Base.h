@@ -849,21 +849,33 @@ union v4i32
 typedef union r1i32 r1i32;
 union r1i32
 {
-    struct { i32 min, max; };
+    struct
+    {
+        union { i32 min; i32 beg; i32 start; i32 first; };
+        union { i32 max; i32 end; i32   opl; i32  last; };
+    };
     i32 v[2];
 };
 
 typedef union r1u64 r1u64;
 union r1u64
 {
-    struct { u64 min, max; };
+    struct
+    {
+        union { u64 min; u64 beg; u64 start; u64 first; };
+        union { u64 max; u64 end; u64   opl; u64  last; };
+    };
     u64 v[2];
 };
 
 typedef union r1f32 r1f32;
 union r1f32
 {
-    struct { f32 min, max; };
+    struct
+    {
+        union { f32 min; f32 beg; f32 start; f32 first; };
+        union { f32 max; f32 end; f32   opl; f32  last; };
+    };
     f32 v[2];
 };
 
@@ -872,6 +884,9 @@ typedef union r2i32 r2i32;
 union r2i32
 {
     struct { v2i32 min, max; };
+    struct { v2i32 beg, end; };
+    struct { v2i32 start, opl; };
+    struct { v2i32 first, last; };
     struct { v2i32 p0, p1; };
     struct { i32 x0, y0, x1, y1; };
     v2i32 v[2];
@@ -881,6 +896,9 @@ typedef union r2f32 r2f32;
 union r2f32
 {
     struct { v2f32 min, max; };
+    struct { v2f32 beg, end; };
+    struct { v2f32 start, opl; };
+    struct { v2f32 first, last; };
     struct { v2f32 p0, p1; };
     struct { f32 x0, y0, x1, y1; };
     v2f32 v[2];

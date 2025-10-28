@@ -20,6 +20,8 @@
 #include "LongRender.c"
 #include "LongRender_OpenGL.c"
 
+#define MULTI_SAMPLE 0
+
 function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
 {
     UNUSED(width);
@@ -76,25 +78,49 @@ global char glsl_vert_fshader[] =
 "in vec4 gl_FragCoord;\n"
 "out vec4 out_color;\n"
 "void main(){\n"
+#if 1
+"int temporal_sample_count = 4;\n"
+"float temporal_sample_count_recip = 0.25;\n"
+"vec2 p = gl_FragCoord.xy;\n"
+"vec2 delta = f_vel*temporal_sample_count_recip;\n"
+"float area_sum = 0;\n"
+"for (int i = 0; i < temporal_sample_count; ++i){\n"
+"  float box_min_x = p.x - 0.5;\n"
+"  float box_min_y = p.y - 0.5;\n"
+"  float box_max_x = p.x + 0.5;\n"
+"  float box_max_y = p.y + 0.5;\n"
+"  float cover_min_x = max(f_rect.x, box_min_x);\n"
+"  float cover_min_y = max(f_rect.y, box_min_y);\n"
+"  float cover_max_x = min(f_rect.z, box_max_x);\n"
+"  float cover_max_y = min(f_rect.w, box_max_y);\n"
+"  float cover_w = max(0, cover_max_x - cover_min_x);\n"
+"  float cover_h = max(0, cover_max_y - cover_min_y);\n"
+"  float area = cover_w*cover_h;\n"
+"  area_sum += area;\n"
+"  p += delta;\n"
+"}\n"
+"float a = area_sum*temporal_sample_count_recip;\n"
+"out_color = vec4(f_c.xyz, f_c.a * a);\n"
+
+#else
 "float frag_min_x = gl_FragCoord.x - 0.5;\n"
 "float frag_max_x = gl_FragCoord.x + 0.5;\n"
-// spatial coverage
-"float sp_cover_min_x = max(f_rect.x, frag_min_x);\n"
-"float sp_cover_max_x = min(f_rect.z, frag_max_x);\n"
-"float sp_a = sp_cover_max_x - sp_cover_min_x;\n"
+"vec2 vel = f_vel;\n"
 // temporal coverage
-"float tm_rect_min_x = min(f_rect.x, f_rect.x - f_vel.x);\n"
-"float tm_rect_max_x = max(f_rect.z, f_rect.z - f_vel.x);\n"
+"float tm_rect_min_x = min(f_rect.x, f_rect.x - vel.x);\n"
+"float tm_rect_max_x = max(f_rect.z, f_rect.z - vel.x);\n"
 "float tm_cover_min_x = max(tm_rect_min_x, frag_min_x);\n"
 "float tm_cover_max_x = min(tm_rect_max_x, frag_max_x);\n"
 "float tm_a = tm_cover_max_x - tm_cover_min_x;\n"
 // tail strength
-"float speed_sqr = f_vel.x*f_vel.x + f_vel.y*f_vel.y;\n"
-"float speed_clamped = max(1, sqrt(speed_sqr));\n"
+"float speed = sqrt(vel.x*vel.x + vel.y*vel.y);\n"
+"float speed_clamped = max(1, speed);\n"
 "float tail_strength = 1/speed_clamped;\n"
 // combine alpha
 "float a = tm_a * tail_strength;\n"
 "out_color = vec4(f_c.xyz, f_c.a * a);\n"
+
+#endif
 "}\n";
 
 OGL_Shader vert_vshader = {0};
@@ -152,6 +178,8 @@ function void DrawRects(Rect* r, u32 count, v2f32 windim)
             else if (0.01f <= vel.y && vel.y <= 1.f)
                 vel.y = (vel.y - 1.f)*boostScale + 1.f;
             
+            Assert(vel.x == 0 || i < 6);
+            
             v2f32 p0pre = SubV2F32(p0, vel);
             v2f32 p1pre = SubV2F32(p1, vel);
             v2f32 p0c = V2F32(Min(p0.x, p0pre.x), Min(p0.y, p0pre.y));
@@ -181,56 +209,114 @@ function void DrawRects(Rect* r, u32 count, v2f32 windim)
     }
 }
 
-int WinMain(HINSTANCE hInstance,
-            HINSTANCE hPrevInstance,
-            LPSTR lpCmdLine,
-            int nShowCmd)
+function void DrawQuads(R_Font font)
 {
-    W32WinMainInit(hInstance, hPrevInstance, lpCmdLine, nShowCmd);
-    
+    R_QuadList list = {0};
     ScratchBlock(scratch)
     {
-        GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
+        R_QuadPush(scratch, &list, &(R_Quad){
+                       R2F32P(200.f, 200.f, 300.f, 300.f), (r2f32){0},
+                       10.f, 5.f, 1.f,
+                       V4F32(1.f, .2f, 0.f, 1.f), V4F32(1.f, 0.f, .2f, 1.f)
+                   });
+        
+        R_QuadPush(scratch, &list, &(R_Quad){
+                       R2F32P(100.f, 400.f, 400.f, 500.f), (r2f32){0},
+                       20.f, 10000.f, 1.f,
+                       V4F32(1.f, 1.f, 1.f, 1.f), V4F32(0.f, 0.f, 0.f, 1.f)
+                   });
+        
+        R_QuadPush(scratch, &list, &(R_Quad){
+                       R2F32Size(V2F32(600.f, 400.f), V2F32V(font.baked.size)), R2F32P(0.f, 0.f, 1.f, 1.f),
+                       0.f, 10000.f, 1.f,
+                       V4F32(1.f, 1.f, 1.f, 1.f), V4F32(1.f, 1.f, 1.f, 1.f)
+                   });
+        
+        R_Submit(list.first, list.totalCount, font.texture);
+    }
+}
+
+typedef struct FrameInfo FrameInfo;
+struct FrameInfo
+{
+    r1u64 frames[60];
+    u32 frameIdx;
+    u32 fps;
+    u32 loopSpeed;
+    f32 lineX;
+};
+
+function void FrameStart(FrameInfo* info)
+{
+    info->frames[info->frameIdx % ArrayCount(info->frames)].start = OSNowUS();
+    info->lineX += 0.05f;
+}
+
+function void FrameEnd(FrameInfo* info)
+{
+    u64 frameCount = ArrayCount(info->frames);
+    u32 frameIdx = info->frameIdx++ % frameCount;
+    
+    u64 delta = MB(1)/info->fps;
+    u64 targetEnd = info->frames[frameIdx].start + delta;
+    u64 now = OSNowUS();
+    info->frames[frameIdx].end = now;
+    
+    if (now < targetEnd)
+    {
+        u64 leftover = targetEnd - now;
+        Sleep((DWORD)(leftover / 1000));
+        now = OSNowUS();
+    }
+    
+    u64 frameEnd = now;
+    if (targetEnd - now < delta/16)
+        frameEnd = targetEnd;
+    info->frames[frameIdx].end = frameEnd;
+}
+
+function void DrawRenderCtx(R_Font* fonts, u64 count, u64 fontello, FrameInfo* info)
+{
+    u64 frameCount = ArrayCount(info->frames);
+    
+    DeferBlock(R_CtxBegin(), R_CtxEnd())
+    {
+        v4f32 c0 = V4F32(0.9f, 0.1f, 0.0f, 1.0f);
+        v4f32 c1 = V4F32(0.8f, 0.0f, 0.0f, 1.0f);
+        v4f32 c2 = V4F32(0.1f, 0.9f, 0.0f, 1.0f);
+        v4f32 c3 = V4F32(0.0f, 0.9f, 0.1f, 1.0f);
+        
+        R_CtxPushRect(.xy = R2F32P( 5,  5, 45, 45), .radius = 5.f, .c0 = c0, .c1 = c1);
+        R_CtxPushRect(.xy = R2F32P(55,  5, 95, 45), .radius = 5.f, .c0 = c0, .c1 = c1);
+        R_CtxPushRect(.xy = R2F32P( 5, 50, 45, 70), .radius = 0.f, .c0 = c2, .c1 = c3);
+        R_CtxPushRect(.xy = R2F32P(55, 50, 95, 70), .radius = 0.f, .c0 = c3, .c1 = c2);
+        R_CtxPushStr(&fonts[1%count], StrLit("The quick brown fox jumps over the lazy dog."),
+                     V2F32(25.f, 50.f), V4F32(1.0f, 1.0f, 0.5f, 1.0f));
+        
+        R_CtxPushRect(.xy = R2F32P( 5, 105, 45, 145), .radius = 5.f, .c0 = c0, .c1 = c1);
+        R_CtxPushRect(.xy = R2F32P(55, 105, 95, 145), .radius = 5.f, .c0 = c0, .c1 = c1);
+        R_CtxPushRect(.xy = R2F32P( 5, 150, 45, 170), .radius = 0.f, .c0 = c2, .c1 = c1);
+        R_CtxPushRect(.xy = R2F32P(55, 150, 95, 170), .radius = 0.f, .c0 = c1, .c1 = c2);
+        R_CtxPushStr(&fonts[2%count], StrLit("Hello, world!"),
+                     V2F32(25.f, 150.f), V4F32(1.0f, 1.0f, 0.5f, 1.0f));
+        
+        R_CtxPushChar(&fonts[fontello], ICON_FOLDER, V2F32(25, 250), V4F32(.8f, 0.f, .4f, 1.f));
+        R_CtxPushChar(&fonts[fontello], ICON_CANCEL, V2F32(50, 250), V4F32(.8f, 0.f, .4f, 1.f));
+        
+        ScratchBlock(scratch)
         {
-            GFXInit();
-            OGL_Init();
-            //InitD3D11();
-            R_Init();
+            u64 idx = info->frameIdx ? (info->frameIdx-1)%frameCount : 0;
+            String frameStr = StrPushf(scratch, "%llu", DimR1U64(info->frames[idx]));
+            R_CtxPushStr(&fonts[0], frameStr, V2F32(600, 50), V4F32(1.f, 1.f, 0.f, 1.f));
         }
         
-        GFXSetResizeFunc(WindowResizeHandler);
+        R_CtxPushLine(info->lineX, R1F32(300, 400), V4F32(1, 1, 1, 1));
         
-        GFXWindow window = 0;
-        GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
-        {
-            window = GFXCreateWindowEx(StrLit("My Window"), CW_USEDEFAULT, CW_USEDEFAULT, 1200, 800);
-            OGL_WindowEquip(window);
-            GFXShowWindow(window);
-        }
+        r1f32 xRange = R1F32(200, 700);
+        r1f32  yMark = R1F32(100, 110);
+        r1f32   yEnd = R1F32(110, 120);
         
-        String paths[] = {
-            StrLit("data/liberation-mono.ttf"),
-            StrLit("data/Inconsolata-Regular.ttf"),
-            StrLit("data/JetBrainsMono-Regular.ttf"),
-            StrLit("data/MonaspaceNeon-Regular.otf"),
-            StrLit("data/unifont-16.0.04.otf"),
-            StrLit("data/fontello.ttf"),
-        };
-        
-        FNT_LoadParams params = {
-            .flags = FNT_RasterFlag_Smooth|FNT_RasterFlag_Hinted,
-            .size = 15, .dpi = 96,
-        };
-        
-        R_Font fonts[ArrayCount(paths)] = {0};
-        for (u32 i = 0; i < ArrayCount(paths); ++i)
-        {
-            params.path = paths[i];
-            FNT_Font looseFont = FNT_FontOpen(scratch, &params);
-            fonts[i] = R_FontBakeTexture(scratch, &looseFont, &(FNT_Packer){.size = V2I32(512, 512)});
-        }
-        
-        v4f32 colors[] = {
+        const v4f32 colors[] = {
             V4F32(1.00f, 0.00f, 0.00f, 1.00f),
             V4F32(0.86f, 1.00f, 1.00f, 1.00f),
             V4F32(0.88f, 0.98f, 1.00f, 1.00f),
@@ -247,22 +333,171 @@ int WinMain(HINSTANCE hInstance,
             V4F32(0.96f, 1.00f, 0.90f, 1.00f),
         };
         
-        f32 lineX = 40.5f;
+        u64 delta = MB(1)/info->fps;
+        u64 markLoop = info->loopSpeed * delta;
         
-        u64 prevFrame = 0;
-        u64 frameBegin = OSNowUS();
+        for (u64 i = 0; i < frameCount; ++i)
+        {
+            r1u64 frame = info->frames[i];
+            f32 markT = DivF32(frame.min % markLoop, markLoop);
+            f32  endT = DivF32(frame.max % markLoop, markLoop);
+            
+            f32 xMark = Lerp(xRange.min, xRange.max, markT);
+            f32  xEnd = Lerp(xRange.min, xRange.max,  endT);
+            
+            v4f32 color = colors[i % ArrayCount(colors)];
+            R_CtxPushLine(xMark, yMark, color);
+            R_CtxPushLine( xEnd,  yEnd, color);
+            
+            if (frame.max - frame.min != delta)
+                R_CtxPushRect(.xy = R2F32P(xMark-2, yMark.min-2, xMark+3, yMark.min+3),
+                              .radius = 0.5f, .c0 = V4F32(1, 0, 0, 1), .c1 = V4F32(1, 0, 0, 1));
+        }
+    }
+}
+
+typedef struct Grid Grid;
+struct Grid
+{
+    f32 size;
+    v2f32 pos;
+    v2f32 dim;
+};
+
+function void DrawVertLine(FrameInfo* info, Grid* grid)
+{
+    u64 frameLoop = info->fps*10;
+    u32 frameIdx = info->frameIdx;
+    f32 t = DivF32(frameIdx % frameLoop, frameLoop);
+    f32 tPrev = 0;
+    if (frameIdx > 0)
+        tPrev = DivF32((frameIdx-1) % frameLoop, frameLoop);
+    
+    f32 thick = 1.f;
+    f32 xMoving = 5.f + Sin_f32(t*TAU_F32)*4.f;
+    f32 xMovingPrev = 5.f + Sin_f32(tPrev*TAU_F32)*4.f;
+    f32 xVel = xMoving - xMovingPrev;
+    
+    r1f32 y1 = R1F32(-6.f, 4.f);
+    r1f32 y2 = R1F32(5.f, 15.f);
+    
+    f32 patterns[4*5] = {
+        xMoving, xVel, y1.min, y1.max,
+        1.0000f, 0.0f, y2.min, y2.max,
+        3.2500f, 0.0f, y2.min, y2.max,
+        5.5000f, 0.0f, y2.min, y2.max,
+        7.7500f, 0.0f, y2.min, y2.max,
+    };
+    
+    // "test" geometry
+    Rect testRects[5] = {0};
+    for (u64 i = 0; i < ArrayCount(testRects); ++i)
+    {
+        f32 x = patterns[4*i + 0];
+        testRects[i].vel = V2F32(patterns[4*i + 1], 0);
+        testRects[i].p0  = V2F32(x        , patterns[4*i + 2]);
+        testRects[i].p1  = V2F32(x + thick, patterns[4*i + 3]);
+        testRects[i].c   = V4F32(1.f, 1.f, 1.f, 1.f);
+    }
+    
+    // "fine" geometry
+    Rect fineRects[ArrayCount(testRects)];
+    for (u64 i = 0; i < ArrayCount(fineRects); ++i)
+    {
+        fineRects[i].p0 = AddV2F32(grid->pos, ScaleV2F32(testRects[i].p0, grid->size));
+        fineRects[i].p1 = AddV2F32(grid->pos, ScaleV2F32(testRects[i].p1, grid->size));
+        fineRects[i].c  = V4F32(1.f, 0.f, 1.f, .25f);
+    }
+    
+    // draw geometry
+    {
+#if MULTI_SAMPLE
+        glBindFramebuffer(GL_FRAMEBUFFER, msaaFbuffer);
+#endif
         
-        u64 fps = GFXWindowRefreshRate(window);
-        //u64 fps = 10;
-        u64 delta = MB(1)/fps;
-        u64 markLoop = 120*delta;
-        u64 frameIdx = 0;
+        for (u64 i = 0; i < ArrayCount(testRects); ++i)
+        {
+            testRects[i].p0  = AddV2F32(testRects[i].p0, V2F32(100, 100));
+            testRects[i].p1  = AddV2F32(testRects[i].p1, V2F32(100, 100));
+        }
+        DrawRects(testRects, ArrayCount(testRects), grid->dim);
         
-        u64 markHistory[60] = {0};
-        u64  endHistory[60] = {0};
-        b8   badHistory[60] = {0};
+#if MULTI_SAMPLE
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, msaaFbuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         
-#define MULTI_SAMPLE 0
+        glBlitFramebuffer(0, 0, screenDim.x, screenDim.y, 0, 0, screenDim.x, screenDim.y,
+                          GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#endif
+    }
+    DrawRects(fineRects, ArrayCount(fineRects), grid->dim);
+}
+
+function void Draw10x10(Grid* grid)
+{
+    // read 10x10 block
+    u8 buf[10*10*4];
+    glReadPixels(100, 100, 10, 10, GL_RGBA, GL_UNSIGNED_BYTE, buf);
+    
+    // outline
+    {
+        f32 outlineSize = 10.f*grid->size + 2.f;
+        v2f32 p00 = SubV2F32(grid->pos, V2F32(2.f, 2.f));
+        v2f32 p11 = AddV2F32(grid->pos, V2F32(outlineSize, outlineSize));
+        DrawRects(&(Rect){ p00, p11, .c = V4F32(1, 1, 1, 1) }, 1, grid->dim);
+    }
+    
+    // main grid
+    for (u32 y = 0; y < 10; ++y)
+    {
+        for (u32 x = 0; x < 10; ++x)
+        {
+            v2f32 p00 = AddV2F32(grid->pos, V2F32(x*grid->size, y*grid->size));
+            v2f32 p01 = AddV2F32(p00, V2F32(1*grid->size, 0.f));
+            v2f32 p10 = AddV2F32(p00, V2F32(0.f, grid->size));
+            v2f32 p11 = V2F32(p01.x, p10.y);
+            
+            u8* colorPtr = buf + 4*(x + 10*y);
+            v4f32 color = V4F32((f32)colorPtr[0]/255.f, (f32)colorPtr[1]/255.f,
+                                (f32)colorPtr[2]/255.f, (f32)colorPtr[3]/255.f);
+            DrawRects(&(Rect){ p00, p11, .c = color }, 1, grid->dim);
+        }
+    }
+}
+
+int WinMain(HINSTANCE hInstance,
+            HINSTANCE hPrevInstance,
+            LPSTR lpCmdLine,
+            int nShowCmd)
+{
+    W32WinMainInit(hInstance, hPrevInstance, lpCmdLine, nShowCmd);
+    
+    ScratchBlock(scratch)
+    {
+        GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
+        {
+            GFXInit();
+            OGL_Init();
+            InitD3D11();
+            R_Init();
+        }
+        
+        GFXSetResizeFunc(WindowResizeHandler);
+        
+        GFXWindow window = 0;
+        GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
+        {
+            window = GFXCreateWindowEx(StrLit("My Window"), CW_USEDEFAULT, CW_USEDEFAULT, 1200, 800);
+            OGL_WindowEquip(window);
+            GFXShowWindow(window);
+        }
+        
+        FrameInfo* info = &(FrameInfo){
+            .lineX = 40.5f, .loopSpeed = 120,
+            .fps = (u32)GFXWindowRefreshRate(window),
+            //.fps = 10,
+        };
         
         GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
         {
@@ -299,6 +534,29 @@ int WinMain(HINSTANCE hInstance,
 #endif
         }
         
+        const String paths[] = {
+            StrLit("data/liberation-mono.ttf"),
+            StrLit("data/Inconsolata-Regular.ttf"),
+            StrLit("data/JetBrainsMono-Regular.ttf"),
+            StrLit("data/MonaspaceNeon-Regular.otf"),
+            StrLit("data/unifont-16.0.04.otf"),
+            StrLit("data/fontello.ttf"),
+        };
+        
+        R_Font fonts[ArrayCount(paths)];
+        u64 fontCount = ArrayCount(fonts);
+        u64  fontello = fontCount - 1;
+        
+        for (u32 i = 0; i < fontCount; ++i)
+        {
+            FNT_Font looseFont = FNT_FontOpen(scratch, &(FNT_LoadParams){
+                                                  .flags = FNT_RasterFlag_Smooth|FNT_RasterFlag_Hinted,
+                                                  .size = 15, .dpi = 96,
+                                                  .path = paths[i],
+                                              });
+            fonts[i] = R_FontBakeTexture(scratch, &looseFont, &(FNT_Packer){.size = V2I32(512, 512)});
+        }
+        
         for (TempArena temp = TempBegin(scratch); ; TempEnd(temp))
         {
             if (!GFXPeekInput())
@@ -306,236 +564,17 @@ int WinMain(HINSTANCE hInstance,
             if (!GFXWindowIsValid(window))
                 break;
             
-            lineX += 0.05f;
-            markHistory[frameIdx % ArrayCount(markHistory)] = frameBegin;
-            
             v2i32 screenDim = {0};
-            v2f32 windowDim = {0};
+            Grid* grid = &(Grid){ 20.f, V2F32(600.f, 100.f) };
             if (GFXWindowGetInnerRect(window, 0, 0, &screenDim.x, &screenDim.y))
-                windowDim = V2F32V(screenDim);
+                grid->dim = V2F32V(screenDim);
             
-            DeferBlock(R_Begin(window), R_End())
+            DeferBlock((FrameStart(info), R_Begin(window)), (R_End(), FrameEnd(info)))
             {
-#if 0
-                R_QuadList list = {0};
-                
-                R_QuadPush(scratch, &list, &(R_Quad){
-                               R2F32P(200.f, 200.f, 300.f, 300.f), (r2f32){0},
-                               10.f, 5.f, 1.f,
-                               V4F32(1.f, .2f, 0.f, 1.f), V4F32(1.f, 0.f, .2f, 1.f)
-                           });
-                
-                R_QuadPush(scratch, &list, &(R_Quad){
-                               R2F32P(100.f, 400.f, 400.f, 500.f), (r2f32){0},
-                               20.f, 10000.f, 1.f,
-                               V4F32(1.f, 1.f, 1.f, 1.f), V4F32(0.f, 0.f, 0.f, 1.f)
-                           });
-                
-                R_QuadPush(scratch, &list, &(R_Quad){
-                               R2F32Size(V2F32(600.f, 400.f), V2F32V(fonts[0].baked.size)), R2F32P(0.f, 0.f, 1.f, 1.f),
-                               0.f, 10000.f, 1.f,
-                               V4F32(1.f, 1.f, 1.f, 1.f), V4F32(1.f, 1.f, 1.f, 1.f)
-                           });
-                
-                R_Submit(list.first, list.totalCount, fonts[0].texture);
-                
-                DeferBlock(R_CtxBegin(), R_CtxEnd())
-                {
-                    v4f32 c0 = V4F32(0.9f, 0.1f, 0.0f, 1.0f);
-                    v4f32 c1 = V4F32(0.8f, 0.0f, 0.0f, 1.0f);
-                    v4f32 c2 = V4F32(0.1f, 0.9f, 0.0f, 1.0f);
-                    v4f32 c3 = V4F32(0.0f, 0.9f, 0.1f, 1.0f);
-                    
-                    R_CtxPushLine(lineX, R1F32(300, 400), V4F32(1, 1, 1, 1));
-                    
-                    R_CtxPushRect(.xy = R2F32P( 5,  5, 45, 45), .radius = 5.f, .c0 = c0, .c1 = c1);
-                    R_CtxPushRect(.xy = R2F32P(55,  5, 95, 45), .radius = 5.f, .c0 = c0, .c1 = c1);
-                    R_CtxPushRect(.xy = R2F32P( 5, 50, 45, 70), .radius = 0.f, .c0 = c2, .c1 = c3);
-                    R_CtxPushRect(.xy = R2F32P(55, 50, 95, 70), .radius = 0.f, .c0 = c3, .c1 = c2);
-                    R_CtxPushStr(&fonts[1], StrLit("The quick brown fox jumps over the lazy dog."),
-                                 V2F32(25.f, 50.f), V4F32(1.0f, 1.0f, 0.5f, 1.0f));
-                    
-                    R_CtxPushRect(.xy = R2F32P( 5, 105, 45, 145), .radius = 5.f, .c0 = c0, .c1 = c1);
-                    R_CtxPushRect(.xy = R2F32P(55, 105, 95, 145), .radius = 5.f, .c0 = c0, .c1 = c1);
-                    R_CtxPushRect(.xy = R2F32P( 5, 150, 45, 170), .radius = 0.f, .c0 = c2, .c1 = c1);
-                    R_CtxPushRect(.xy = R2F32P(55, 150, 95, 170), .radius = 0.f, .c0 = c1, .c1 = c2);
-                    R_CtxPushStr(&fonts[2], StrLit("Hello, world!"),
-                                 V2F32(25.f, 150.f), V4F32(1.0f, 1.0f, 0.5f, 1.0f));
-                    
-                    R_CtxPushChar(&fonts[ArrayCount(fonts)-1], ICON_FOLDER, V2F32(25, 250), V4F32(.8f, 0.f, .4f, 1.f));
-                    R_CtxPushChar(&fonts[ArrayCount(fonts)-1], ICON_CANCEL, V2F32(50, 250), V4F32(.8f, 0.f, .4f, 1.f));
-                    
-                    String frameStr = StrPushf(scratch, "%llu", prevFrame);
-                    R_CtxPushStr(&fonts[0], frameStr, V2F32(600, 50), V4F32(1.f, 1.f, 0.f, 1.f));
-                    
-                    r1f32 xRange = R1F32(200, 700);
-                    r1f32  yMark = R1F32(100, 110);
-                    r1f32   yEnd = R1F32(110, 120);
-                    
-                    u64* markPtr = markHistory;
-                    u64*  endPtr =  endHistory;
-                    b8*   badPtr =  badHistory;
-                    
-                    for (u64 i = 0; i < ArrayCount(markHistory); ++i, ++markPtr, ++endPtr, ++badPtr)
-                    {
-                        f32 markT = DivF32(((*markPtr)%markLoop), markLoop);
-                        f32  endT = DivF32(((* endPtr)%markLoop), markLoop);
-                        
-                        f32 xMark = Lerp(xRange.min, xRange.max, markT);
-                        f32  xEnd = Lerp(xRange.min, xRange.max,  endT);
-                        
-                        v4f32 color = colors[i % ArrayCount(colors)];
-                        R_CtxPushLine(xMark, yMark, color);
-                        R_CtxPushLine( xEnd,  yEnd, color);
-                        
-                        if (*badPtr)
-                            R_CtxPushRect(.xy = R2F32P(xMark-2, yMark.min-2, xMark+3, yMark.min+3),
-                                          .radius = 0.5f, .c0 = V4F32(1, 0, 0, 1), .c1 = V4F32(1, 0, 0, 1));
-                    }
-                }
-#endif
-                
-#if 1
-                u64 frameLoop = fps*10;
-                f32 t = DivF32(frameIdx % frameLoop, frameLoop);
-                f32 tPrev = 0;
-                if (frameIdx > 0)
-                    tPrev = DivF32((frameIdx-1) % frameLoop, frameLoop);
-                
-                v4f32 c0 = V4F32(1.f, 1.f, 1.f, 1.f);
-                f32 thick = 1.f;
-                f32 xMoving = 5.f + Sin_f32(t*TAU_F32)*4.f;
-                f32 xMovingPrev = 5.f + Sin_f32(tPrev*TAU_F32)*4.f;
-                f32 xVel = xMoving - xMovingPrev;
-                r1f32 y1 = R1F32(-6.f, 4.f);
-                r1f32 y2 = R1F32(5.f, 15.f);
-                
-                f32 patterns[4*5] = {
-                    xMoving, xVel, y1.min, y1.max,
-                    1.0000f, 0.0f, y2.min, y2.max,
-                    3.2500f, 0.0f, y2.min, y2.max,
-                    5.5000f, 0.0f, y2.min, y2.max,
-                    7.7500f, 0.0f, y2.min, y2.max,
-                };
-                
-                Rect testRects[5] = {0};
-                for (u64 i = 0; i < ArrayCount(testRects); ++i)
-                {
-                    f32 x = patterns[4*i + 0];
-                    testRects[i].vel = V2F32(patterns[4*i + 1], 0);
-                    testRects[i].p0 = V2F32(x        , patterns[4*i + 2]);
-                    testRects[i].p1 = V2F32(x + thick, patterns[4*i + 3]);
-                    testRects[i].c  = c0;
-                }
-                
-                // draw "test" geometry
-                {
-#if MULTI_SAMPLE
-                    glBindFramebuffer(GL_FRAMEBUFFER, msaaFbuffer);
-                    glClearColor(0.f, 0.f, 0.f, 1.f);
-                    glClear(GL_COLOR_BUFFER_BIT);
-#endif
-                    
-                    Rect shiftedRects[ArrayCount(testRects)] = {0};
-                    for (u64 i = 0; i < ArrayCount(shiftedRects); ++i)
-                    {
-                        shiftedRects[i].p0  = AddV2F32(testRects[i].p0, V2F32(100, 100));
-                        shiftedRects[i].p1  = AddV2F32(testRects[i].p1, V2F32(100, 100));
-                        shiftedRects[i].vel = testRects[i].vel;
-                        shiftedRects[i].c   = testRects[i].c;
-                    }
-                    DrawRects(shiftedRects, ArrayCount(shiftedRects), windowDim);
-                    
-#if MULTI_SAMPLE
-                    glBindFramebuffer(GL_READ_FRAMEBUFFER, msaaFbuffer);
-                    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-                    
-                    glBlitFramebuffer(0, 0, screenDim.x, screenDim.y, 0, 0, screenDim.x, screenDim.y,
-                                      GL_COLOR_BUFFER_BIT, GL_NEAREST);
-                    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-#endif
-                }
-#endif
-                
-#if 0
-                DrawGeometry(ArrayExpand(Vertex,
-                                         { AddV2F32(V2F32( 0.f,  0.f), V2F32(100, 100)), V4F32(1.f, 1.f, 1.f, 1.f), },
-                                         { AddV2F32(V2F32( 0.f, 10.f), V2F32(100, 100)), V4F32(1.f, 1.f, 0.f, 1.f), },
-                                         { AddV2F32(V2F32(10.f,  0.f), V2F32(100, 100)), V4F32(1.f, 0.f, 0.f, 1.f), },
-                                         { AddV2F32(V2F32( 0.f, 10.f), V2F32(100, 100)), V4F32(1.f, 1.f, 0.f, 1.f), },
-                                         { AddV2F32(V2F32(10.f,  0.f), V2F32(100, 100)), V4F32(1.f, 0.f, 0.f, 1.f), },
-                                         { AddV2F32(V2F32(10.f, 10.f), V2F32(100, 100)), V4F32(0.f, 0.f, 0.f, 1.f), }),
-                             windowDim);
-#endif
-                
-                // read 10x10 block
-                u8 buf[10*10*4];
-                glReadPixels(100, 100, 10, 10, GL_RGBA, GL_UNSIGNED_BYTE, buf);
-                
-                {
-                    v2f32 botleft = V2F32(600.f, 100.f);
-                    f32 size = 20.f;
-                    
-                    // outline
-                    {
-                        f32 outlineSize = 10.f*size + 2.f;
-                        v2f32 p00 = SubV2F32(botleft, V2F32(2.f, 2.f));
-                        v2f32 p11 = AddV2F32(botleft, V2F32(outlineSize, outlineSize));
-                        DrawRects(&(Rect){ p00, p11, .c = V4F32(1, 1, 1, 1) }, 1, windowDim);
-                    }
-                    
-                    // main grid
-                    for (u32 y = 0; y < 10; ++y)
-                    {
-                        for (u32 x = 0; x < 10; ++x)
-                        {
-                            v2f32 p00 = AddV2F32(botleft, V2F32(x*size, y*size));
-                            v2f32 p01 = AddV2F32(p00, V2F32(1*size, 0.f));
-                            v2f32 p10 = AddV2F32(p00, V2F32(0.f, size));
-                            v2f32 p11 = V2F32(p01.x, p10.y);
-                            
-                            u8* colorPtr = buf + 4*(x + 10*y);
-                            v4f32 color = V4F32((f32)colorPtr[0]/255.f, (f32)colorPtr[1]/255.f,
-                                                (f32)colorPtr[2]/255.f, (f32)colorPtr[3]/255.f);
-                            DrawRects(&(Rect){ p00, p11, .c = color }, 1, windowDim);
-                        }
-                    }
-                    
-                    // "fine" geometry
-                    Rect fineRects[ArrayCount(testRects)];
-                    for (u64 i = 0; i < ArrayCount(fineRects); ++i)
-                    {
-                        fineRects[i].p0 = AddV2F32(botleft, ScaleV2F32(testRects[i].p0, size));
-                        fineRects[i].p1 = AddV2F32(botleft, ScaleV2F32(testRects[i].p1, size));
-                        fineRects[i].c  = V4F32(1.f, 0.f, 1.f, .25f);
-                    }
-                    
-                    DrawRects(fineRects, ArrayCount(fineRects), windowDim);
-                }
-            }
-            
-            {
-                u64 targetEnd = frameBegin + delta;
-                u64 now = OSNowUS();
-                endHistory[frameIdx % ArrayCount(endHistory)] = now;
-                
-                if (now < targetEnd)
-                {
-                    u64 leftover = targetEnd - now;
-                    Sleep((DWORD)(leftover / 1000));
-                    now = OSNowUS();
-                }
-                
-                prevFrame = now - frameBegin;
-                
-                b8 good = targetEnd - now < delta/16;
-                if (good)
-                    frameBegin = targetEnd;
-                else
-                    frameBegin = now;
-                
-                badHistory[frameIdx % ArrayCount(badHistory)] = !good;
-                ++frameIdx;
+                //DrawQuads(fonts[0]);
+                DrawRenderCtx(fonts, fontCount, fontello, info);
+                DrawVertLine(info, grid);
+                Draw10x10(grid);
             }
         }
         
