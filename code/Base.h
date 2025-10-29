@@ -1414,6 +1414,10 @@ function v4i32 NormV4I32(v4i32 v);
 function v4i32 LerpV4I32(v4i32 a, v4i32 b, f32 t);
 function v4i32 CrossV4I32(v4i32 a, v4i32 b);
 
+#define ExpandV2(v) ((v).x), ((v).y)
+#define ExpandV3(v) ((v).x), ((v).y), ((v).z)
+#define ExpandV4(v) ((v).x), ((v).y), ((v).z), ((v).w)
+
 //- long: Range Functions
 #define R1I32V(v) R1I32((i32)(v).x, (i32)(v).y)
 #define R1I32R(r) R1I32((i32)(r).min, (i32)(r).max)
@@ -1481,6 +1485,21 @@ function v2f32 DimR2F32(r2f32 r);
 function r2f32 UnionR2F32(r2f32 a, r2f32 b);
 function r2f32 IntersectR2F32(r2f32 a, r2f32 b);
 function v2f32 ClampR2F32(r2f32 r, v2f32 v);
+
+#define ExpandR1(r) ((r).min), ((r).max)
+#define ExpandR2(r) ((r).min), ((r).max)
+
+//- long: Color Functions
+function v3f32 C_RGBFromHSV(f32 h, f32 s, f32 v);
+
+function u32   C_PackV4F32(f32 x0, f32 x1, f32 x2, f32 x3);
+function v4f32 C_UnpackU32(u32 c);
+
+function f32   C_LinFromSRGBF32(f32 srgb);
+function f32   C_SRGBFromLinF32(f32 linear);
+
+function u32   C_LinFromSRGBU32(u32 srgb);
+function u32   C_SRGBFromLinU32(u32 lin);
 
 //- long: Text Functions
 #define TextLocP(line, col) ((TextLoc){(line), (col)})

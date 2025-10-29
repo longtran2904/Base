@@ -485,6 +485,33 @@ function r2f32 UnionR2F32(r2f32 a, r2f32 b)     { return (r2f32){ Min(a.x0, b.x0
 function r2f32 IntersectR2F32(r2f32 a, r2f32 b) { return (r2f32){ Max(a.x0, b.x0), Max(a.y0, b.y0), Min(a.x1, b.x1), Min(a.y1, b.y1) }; }
 function v2f32 ClampR2F32(r2f32 r, v2f32 v)     { return (v2f32){ Clamp(v.x, r.min.x, r.max.x), Clamp(v.y, r.min.y, r.max.y) }; }
 
+//- long: Color Functions
+function v3f32 C_RGBFromHSV(f32 h, f32 s, f32 v); // TODO
+
+function u32 C_PackV4F32(f32 x0, f32 x1, f32 x2, f32 x3)
+{
+    u32 b0 = (u32)(x0*256);
+    u32 b1 = (u32)(x1*256);
+    u32 b2 = (u32)(x2*256);
+    u32 b3 = (u32)(x3*256);
+    
+    u32 c0 = Clamp(b0, 0, 255);
+    u32 c1 = Clamp(b1, 0, 255);
+    u32 c2 = Clamp(b2, 0, 255);
+    u32 c3 = Clamp(b3, 0, 255);
+    
+    u32 result = ((c0) | (c1 << 8) | (c2 << 16) | (c3 << 24));
+    return result;
+}
+
+function v4f32 C_UnpackU32(u32 c);
+
+function f32 C_LinFromSRGBF32(f32 srgb);   // TODO
+function f32 C_SRGBFromLinF32(f32 linear); // TODO
+
+function u32 C_LinFromSRGBU32(u32 srgb); // TODO
+function u32 C_SRGBFromLinU32(u32 lin);  // TODO
+
 //- long: Text Functions
 function TextLoc TextLocFromOff(String str, u64 off)
 {
