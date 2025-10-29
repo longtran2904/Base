@@ -486,31 +486,108 @@ function r2f32 IntersectR2F32(r2f32 a, r2f32 b) { return (r2f32){ Max(a.x0, b.x0
 function v2f32 ClampR2F32(r2f32 r, v2f32 v)     { return (v2f32){ Clamp(v.x, r.min.x, r.max.x), Clamp(v.y, r.min.y, r.max.y) }; }
 
 //- long: Color Functions
-function v3f32 C_RGBFromHSV(f32 h, f32 s, f32 v); // TODO
-
-function u32 C_PackV4F32(f32 x0, f32 x1, f32 x2, f32 x3)
+function v3f32 RGBFromHSV(v3f32 hsv)
 {
-    u32 b0 = (u32)(x0*256);
-    u32 b1 = (u32)(x1*256);
-    u32 b2 = (u32)(x2*256);
-    u32 b3 = (u32)(x3*256);
+    // TODO(long): Is this the best way?
     
-    u32 c0 = Clamp(b0, 0, 255);
-    u32 c1 = Clamp(b1, 0, 255);
-    u32 c2 = Clamp(b2, 0, 255);
-    u32 c3 = Clamp(b3, 0, 255);
+    f32 h = hsv.x, s = hsv.y, v = hsv.z;
+    f32 c = v*s;
     
-    u32 result = ((c0) | (c1 << 8) | (c2 << 16) | (c3 << 24));
+    f32 h6 = h*6;
+    u32 case_n = (u32)(h6);
+    f32 h6_mod2 = h6 - (f32)((case_n|1) - 1);
+    f32 x = c * (1 - Abs_f32(h6_mod2 - 1));
+    
+    f32 rp,gp,bp;
+    switch (case_n)
+    {
+        case 0:
+        case 6: rp = c; gp = x; bp = 0; break;
+        case 1: rp = x; gp = c; bp = 0; break;
+        case 2: rp = 0; gp = c; bp = x; break;
+        case 3: rp = 0; gp = x; bp = c; break;
+        case 4: rp = x; gp = 0; bp = c; break;
+        case 5: rp = c; gp = 0; bp = x; break;
+    }
+    
+    f32 m = v - c;
+    v3f32 result = {
+        .x = rp + m,
+        .y = gp + m,
+        .z = bp + m,
+    };
     return result;
 }
 
-function v4f32 C_UnpackU32(u32 c);
+function v3f32 HSVFromRGB(v3f32 c); // TODO(long)
 
-function f32 C_LinFromSRGBF32(f32 srgb);   // TODO
-function f32 C_SRGBFromLinF32(f32 linear); // TODO
+// TODO(long): Is this the best way?
+function u32 PackV4F32(v4f32 v)
+{
+    u32 b0 = (u32)(v.x*256);
+    u32 b1 = (u32)(v.y*256);
+    u32 b2 = (u32)(v.z*256);
+    u32 b3 = (u32)(v.w*256);
+    
+    u32 result = ((Clamp(b0, 0, 255) <<  0) |
+                  (Clamp(b1, 0, 255) <<  8) |
+                  (Clamp(b2, 0, 255) << 16) |
+                  (Clamp(b3, 0, 255) << 24));
+    return result;
+}
 
-function u32 C_LinFromSRGBU32(u32 srgb); // TODO
-function u32 C_SRGBFromLinU32(u32 lin);  // TODO
+function v4f32 UnpackU32(u32 c)
+{
+    v4f32 result = {
+        .x = ((c >>  0) & 0xFF) / 255.f,
+        .y = ((c >>  8) & 0xFF) / 255.f,
+        .z = ((c >> 16) & 0xFF) / 255.f,
+        .w = ((c >> 24) & 0xFF) / 255.f,
+    };
+    return result;
+}
+
+function f32 F32LinFromSRGB(f32 srgb)
+{
+    f32 f = 0.f;
+    if (srgb <= 0.04045f)
+        f = srgb/12.92f;
+    else
+        f = Pow_f32(((srgb + 0.055f)/1.055f), 2.4f);
+    return f;
+}
+
+function f32 F32SRGBFromLin(f32 linear)
+{
+    f32 f = 0.f;
+    if (linear <= 0.0031308f)
+        f = linear*12.92f;
+    else
+        f = Pow_f32(linear, 1/2.4f)*1.055f - 0.055f;
+    return f;
+}
+
+function u32 U32LinFromSRGB(u32 srgb)
+{
+    v4f32 c = UnpackU32(srgb);
+    v4f32 d = c;
+    d.x = F32LinFromSRGB(d.x);
+    d.y = F32LinFromSRGB(d.y);
+    d.z = F32LinFromSRGB(d.z);
+    u32 result = PackV4F32(d);
+    return result;
+}
+
+function u32 U32SRGBFromLin(u32 linear)
+{
+    v4f32 c = UnpackU32(linear);
+    v4f32 d = c;
+    d.x = F32SRGBFromLin(d.x);
+    d.y = F32SRGBFromLin(d.y);
+    d.z = F32SRGBFromLin(d.z);
+    u32 result = PackV4F32(d);
+    return result;
+}
 
 //- long: Text Functions
 function TextLoc TextLocFromOff(String str, u64 off)

@@ -1490,16 +1490,17 @@ function v2f32 ClampR2F32(r2f32 r, v2f32 v);
 #define ExpandR2(r) ((r).min), ((r).max)
 
 //- long: Color Functions
-function v3f32 C_RGBFromHSV(f32 h, f32 s, f32 v);
+function v3f32 RGBFromHSV(v3f32 c);
+function v3f32 HSVFromRGB(v3f32 c);
 
-function u32   C_PackV4F32(f32 x0, f32 x1, f32 x2, f32 x3);
-function v4f32 C_UnpackU32(u32 c);
+function u32   PackV4F32(v4f32 v);
+function v4f32 UnpackU32(u32 c);
 
-function f32   C_LinFromSRGBF32(f32 srgb);
-function f32   C_SRGBFromLinF32(f32 linear);
+function f32   F32LinFromSRGB(f32 srgb);
+function f32   F32SRGBFromLin(f32 linear);
 
-function u32   C_LinFromSRGBU32(u32 srgb);
-function u32   C_SRGBFromLinU32(u32 lin);
+function u32   U32LinFromSRGB(u32 srgb);
+function u32   U32SRGBFromLin(u32 lin);
 
 //- long: Text Functions
 #define TextLocP(line, col) ((TextLoc){(line), (col)})
