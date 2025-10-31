@@ -115,7 +115,7 @@ function void  R_CtxFont(R_Ctx* ctx, R_Font* font);
 function void  R_CtxFlush(R_Ctx* ctx);
 
 function void R_PushRect(R_Ctx* ctx, r2f32 xy, f32 r, u32 c);
-function void R_PushLine(R_Ctx* ctx, r2f32 xy, u32 c);
+function void R_PushLine(R_Ctx* ctx, r2f32 xy, f32 r, u32 c);
 function void R_PushQuad(R_Ctx* ctx, R_Quad* quad, R_Texture* texture);
 function void R_PushChar(R_Ctx* ctx, u32 cp, v2f32 p, u32 c);
 function void R_PushStr (R_Ctx* ctx, String str, v2f32 p, u32 c);

@@ -133,14 +133,17 @@ function void R_PushRect(R_Ctx* ctx, r2f32 xy, f32 r, u32 c)
     R_PushQuad(ctx, &(R_Quad){ xy, r, 10000.f, 0.f, 0, { c, c }}, 0);
 }
 
-function void R_PushLine(R_Ctx* ctx, r2f32 xy, u32 c)
+function void R_PushLine(R_Ctx* ctx, r2f32 xy, f32 r, u32 c)
 {
     // TODO(long): Optimize this
     v2f32 v = SubV2F32(xy.p1, xy.p0);
     f32 theta = AngleV2F32(v);
     f32 length = MagV2F32(v);
-    r2f32 rect = R2F32Size(xy.p0, V2F32(length, 1.f));
-    R_PushQuad(ctx, &(R_Quad){ rect, 0.f, 10000.f, theta, 0, .c = { c, c }, }, 0);
+    
+    v2f32 center = CenterR2F32(xy);
+    v2f32 extent = V2F32(length*.5f + r, r);
+    r2f32 rect = R2F32(SubV2F32(center, extent), AddV2F32(center, extent));
+    R_PushQuad(ctx, &(R_Quad){ rect, r, 10000.f, theta, 0, .c = { c, c }, }, 0);
 }
 
 function void R_PushQuad(R_Ctx* ctx, R_Quad* quad, R_Texture* texture)

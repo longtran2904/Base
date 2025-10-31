@@ -410,7 +410,7 @@ function void DrawQuads(R_Font* fonts, u64 count, u64 fontello, FrameInfo* info)
         R_PushChar(&ctx, ICON_FOLDER, V2F32(25, 250), U32LinFromSRGB4(0.f, .4f, .8f, 1.f));
         R_PushChar(&ctx, ICON_CANCEL, V2F32(50, 250), U32LinFromSRGB4(0.f, .4f, .8f, 1.f));
         
-        R_PushLine(&ctx, R2F32P(info->lineX, 300, info->lineX, 400), U32LinFromSRGB4(1, 1, 1, 1));
+        R_PushLine(&ctx, R2F32P(info->lineX, 300, info->lineX, 400), 1.f, U32LinFromSRGB4(1, 1, 1, 1));
         
         u64 frameCount = ArrayCount(info->frames);
         {
@@ -454,8 +454,8 @@ function void DrawQuads(R_Font* fonts, u64 count, u64 fontello, FrameInfo* info)
             f32  xEnd = Lerp(xRange.min, xRange.max,  endT);
             
             u32 color = PackV4F32(colors[i % ArrayCount(colors)]);
-            R_PushLine(&ctx, R2F32R1(R1F32(xMark, xMark), yMark), color);
-            R_PushLine(&ctx, R2F32R1(R1F32( xEnd,  xEnd),  yEnd), color);
+            R_PushLine(&ctx, R2F32R1(R1F32(xMark, xMark), yMark), 0.5f, color);
+            R_PushLine(&ctx, R2F32R1(R1F32( xEnd,  xEnd),  yEnd), 0.5f, color);
             
             if (frame.max - frame.min != delta)
                 R_PushRect(&ctx, R2F32P(xMark-2, yMark.min-2, xMark+3, yMark.min+3),
