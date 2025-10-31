@@ -21,6 +21,7 @@
 #include "LongRender_OpenGL.c"
 
 #define MULTI_SAMPLE 0
+#define U32LinFromSRGB4(r, g, b, a) U32LinFromSRGB(Pack4F32(r, g, b, a))
 
 function void WindowResizeHandler(GFXWindow window, u32 width, u32 height)
 {
@@ -363,19 +364,19 @@ function void DrawQuads(R_Font* fonts, u64 count, u64 fontello, FrameInfo* info)
         R_BatchPushQuad(scratch, &batch, &(R_Quad){
                             R2F32P(200.f, 200.f, 300.f, 300.f),
                             10.f, 5.f, 0.f, 0,
-                            { PackV4F32(V4F32(1.f, .2f, 0.f, 1.f)), PackV4F32(V4F32(1.f, 0.f, .2f, 1.f)) },
+                            { U32LinFromSRGB4(1.f, .2f, 0.f, 1.f), U32LinFromSRGB4(1.f, 0.f, .2f, 1.f) },
                         });
         
         R_BatchPushQuad(scratch, &batch, &(R_Quad){
                             R2F32P(100.f, 400.f, 400.f, 500.f),
                             20.f, 10000.f, 0.f, 0,
-                            { PackV4F32(V4F32(1.f, 1.f, 1.f, 1.f)), PackV4F32(V4F32(0.f, 0.f, 0.f, 1.f)) },
+                            { U32LinFromSRGB4(1.f, 1.f, 1.f, 1.f), U32LinFromSRGB4(0.f, 0.f, 0.f, 1.f) },
                         });
         
         R_BatchPushQuad(scratch, &batch, &(R_Quad){
                             R2F32Size(V2F32(600.f, 400.f), V2F32V(fonts[0].baked.size)),
                             0.f, 10000.f, 0.f, 0,
-                            { PackV4F32(V4F32(1.f, 1.f, 1.f, 1.f)), PackV4F32(V4F32(1.f, 1.f, 1.f, 1.f)) }, R2F32P(0.f, 0.f, 1.f, 1.f)
+                            { U32LinFromSRGB4(1.f, 1.f, 1.f, 1.f), U32LinFromSRGB4(1.f, 1.f, 1.f, 1.f) }, R2F32P(0.f, 0.f, 1.f, 1.f)
                         });
         
         R_Submit(batch.first, batch.totalCount, batch.texture);
@@ -385,10 +386,10 @@ function void DrawQuads(R_Font* fonts, u64 count, u64 fontello, FrameInfo* info)
     {
         R_Ctx ctx = R_CtxMake(scratch, 0);
         
-        u32 c0 = PackV4F32(V4F32(0.9f, 0.1f, 0.0f, 1.0f));
-        u32 c1 = PackV4F32(V4F32(0.8f, 0.0f, 0.0f, 1.0f));
-        u32 c2 = PackV4F32(V4F32(0.1f, 0.9f, 0.0f, 1.0f));
-        u32 c3 = PackV4F32(V4F32(0.0f, 0.9f, 0.1f, 1.0f));
+        u32 c0 = U32LinFromSRGB4(0.9f, 0.1f, 0.0f, 1.0f);
+        u32 c1 = U32LinFromSRGB4(0.8f, 0.0f, 0.0f, 1.0f);
+        u32 c2 = U32LinFromSRGB4(0.1f, 0.9f, 0.0f, 1.0f);
+        u32 c3 = U32LinFromSRGB4(0.0f, 0.9f, 0.1f, 1.0f);
         
         R_PushRect(&ctx, R2F32P( 5,  5, 45, 45), 5.f, c0);
         R_PushRect(&ctx, R2F32P(55,  5, 95, 45), 5.f, c1);
@@ -396,27 +397,27 @@ function void DrawQuads(R_Font* fonts, u64 count, u64 fontello, FrameInfo* info)
         R_PushRect(&ctx, R2F32P(55, 50, 95, 70), 0.f, c3);
         R_CtxFont(&ctx, fonts + 1);
         R_PushStr(&ctx, StrLit("The quick brown fox jumps over the lazy dog."),
-                  V2F32(25.f, 50.f), PackV4F32(V4F32(1.0f, 1.0f, 0.5f, 1.0f)));
+                  V2F32(25.f, 50.f), U32LinFromSRGB4(1.0f, 1.0f, 0.5f, 1.0f));
         
         R_PushRect(&ctx, R2F32P( 5, 105, 45, 145), 5.f, c0);
         R_PushRect(&ctx, R2F32P(55, 105, 95, 145), 5.f, c1);
         R_PushRect(&ctx, R2F32P( 5, 150, 45, 170), 0.f, c2);
         R_PushRect(&ctx, R2F32P(55, 150, 95, 170), 0.f, c3);
         R_PushStr(&ctx, StrLit("Hello, world!"),
-                  V2F32(25.f, 150.f), PackV4F32(V4F32(1.0f, 1.0f, 0.5f, 1.0f)));
+                  V2F32(25.f, 150.f), U32LinFromSRGB4(1.0f, 1.0f, 0.5f, 1.0f));
         
         R_CtxFont (&ctx, &fonts[fontello]);
-        R_PushChar(&ctx, ICON_FOLDER, V2F32(25, 250), PackV4F32(V4F32(0.f, .4f, .8f, 1.f)));
-        R_PushChar(&ctx, ICON_CANCEL, V2F32(50, 250), PackV4F32(V4F32(0.f, .4f, .8f, 1.f)));
+        R_PushChar(&ctx, ICON_FOLDER, V2F32(25, 250), U32LinFromSRGB4(0.f, .4f, .8f, 1.f));
+        R_PushChar(&ctx, ICON_CANCEL, V2F32(50, 250), U32LinFromSRGB4(0.f, .4f, .8f, 1.f));
         
-        R_PushLine(&ctx, R2F32P(info->lineX, 300, info->lineX, 400), PackV4F32(V4F32(1, 1, 1, 1)));
+        R_PushLine(&ctx, R2F32P(info->lineX, 300, info->lineX, 400), U32LinFromSRGB4(1, 1, 1, 1));
         
         u64 frameCount = ArrayCount(info->frames);
         {
             u64 idx = info->frameIdx ? (info->frameIdx-1)%frameCount : 0;
             String frameStr = StrPushf(scratch, "%llu", DimR1U64(info->frames[idx]));
             R_CtxFont(&ctx, fonts);
-            R_PushStr(&ctx, frameStr, V2F32(600, 50), PackV4F32(V4F32(1.f, 1.f, 0.f, 1.f)));
+            R_PushStr(&ctx, frameStr, V2F32(600, 50), U32LinFromSRGB4(1.f, 1.f, 0.f, 1.f));
         }
         
         r1f32 xRange = R1F32(200, 700);
@@ -458,7 +459,7 @@ function void DrawQuads(R_Font* fonts, u64 count, u64 fontello, FrameInfo* info)
             
             if (frame.max - frame.min != delta)
                 R_PushRect(&ctx, R2F32P(xMark-2, yMark.min-2, xMark+3, yMark.min+3),
-                           0.5f, PackV4F32(V4F32(1, 0, 0, 1)));
+                           0.5f, U32LinFromSRGB4(1, 0, 0, 1));
         }
         
         R_CtxFlush(&ctx);
@@ -908,8 +909,8 @@ int WinMain(HINSTANCE hInstance,
             DeferBlock(R_Begin(window), R_End())
             {
                 DrawQuads(fonts, fontCount, fontello, info);
-                DrawVertLine(info, grid);
-                Draw10x10(grid);
+                //DrawVertLine(info, grid);
+                //Draw10x10(grid);
             }
             FrameEnd(info);
         }

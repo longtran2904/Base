@@ -5,11 +5,14 @@ typedef struct OGL_Renderer OGL_Renderer;
 struct OGL_Renderer
 {
     GLuint program;
-    GLint viewTransform;
-    GLint mainTexture;
+    GLint uTransform;
+    GLint uTexture;
     
     GLuint vao;
     GLuint vbo;
+    GLuint fbo;
+    
+    GLuint   canvasTex;
     GLuint fallbackTex;
     
     v2i32 dim;
@@ -203,12 +206,12 @@ function void R_Init(void)
     if (program.log.size) ErrorSet(error,         "Program:\n%.*s\n", StrExpand(program.log));
     
     //- long: Uniform Locations
-    GLint viewTransform = -1;
-    GLint mainTexture = -1;
+    GLint uTransform = -1;
+    GLint uTexture = -1;
     if (!error)
     {
-        viewTransform = glGetUniformLocation(program.handle, "u_view_xform");
-        mainTexture   = glGetUniformLocation(program.handle, "u_tex");
+        uTransform = glGetUniformLocation(program.handle, "u_view_xform");
+        uTexture   = glGetUniformLocation(program.handle, "u_tex");
         
         // NOTE(long): The locations can be -1 if the uniform variables are optimized out
         GLenum glErr = glGetError();
@@ -294,7 +297,7 @@ function void R_Init(void)
         
         GLenum glErr = glGetError();
         if (glErr != 0)
-            ErrorSet(error, "Failed to set the blend mode", glErr);
+            ErrorSet(error, "Failed to set the blend mode: %u", glErr);
     }
     
     //- long: Pack/Unpack Alignment
@@ -305,7 +308,7 @@ function void R_Init(void)
         
         GLenum glErr = glGetError();
         if (glErr != 0)
-            ErrorSet(error, "Failed to set the pixel pack mode", glErr);
+            ErrorSet(error, "Failed to set the pixel pack mode: %u", glErr);
     }
     
     //- long: Fallback Texture
@@ -322,7 +325,38 @@ function void R_Init(void)
         
         GLenum glErr = glGetError();
         if (glErr != 0 || fallbackTex == 0)
-            ErrorSet(error, "Failed to set the pixel pack mode", glErr);
+            ErrorSet(error, "Failed to set the pixel pack mode: %u", glErr);
+    }
+    
+    //- long: Main Framebuffer for SRGB
+    GLuint fbo = 0;
+    GLuint canvasTex = 0;
+    if (!error)
+    {
+        glGenTextures(1, &canvasTex);
+        glBindTexture(GL_TEXTURE_2D, canvasTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 4096, 4096, 0, GL_RGB, GL_FLOAT, 0);
+        
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        
+        glGenFramebuffers(1, &fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, canvasTex, 0);
+        
+        if (glGetError() != 0 || fbo == 0)
+            ErrorSet(error, "Failed to setup the framebuffer");
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    
+    //- long: Clear GL errors
+    {
+        GLenum glErr = 0;
+        while ((glErr = glGetError()))
+            ErrorFmt("OpenGL Error: %u", glErr);
     }
     
     //- long: Clean up
@@ -334,6 +368,10 @@ function void R_Init(void)
             glDeleteVertexArrays(1, &vao);
         if (vbo != 0)
             glDeleteBuffers(1, &vbo);
+        if (fbo != 0)
+            glDeleteFramebuffers(1, &fbo);
+        if (canvasTex != 0)
+            glDeleteTextures(1, &canvasTex);
         if (fallbackTex != 0)
             glDeleteTextures(1, &fallbackTex);
     }
@@ -341,10 +379,12 @@ function void R_Init(void)
     else
     {
         oglRenderer.program = program.handle;
-        oglRenderer.viewTransform = viewTransform;
-        oglRenderer.mainTexture = mainTexture;
+        oglRenderer.uTransform = uTransform;
+        oglRenderer.uTexture = uTexture;
         oglRenderer.vao = vao;
         oglRenderer.vbo = vbo;
+        oglRenderer.fbo = fbo;
+        oglRenderer.canvasTex = canvasTex;
         oglRenderer.fallbackTex = fallbackTex;
     }
     
@@ -362,12 +402,23 @@ function void R_Begin(GFXWindow window)
         oglRenderer.dim = V2I32(w, h);
     }
     
+    glBindFramebuffer(GL_FRAMEBUFFER, oglRenderer.fbo);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
 function void R_End(void)
 {
+    DeferBlock(glEnable(GL_FRAMEBUFFER_SRGB), glDisable(GL_FRAMEBUFFER_SRGB))
+    {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, oglRenderer.fbo);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        
+        v2i32 dim = oglRenderer.dim;
+        glBlitFramebuffer(0, 0, dim.x, dim.y, 0, 0, dim.x, dim.y, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    
     OGL_End();
 }
 
@@ -405,8 +456,8 @@ function void R_Submit(R_QuadNode* first, u64 count, R_Texture* texturePtr)
     }
     
     glUseProgram(oglRenderer.program);
-    glUniform2f(oglRenderer.viewTransform, 2.f/(f32)oglRenderer.dim.x, 2.f/(f32)oglRenderer.dim.y);
-    glUniform1i(oglRenderer.mainTexture, 0);
+    glUniform2f(oglRenderer.uTransform, 2.f/(f32)oglRenderer.dim.x, 2.f/(f32)oglRenderer.dim.y);
+    glUniform1i(oglRenderer.uTexture, 0);
     
     // NOTE(long): We can't go bulk completely because changing textures still requires a call
     // There are a few pptions: texture array (using layers), texture atlas, or bindless textures

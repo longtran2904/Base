@@ -62,6 +62,12 @@ function void R_ListPushBatch(Arena* arena, R_List* list)
 
 function void R_ListPrepBatch(Arena* arena, R_List* list, R_Texture* texture)
 {
+    // NOTE(long): The only reason we need R_Batch is that textures are not bindless
+    // (see R_Submit for details)
+    // If they were, we could just use R_QuadNode directly, with each R_Quad storing its texture
+    // (R_List would then be made of R_QuadNode instead of R_Batch)
+    // R_Submit would no longer take a texture, nor would R_Ctx
+    
     R_Batch* last = list->last;
     if (last == 0 || (texture && last->texture != texture))
     {

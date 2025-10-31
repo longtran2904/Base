@@ -547,23 +547,23 @@ function v4f32 UnpackU32(u32 c)
     return result;
 }
 
-function f32 F32LinFromSRGB(f32 srgb)
+function f32 F32LinFromSRGB(f32 x)
 {
     f32 f = 0.f;
-    if (srgb <= 0.04045f)
-        f = srgb/12.92f;
+    if (x <= 0.04045f)
+        f = x/12.92f;
     else
-        f = Pow_f32(((srgb + 0.055f)/1.055f), 2.4f);
+        f = Pow_f32(((x + 0.055f)/1.055f), 2.4f);
     return f;
 }
 
-function f32 F32SRGBFromLin(f32 linear)
+function f32 F32SRGBFromLin(f32 x)
 {
     f32 f = 0.f;
-    if (linear <= 0.0031308f)
-        f = linear*12.92f;
+    if (x <= 0.0031308f)
+        f = x*12.92f;
     else
-        f = Pow_f32(linear, 1/2.4f)*1.055f - 0.055f;
+        f = Pow_f32(x, 1/2.4f)*1.055f - 0.055f;
     return f;
 }
 
@@ -578,9 +578,9 @@ function u32 U32LinFromSRGB(u32 srgb)
     return result;
 }
 
-function u32 U32SRGBFromLin(u32 linear)
+function u32 U32SRGBFromLin(u32 lin)
 {
-    v4f32 c = UnpackU32(linear);
+    v4f32 c = UnpackU32(lin);
     v4f32 d = c;
     d.x = F32SRGBFromLin(d.x);
     d.y = F32SRGBFromLin(d.y);

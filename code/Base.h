@@ -1497,14 +1497,15 @@ function v2f32 ClampR2F32(r2f32 r, v2f32 v);
 function v3f32 RGBFromHSV(v3f32 c);
 function v3f32 HSVFromRGB(v3f32 c);
 
+#define Pack4F32(x, y, z, w) PackV4F32(V4F32(x, y, z, w))
 function u32   PackV4F32(v4f32 v);
 function v4f32 UnpackU32(u32 c);
 
-function f32   F32LinFromSRGB(f32 srgb);
-function f32   F32SRGBFromLin(f32 linear);
+function f32 F32LinFromSRGB(f32 x);
+function f32 F32SRGBFromLin(f32 x);
 
-function u32   U32LinFromSRGB(u32 srgb);
-function u32   U32SRGBFromLin(u32 lin);
+function u32 U32LinFromSRGB(u32 x);
+function u32 U32SRGBFromLin(u32 x);
 
 //- long: Text Functions
 #define TextLocP(line, col) ((TextLoc){(line), (col)})
