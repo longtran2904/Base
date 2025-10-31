@@ -5,6 +5,7 @@
 
 //~ long: GL Types
 
+typedef u8 GLubyte;
 typedef char GLchar;
 typedef unsigned char GLboolean;
 typedef i32 GLint;
@@ -78,8 +79,10 @@ typedef iptr GLsizeiptr;
 #define GL_RGB   0x1907
 #define GL_RGBA  0x1908
 
-#define GL_NEAREST 0x2600
-#define GL_LINEAR  0x2601
+#define GL_VERSION    0x1F02
+#define GL_EXTENSIONS 0x1F03
+#define GL_NEAREST    0x2600
+#define GL_LINEAR     0x2601
 
 #define GL_TEXTURE_MAG_FILTER 0x2800
 #define GL_TEXTURE_MIN_FILTER 0x2801
@@ -209,6 +212,9 @@ typedef iptr GLsizeiptr;
 #define GL_SRGB_ALPHA   0x8C42
 #define GL_SRGB8_ALPHA8 0x8C43
 
+#define GL_MAX_TEXTURE_IMAGE_UNITS  0x8872
+#define GL_MAX_ARRAY_TEXTURE_LAYERS 0x88FF
+
 #define GL_READ_FRAMEBUFFER 0x8CA8
 #define GL_DRAW_FRAMEBUFFER 0x8CA9
 
@@ -276,6 +282,7 @@ typedef iptr GLsizeiptr;
 
 #define GL_FUNCS(X) \
     X(GLenum, glGetError, (void)) \
+    X(const GLubyte*, glGetString, (GLenum name)) \
     X(void, glViewport, (GLint x, GLint y, GLsizei width, GLsizei height)) \
     X(void, glScissor, (GLint x, GLint y, GLsizei width, GLsizei height)) \
     X(void, glClearColor, (GLfloat r, GLfloat g, GLfloat b, GLfloat a)) \
@@ -288,7 +295,8 @@ typedef iptr GLsizeiptr;
     X(void, glColor3f,  (GLfloat red, GLfloat green, GLfloat blue)) \
     X(void, glVertex3f, (GLfloat x, GLfloat y, GLfloat z)) \
     X(void, glFlush, (void)) \
-    X(void, glGetFloatv, (GLenum pname, GLfloat* params)) \
+    X(void, glGetFloatv, (GLenum pname, GLfloat* data)) \
+    X(void, glGetIntegerv, (GLenum pname, GLint* data)) \
     X(void, glTexParameteri, (GLenum target, GLenum pname, GLint param)) \
     X(void, glTexImage1D, (GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, \
                            GLenum format, GLenum type, const void* pixels)) \

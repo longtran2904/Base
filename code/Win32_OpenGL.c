@@ -107,13 +107,13 @@ function b32 OGL_Init(void)
     // Setup opengl
     {
         if (w32OpenGLModule != 0)
-            ErrorSet("OpenGL has already intialized", error);
+            ErrorSet(error, "OpenGL has already intialized");
         
         if (!error)
         {
             w32OpenGLModule = LoadLibraryW(L"opengl32.dll");
             if (w32OpenGLModule == 0)
-                ErrorSet("Failed to initialize opengl.dll", error);
+                ErrorSet(error, "Failed to initialize opengl.dll");
         }
     }
     
@@ -129,7 +129,7 @@ function b32 OGL_Init(void)
 #undef X
         
         if (missingWglFunc)
-            ErrorSet("Failed to load wgl function(s)", error);
+            ErrorSet(error, "Failed to load wgl function(s)");
     }
     
     // Create bootstrap window
@@ -145,7 +145,7 @@ function b32 OGL_Init(void)
         
         atom = RegisterClass(&wndClass);
         if (atom == 0)
-            ErrorSet("Failed to resgister class", error);
+            ErrorSet(error, "Failed to resgister class");
         
         if (!error)
         {
@@ -156,7 +156,7 @@ function b32 OGL_Init(void)
                                      );
             
             if (hwnd == 0)
-                ErrorSet("Failed to create window", error);
+                ErrorSet(error, "Failed to create window");
             else
                 bootstrapWindow = hwnd;
         }
@@ -183,17 +183,17 @@ function b32 OGL_Init(void)
         
         int formatIDX = ChoosePixelFormat(dc, &formatDesc);
         if (formatIDX == 0)
-            ErrorSet("Failed to choose bootstrap pixel format", error);
+            ErrorSet(error, "Failed to choose bootstrap pixel format");
         
         if (!error)
             if (!SetPixelFormat(dc, formatIDX, &formatDesc))
-                ErrorSet("Failed to create bootstrap pixel format", error);
+                ErrorSet(error, "Failed to create bootstrap pixel format");
         
         if (!error)
         {
             HGLRC hglrc = w32WglCreateContext(dc);
             if (hglrc == 0)
-                ErrorSet("Failed to create bootstrap context", error);
+                ErrorSet(error, "Failed to create bootstrap context");
             
             // Load wgl ext functions
             {
@@ -203,7 +203,7 @@ function b32 OGL_Init(void)
     if (!error) \
     { \
         WGL_GET_PROC_ADDR(w32Wgl##n, "wgl"Stringify(n)); \
-        if (w32Wgl##n == 0) ErrorSet("Failed to initialize wgl"Stringify(n), error); \
+        if (w32Wgl##n == 0) ErrorSet(error, "Failed to initialize wgl"Stringify(n)); \
     }
                 WGL_EXT_FUNCS(X);
 #undef X
@@ -243,14 +243,14 @@ function b32 OGL_Init(void)
         UINT numFormats = 0;
         BOOL cpf = w32WglChoosePixelFormatARB(dc, formatAttribsI, 0, 1, &w32OpenGLPixelFormat, &numFormats);
         if (!cpf || numFormats == 0)
-            ErrorSet("Failed to choose graphics pixel format", error);
+            ErrorSet(error, "Failed to choose graphics pixel format");
         
 		if (!error)
 		{
 			PIXELFORMATDESCRIPTOR formatDesc = {0};
 			BOOL spf = SetPixelFormat(dc, w32OpenGLPixelFormat, &formatDesc);
 			if (!spf)
-				ErrorSet("Failed to set graphics pixel format", error);
+				ErrorSet(error, "Failed to set graphics pixel format");
 		}
 		
 		if (!error)
@@ -265,7 +265,7 @@ function b32 OGL_Init(void)
 			
 			w32OpenGLContext = w32WglCreateContextAttribsARB(dc, 0, attribs);
 			if (!w32OpenGLContext)
-				ErrorSet("Failed to create graphics context", error);
+				ErrorSet(error, "Failed to create graphics context");
 		}
 		
 		// Load opengl functions
@@ -273,7 +273,7 @@ function b32 OGL_Init(void)
 #define X(r, n, p) if (!error) \
     { \
         W32_GET_PROC_ADDR(n, w32OpenGLModule, Stringify(n)); \
-        if (!n) ErrorSet("Failed to load "Stringify(n), error); \
+        if (!n) ErrorSet(error, "Failed to load "Stringify(n)); \
     }
             GL_FUNCS(X);
 #undef X
@@ -281,7 +281,7 @@ function b32 OGL_Init(void)
 #define X(r, n, p) if (!error) \
     { \
         WGL_GET_PROC_ADDR(n, Stringify(n));\
-        if (!n) ErrorSet("Faield to load "Stringify(n), error);\
+        if (!n) ErrorSet(error, "Faield to load "Stringify(n));\
     }
             GL_EXT_FUNCS(X);
 #undef X
@@ -293,18 +293,18 @@ function b32 OGL_Init(void)
     // Clean up "temps"
     {
         if (bootstrapContext && !w32WglDeleteContext(bootstrapContext))
-            ErrorSet("Failed to destroy the bootstrap context", error);
+            ErrorSet(error, "Failed to destroy the bootstrap context");
 		
         if (bootstrapWindow && !DestroyWindow(bootstrapWindow))
-            ErrorSet("Failed to destroy the bootstrap window", error);
+            ErrorSet(error, "Failed to destroy the bootstrap window");
 		
 #if 0
 		if (w32CoreWnd && !DestroyWindow(w32CoreWnd))
-			ErrorSet("Failed to destroy the dummy context", error);
+			ErrorSet(error, "Failed to destroy the dummy context");
 #endif
         
         if (atom && !UnregisterClass(BOOTSTRAP_WINDOW_CLASS_NAME, instance))
-            ErrorSet("Failed to unregister the bootstrap class", error);
+            ErrorSet(error, "Failed to unregister the bootstrap class");
     }
     
 	// Clean up "non-temps"
@@ -342,14 +342,14 @@ function b32 OGL_Free()
     // Clear OpenGL
     {
         if (!w32OpenGLModule)
-            ErrorSet("opengl.dll has already been freed", error);
+            ErrorSet(error, "opengl.dll has already been freed");
         else if (!FreeLibrary(w32OpenGLModule))
-            ErrorSet("Failed to free opengl.dll", error);
+            ErrorSet(error, "Failed to free opengl.dll");
         
         if (!w32OpenGLContext)
-            ErrorSet("The graphics context has already been deleted", error);
+            ErrorSet(error, "The graphics context has already been deleted");
         else if (!w32WglDeleteContext(w32OpenGLContext))
-            ErrorSet("Failed to delete the graphics context", error);
+            ErrorSet(error, "Failed to delete the graphics context");
         
         ReleaseDC(w32RenderWnd, w32RenderDC);
     }
@@ -403,7 +403,7 @@ function b32 OGL_WindowEquip(GFXWindow window)
 		PIXELFORMATDESCRIPTOR formatDesc = {0};
 		BOOL spf = SetPixelFormat(dc, w32OpenGLPixelFormat, &formatDesc);
 		if (!spf)
-			ErrorSet("Failed to set graphics pixel format", error);
+			ErrorSet(error, "Failed to set graphics pixel format");
 		
 		ReleaseDC(slot->wnd, dc);
 		

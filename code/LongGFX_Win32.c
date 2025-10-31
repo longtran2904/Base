@@ -142,7 +142,7 @@ function b32 GFXInit(void)
                            .hInstance = W32GetInstance(),
                            .lpszClassName = GRAPHICS_WINDOW_CLASS_NAME,
                        }))
-        ErrorSet("Failed to resgister class", error);
+        ErrorSet(error, "Failed to resgister class");
     
     // NOTE(long): This lowers the Windows scheduler’s interrupt timeout
     // Primarily affects Sleep accuracy, but also influences thread scheduling
@@ -159,7 +159,7 @@ function GFXWindow GFXCreateWindowEx(String title, i32 x, i32 y, i32 width, i32 
     b32 error = 0;
     W32Window* slotPtr = w32WindowFree;
     if (slotPtr == 0)
-        ErrorSet("Reached max window count", error);
+        ErrorSet(error, "Reached max window count");
     
     HWND wnd = 0;
     if (!error)
@@ -169,7 +169,7 @@ function GFXWindow GFXCreateWindowEx(String title, i32 x, i32 y, i32 width, i32 
 						   x, y, width, height,
 						   0, 0, W32GetInstance(), 0);
         if (!wnd)
-			ErrorSet("Failed to create graphics window", error);
+			ErrorSet(error, "Failed to create graphics window");
 	}
     
     GFXWindow result = 0;

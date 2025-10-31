@@ -96,19 +96,19 @@ function b32 InitD3D11(void)
 #define X(r, n, p) if (!error) \
     { \
         W32_GET_PROC_ADDR(w32##n, scopeModule, Stringify(n)); \
-        if (!w32##n) ErrorSet("Failed to load "Stringify(n), error); \
+        if (!w32##n) ErrorSet(error, "Failed to load "Stringify(n)); \
     }
         
         // -- dxgi.dll --
         {
             if (dxgiModule != 0)
-                ErrorSet("dxgi.dll has already initialized", error);
+                ErrorSet(error, "dxgi.dll has already initialized");
             
             if (!error)
             {
                 dxgiModule = LoadLibraryW(L"dxgi.dll");
                 if (!dxgiModule)
-                    ErrorSet("Failed to load dxgi.dll", error);
+                    ErrorSet(error, "Failed to load dxgi.dll");
             }
             
             if (!error)
@@ -122,13 +122,13 @@ function b32 InitD3D11(void)
         if (!error)
         {
             if (d3d11Module != 0)
-                ErrorSet("d3d11.dll has already initialized", error);
+                ErrorSet(error, "d3d11.dll has already initialized");
             
             if (!error)
             {
                 d3d11Module = LoadLibraryW(L"d3d11.dll");
                 if (!d3d11Module)
-                    ErrorSet("Failed to load d3d11.dll", error);
+                    ErrorSet(error, "Failed to load d3d11.dll");
             }
             
             if (!error)
@@ -142,14 +142,14 @@ function b32 InitD3D11(void)
         if (!error)
         {
             if (d3dcompilerModule != 0)
-                ErrorSet(D3D_COMPILER_DLL " has already initialized", error);
+                ErrorSet(error, D3D_COMPILER_DLL " has already initialized");
             
             if (!error)
             {
                 // TODO: deal with the fact that there're multiple versions of this dll
                 d3dcompilerModule = LoadLibraryW(Concat(L, D3D_COMPILER_DLL));
                 if (!d3dcompilerModule)
-                    ErrorSet("Failed to load " D3D_COMPILER_DLL, error);
+                    ErrorSet(error, "Failed to load " D3D_COMPILER_DLL);
             }
             
             if (!error)
@@ -168,7 +168,7 @@ function b32 InitD3D11(void)
             HRESULT result = w32D3D11CreateDevice(0, D3D_DRIVER_TYPE_HARDWARE, 0, D3D11_CREATE_DEVICE_DEBUG,
                                                   0, 0, D3D11_SDK_VERSION, &d3d11Device, 0, &d3d11Ctx);
             if (result != S_OK)
-                ErrorSet("Failed to create device", error);
+                ErrorSet(error, "Failed to create device");
         }
         
         // -- Create d3d11Dbg --
@@ -176,7 +176,7 @@ function b32 InitD3D11(void)
         {
             HRESULT result = ID3D11Device_QueryInterface(d3d11Device, iid_ID3D11Debug, &d3d11Dbg);
             if (result != S_OK)
-                ErrorSet("Failed to query debug", error);
+                ErrorSet(error, "Failed to query debug");
         }
     }
     
@@ -226,7 +226,7 @@ function b32 EquipD3D11Window(GFXWindow window)
     b32 error = 0;
     
     if (!GFXWindowIsValid(window))
-        ErrorSet("Handle isn't valid", error);
+        ErrorSet(error, "Handle isn't valid");
     
     if (!error)
     {
@@ -240,7 +240,7 @@ function b32 EquipD3D11Window(GFXWindow window)
 			IDXGIFactory* factory = 0;
 			HRESULT factoryResult = w32CreateDXGIFactory(iid_IDXGIFactory, &factory);
 			if (factoryResult != S_OK)
-				ErrorSet("Failed to create factory", error);
+				ErrorSet(error, "Failed to create factory");
 			
 			if (!error)
 			{
@@ -259,7 +259,7 @@ function b32 EquipD3D11Window(GFXWindow window)
 				
 				IDXGIFactory_CreateSwapChain(factory, (IUnknown*)d3d11Device, &swapChainDesc, &swapchain);
 				if (!swapchain)
-					ErrorSet("Failed to create swapchain", error);
+					ErrorSet(error, "Failed to create swapchain");
 				
 				IDXGIFactory_Release(factory);
 			}
@@ -288,31 +288,31 @@ function b32 FreeD3D11()
     // Cleanup D3D11
     {
         if (d3d11Device) ID3D11Device_Release(d3d11Device);
-        else ErrorSet("The graphics device has already been released", error);
+        else ErrorSet(error, "The graphics device has already been released");
         
         if (d3d11Ctx) ID3D11DeviceContext_Release(d3d11Ctx);
-        else ErrorSet("The graphics context has already been released", error);
+        else ErrorSet(error, "The graphics context has already been released");
         
         if (d3d11Dbg) ID3D11Debug_Release(d3d11Dbg);
-        else ErrorSet("The grahpics debugger has already been released", error);
+        else ErrorSet(error, "The grahpics debugger has already been released");
     }
     
     // Cleanup modules
     {
         if (!dxgiModule)
-            ErrorSet("dxgi.dll has already been freed", error);
+            ErrorSet(error, "dxgi.dll has already been freed");
         else if (FreeLibrary(dxgiModule))
-            ErrorSet("Failed to free dxgi.dll", error);
+            ErrorSet(error, "Failed to free dxgi.dll");
         
         if (!d3d11Module)
-            ErrorSet("d3d11.dll has already been freed", error);
+            ErrorSet(error, "d3d11.dll has already been freed");
         else if (FreeLibrary(d3d11Module))
-            ErrorSet("Failed to free d3d11.dll", error);
+            ErrorSet(error, "Failed to free d3d11.dll");
         
         if (!d3dcompilerModule)
-            ErrorSet(D3D_COMPILER_DLL " has already been freed", error);
+            ErrorSet(error, D3D_COMPILER_DLL " has already been freed");
         else if (FreeLibrary(d3dcompilerModule))
-            ErrorSet("Failed to free " D3D_COMPILER_DLL, error);
+            ErrorSet(error, "Failed to free " D3D_COMPILER_DLL);
     }
     
     // Cleanup function pointers

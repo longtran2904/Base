@@ -39,18 +39,11 @@ struct R_QuadNode
     u64 count;
 };
 
-//~ long: Helper Types
+//~ long: Batch Types
 
 #ifndef R_QUAD_CHUNK_CAP
 #define R_QUAD_CHUNK_CAP KiB(16)
 #endif
-
-typedef struct R_Font R_Font;
-struct R_Font
-{
-    FNT_Baked baked;
-    R_Texture* texture;
-};
 
 typedef struct R_Batch R_Batch;
 struct R_Batch
@@ -68,6 +61,15 @@ struct R_List
     R_Batch* first;
     R_Batch* last;
     u64 batchCount;
+};
+
+//~ long: Helper Types
+
+typedef struct R_Font R_Font;
+struct R_Font
+{
+    FNT_Baked baked;
+    R_Texture* texture;
 };
 
 typedef struct R_Ctx R_Ctx;
@@ -92,7 +94,7 @@ function void       R_TextureUpdate(R_Texture* texture, r2i32 rect, void* data);
 function void       R_TextureDestroy(R_Texture* texture);
 function b32        R_TextureValid(R_Texture* texture);
 
-//~ long: Helper Functions
+//~ long: Batch Functions
 
 function void R_BatchPushQuad(Arena* arena, R_Batch* batch, R_Quad* quad);
 function void R_BatchPushStr (Arena* arena, R_Batch* batch, FNT_Baked* font, String str, v2f32 p, u32 c, r2f32* clip);
@@ -101,22 +103,21 @@ function void R_BatchPushStr (Arena* arena, R_Batch* batch, FNT_Baked* font, Str
 // The user should generally not need to call these
 function void R_ListPushBatch(Arena* arena, R_List* list);
 function void R_ListPrepBatch(Arena* arena, R_List* list, R_Texture* texture);
+function void R_ListFlush(R_List* list);
+
+//~ long: Helper Functions
 
 function R_Font R_FontBakeTexture(Arena* arena, FNT_Font* font, FNT_Packer* pack);
-
-//~ long: Context Functions
 
 function R_Ctx R_CtxMake(Arena* arena, R_List* list);
 function void  R_CtxClip(R_Ctx* ctx, r2f32* clip);
 function void  R_CtxFont(R_Ctx* ctx, R_Font* font);
+function void  R_CtxFlush(R_Ctx* ctx);
 
 function void R_PushRect(R_Ctx* ctx, r2f32 xy, f32 r, u32 c);
 function void R_PushLine(R_Ctx* ctx, r2f32 xy, u32 c);
 function void R_PushQuad(R_Ctx* ctx, R_Quad* quad, R_Texture* texture);
 function void R_PushChar(R_Ctx* ctx, u32 cp, v2f32 p, u32 c);
 function void R_PushStr (R_Ctx* ctx, String str, v2f32 p, u32 c);
-
-function void R_ListFlush(R_List* list);
-function void  R_CtxFlush(R_Ctx* ctx);
 
 #endif //_LONG_RENDER_H

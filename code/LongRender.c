@@ -1,5 +1,5 @@
 
-//~ long: Helper Functions
+//~ long: Batch Functions
 
 function void R_BatchPushQuad(Arena* arena, R_Batch* batch, R_Quad* quad)
 {
@@ -30,6 +30,7 @@ function void R_BatchPushStr(Arena* arena, R_Batch* batch, FNT_Baked* font, Stri
         FNT_GlyphLayout* layout = 0;
         {
             u32 codepoint = *ptr;
+            // TODO(long): Handle UTF-8
             if (ALWAYS(codepoint < 0x80))
                 layout = FNT_GlyphFromCP(font, codepoint);
             
@@ -62,12 +63,20 @@ function void R_ListPushBatch(Arena* arena, R_List* list)
 function void R_ListPrepBatch(Arena* arena, R_List* list, R_Texture* texture)
 {
     R_Batch* last = list->last;
-    if (last == 0 || (texture && /*last->texture && */last->texture != texture))
+    if (last == 0 || (texture && last->texture != texture))
     {
         R_ListPushBatch(arena, list);
         list->last->texture = texture;
     }
 }
+
+function void R_ListFlush(R_List* list)
+{
+    for (R_Batch* batch = list->first; batch != 0; batch = batch->next)
+        R_Submit(batch->first, batch->totalCount, batch->texture);
+}
+
+//~ long: Helper Functions
 
 function R_Font R_FontBakeTexture(Arena* arena, FNT_Font* font, FNT_Packer* pack)
 {
@@ -85,8 +94,6 @@ function R_Font R_FontBakeTexture(Arena* arena, FNT_Font* font, FNT_Packer* pack
     
     return (R_Font){ baked, texture };
 }
-
-//~ long: Context Functions
 
 function R_Ctx R_CtxMake(Arena* arena, R_List* list)
 {
@@ -110,6 +117,11 @@ function void R_CtxFont(R_Ctx* ctx, R_Font* font)
         ctx->font = *font;
 }
 
+function void R_CtxFlush(R_Ctx* ctx)
+{
+    R_ListFlush(ctx->list);
+}
+
 function void R_PushRect(R_Ctx* ctx, r2f32 xy, f32 r, u32 c)
 {
     R_PushQuad(ctx, &(R_Quad){ xy, r, 10000.f, 0.f, 0, { c, c }}, 0);
@@ -117,6 +129,7 @@ function void R_PushRect(R_Ctx* ctx, r2f32 xy, f32 r, u32 c)
 
 function void R_PushLine(R_Ctx* ctx, r2f32 xy, u32 c)
 {
+    // TODO(long): Optimize this
     v2f32 v = SubV2F32(xy.p1, xy.p0);
     f32 theta = AngleV2F32(v);
     f32 length = MagV2F32(v);
@@ -152,15 +165,4 @@ function void R_PushStr(R_Ctx* ctx, String str, v2f32 p, u32 c)
     R_ListPrepBatch(ctx->arena, ctx->list, ctx->font.texture);
     R_BatchPushStr(ctx->arena, ctx->list->last, &ctx->font.baked,
                    str, p, c, ctx->enableClip ? &ctx->clip : 0);
-}
-
-function void R_ListFlush(R_List* list)
-{
-    for (R_Batch* batch = list->first; batch != 0; batch = batch->next)
-        R_Submit(batch->first, batch->totalCount, batch->texture);
-}
-
-function void R_CtxFlush(R_Ctx* ctx)
-{
-    R_ListFlush(ctx->list);
 }

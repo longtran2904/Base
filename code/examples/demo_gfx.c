@@ -134,16 +134,11 @@ global char glsl_sdf_fshader[] =
 "bool hz_gradient = ((f_flags&0x10u) != 0u);\n"
 
 // apply rotation
-#if 1
 "vec2 q = gl_FragCoord.xy - f_center;\n"
 "float sin_theta = sin(f_theta);\n"
 "float cos_theta = cos(f_theta);\n"
 "vec2 p = vec2(+cos_theta*q.x + sin_theta*q.y,\n"
 "              -sin_theta*q.x + cos_theta*q.y);\n"
-
-#else
-"vec2 p = gl_FragCoord.xy - f_center;\n"
-#endif
 
 // modify radius for quadrant
 "float rad = f_radius;\n"
