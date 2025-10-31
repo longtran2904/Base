@@ -154,8 +154,8 @@ function f64 Tan_f64(f64 x) { return tan(x); }
 function f32 Atan_f32(f32 x) { return atanf(x); }
 function f64 Atan_f64(f64 x) { return atan (x); }
 
-function f32 Atan2_f32(f32 x, f32 y) { return atan2f(x, y); }
-function f64 Atan2_f64(f64 x, f64 y) { return atan2 (x, y); }
+function f32 Atan2_f32(f32 y, f32 x) { return atan2f(y, x); }
+function f64 Atan2_f64(f64 y, f64 x) { return atan2 (y, x); }
 
 //- long: Float Constant Functions
 function f32 Inf_f32(void)
@@ -335,19 +335,19 @@ function f32 FrExp_f32(f32 x, i32* exp) { return frexpf(x, exp); }
 function f64 FrExp_f64(f64 x, i32* exp) { return frexp (x, exp); }
 
 //- long: Vector Functions
-function v2f32 V2F32(f32 x, f32 y)                { return (v2f32){ x, y }; }
-function v2f32 AddV2F32(v2f32 a, v2f32 b)         { return (v2f32){ a.x + b.x, a.y + b.y }; }
-function v2f32 SubV2F32(v2f32 a, v2f32 b)         { return (v2f32){ a.x - b.x, a.y - b.y }; }
-function v2f32 MulV2F32(v2f32 a, v2f32 b)         { return (v2f32){ a.x * b.x, a.y * b.y }; }
-function v2f32 DivV2F32(v2f32 a, v2f32 b)         { return (v2f32){ a.x / b.x, a.y / b.y }; }
-function v2f32 ScaleV2F32(v2f32 v, f32 s)         { return (v2f32){ v.x * s, v.y * s }; }
-function f32 DotV2F32(v2f32 a, v2f32 b)           { return a.x * b.x + a.y * b.y; }
-function f32 SqrMagV2F32(v2f32 v)                 { return v.x * v.x + v.y * v.y; }
-function f32 MagV2F32(v2f32 v)                    { return Sqrt_f32(v.x * v.x + v.y * v.y); }
-function f32 AngleV2F32(v2f32 v)                { return Atan2_f32(v.x, v.y); }
-function v2f32 V2F32Angle(f32 theta, f32 radius)  { return (v2f32){ radius*Cos_f32(theta), radius*Sin_f32(theta) }; }
-function v2f32 NormV2F32(v2f32 v)                 { return ScaleV2F32(v, 1.f/MagV2F32(v)); }
-function v2f32 LerpV2F32(v2f32 a, v2f32 b, f32 t) { return (v2f32){ Lerp(a.x, b.x, t), Lerp(a.y, b.y, t) }; }
+function v2f32      V2F32(f32 x, f32 y)            { return (v2f32){ x, y }; }
+function v2f32   AddV2F32(v2f32 a, v2f32 b)        { return (v2f32){ a.x + b.x, a.y + b.y }; }
+function v2f32   SubV2F32(v2f32 a, v2f32 b)        { return (v2f32){ a.x - b.x, a.y - b.y }; }
+function v2f32   MulV2F32(v2f32 a, v2f32 b)        { return (v2f32){ a.x * b.x, a.y * b.y }; }
+function v2f32   DivV2F32(v2f32 a, v2f32 b)        { return (v2f32){ a.x / b.x, a.y / b.y }; }
+function v2f32 ScaleV2F32(v2f32 v, f32 s)          { return (v2f32){ v.x * s, v.y * s }; }
+function f32     DotV2F32(v2f32 a, v2f32 b)        { return a.x * b.x + a.y * b.y; }
+function f32  SqrMagV2F32(v2f32 v)                 { return v.x * v.x + v.y * v.y; }
+function f32     MagV2F32(v2f32 v)                 { return Sqrt_f32(v.x * v.x + v.y * v.y); }
+function f32   AngleV2F32(v2f32 v)                 { return Atan2_f32(v.y, v.x); }
+function v2f32 V2F32Angle(f32 theta, f32 radius)   { return (v2f32){ radius*Cos_f32(theta), radius*Sin_f32(theta) }; }
+function v2f32  NormV2F32(v2f32 v)                 { return ScaleV2F32(v, 1.f/MagV2F32(v)); }
+function v2f32  LerpV2F32(v2f32 a, v2f32 b, f32 t) { return (v2f32){ Lerp(a.x, b.x, t), Lerp(a.y, b.y, t) }; }
 
 function v2i32 V2I32(i32 x, i32 y)                { return (v2i32){ x, y }; }
 function v2i32 AddV2I32(v2i32 a, v2i32 b)         { return (v2i32){ a.x + b.x, a.y + b.y }; }

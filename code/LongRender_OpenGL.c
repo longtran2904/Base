@@ -8,7 +8,8 @@ struct OGL_Renderer
     GLint viewTransform;
     GLint mainTexture;
     
-    GLuint vertexBuffer;
+    GLuint vao;
+    GLuint vbo;
     GLuint fallbackTex;
     
     v2i32 dim;
@@ -18,93 +19,156 @@ global OGL_Renderer oglRenderer;
 
 //~ long: GLSL shaders
 
+#define GLSL_UNPACK_COLOR(u32c, c0, c1, c2, c3) \
+    "float " c0 " = ((" u32c " >>  0) & 0xFFu) / 255.0;\n"   \
+    "float " c1 " = ((" u32c " >>  8) & 0xFFu) / 255.0;\n"   \
+    "float " c2 " = ((" u32c " >> 16) & 0xFFu) / 255.0;\n"   \
+    "float " c3 " = ((" u32c " >> 24) & 0xFFu) / 255.0;\n"
+
 global char* glsl_vshader =
 "#version 330\n"
 "uniform vec2 u_view_xform;\n"
-"layout (location = 0) in vec2 v_pos_pattern;\n"
-"layout (location = 1) in vec4 v_quad;\n"
-"layout (location = 2) in vec4 v_uv;\n"
-"layout (location = 3) in float v_radius;\n"
-"layout (location = 4) in float v_thick;\n"
-"layout (location = 5) in float v_soft;\n"
-"layout (location = 6) in vec4 v_color0;\n"
-"layout (location = 7) in vec4 v_color1;\n"
-"flat out vec2 f_center;\n"
-"flat out vec2 f_extent;\n"
+"layout (location = 0) in vec2  v_template_p;\n"
+"layout (location = 1) in vec4  v_rect;\n"
+"layout (location = 2) in float v_radius;\n"
+"layout (location = 3) in float v_thick;\n"
+"layout (location = 4) in float v_theta;\n"
+"layout (location = 5) in uint  v_c0;\n"
+"layout (location = 6) in uint  v_c1;\n"
+"layout (location = 7) in uint  v_flags;\n"
+"layout (location = 8) in vec4  v_uv;\n"
+"layout (location = 9) in vec4  v_clip;\n"
+
+// declare outputs
+"flat out vec2  f_center;\n"
+"flat out vec2  f_extents;\n"
 "flat out float f_radius;\n"
 "flat out float f_thick;\n"
-"flat out float f_soft;\n"
-"flat out vec4 f_color0;\n"
-"flat out vec4 f_color1;\n"
-"flat out float f_override_sample;\n"
-"out float f_pos_pattern_y;\n"
-"out vec2 f_uv;\n"
+"flat out float f_theta;\n"
+"flat out vec4  f_c0;\n"
+"flat out vec4  f_c1;\n"
+"flat out uint  f_flags;\n"
+"flat out vec4  f_uv;\n"
+"flat out vec4  f_clip;\n"
+
 "void main(){\n"
-// compute normalized pos
-"vec2 center = (v_quad.xy + v_quad.zw)*0.5;\n"
-"vec2 extent = (v_quad.zw - v_quad.xy)*0.5;\n"
-"vec2 pos = center + extent * v_pos_pattern;\n"
-"vec2 norm_pos = pos*u_view_xform + vec2(-1.0, +1.0);\n"
-// compute uv coords
-"vec2 uv_center = (v_uv.xy + v_uv.zw)*0.5;\n"
-"vec2 uv_extent = (v_uv.zw - v_uv.xy)*0.5;\n"
-"vec2 uv = uv_center + uv_extent*v_pos_pattern;\n"
-"float override_sample = 0;\n"
-"if (v_uv.z == 0) { override_sample = 1.0; }\n"
+// setup parameters
+"vec2  center = (v_rect.zw + v_rect.xy) * 0.5;\n"
+"vec2 extents = (v_rect.zw - v_rect.xy) * 0.5;\n"
+"float stheta = sin(v_theta);\n"
+"float ctheta = cos(v_theta);\n"
+GLSL_UNPACK_COLOR("v_c0", "c00", "c01", "c02", "c03")
+GLSL_UNPACK_COLOR("v_c1", "c10", "c11", "c12", "c13")
+
+// setup position based on rotation/template
+"vec2 q = center + extents * v_template_p;\n"
+"if (v_template_p.x < 0) q.x = floor(q.x);\n"
+"else                    q.x =  ceil(q.x);\n"
+"if (v_template_p.y < 0) q.y = floor(q.y);\n"
+"else                    q.y =  ceil(q.y);\n"
+"vec2 qr = q - center;\n"
+"vec2 pr = vec2(ctheta*qr.x - stheta*qr.y, stheta*qr.x + ctheta*qr.y);\n"
+"vec2 p  = center + pr;\n"
+"vec2 np = p * u_view_xform + vec2(-1.0, -1.0);\n"
+
 // fill outputs
-"gl_Position = vec4(norm_pos, 0.0, 1.0);\n"
-"f_center = center;\n"
-"f_extent = extent;\n"
-"f_radius = v_radius;\n"
-"f_thick = v_thick;\n"
-"f_soft = v_soft;\n"
-"f_color0 = v_color0;\n"
-"f_color1 = v_color1;\n"
-"f_override_sample = override_sample;\n"
-"f_pos_pattern_y = v_pos_pattern.y;\n"
-"f_uv = uv;\n"
+"gl_Position = vec4(np, 0.0, 1.0);\n"
+"f_center    = center;\n"
+"f_extents   = extents;\n"
+"f_radius    = v_radius;\n"
+"f_thick     = v_thick;\n"
+"f_theta     = v_theta;\n"
+"f_c0        = vec4(c00, c01, c02, c03);\n"
+"f_c1        = vec4(c10, c11, c12, c13);\n"
+"f_flags     = v_flags;\n"
+"f_uv        = v_uv;\n"
+"f_clip      = v_clip;\n"
 "}\n";
 
 global char* glsl_fshader =
 "#version 330\n"
-"uniform sampler2D u_texture;\n"
-"flat in vec2 f_center;\n"
-"flat in vec2 f_extent;\n"
+"uniform sampler2D u_tex;\n"
+"flat in vec2  f_center;\n"
+"flat in vec2  f_extents;\n"
 "flat in float f_radius;\n"
 "flat in float f_thick;\n"
-"flat in float f_soft;\n"
-"flat in vec4 f_color0;\n"
-"flat in vec4 f_color1;\n"
-"flat in float f_override_sample;\n"
-"layout(origin_upper_left) in vec4 gl_FragCoord;\n"
-"in float f_pos_pattern_y;\n"
-"in vec2 f_uv;\n"
+"flat in float f_theta;\n"
+"flat in vec4  f_c0;\n"
+"flat in vec4  f_c1;\n"
+"flat in uint  f_flags;\n"
+"flat in vec4  f_uv;\n"
+"flat in vec4  f_clip;\n"
+"in vec4 gl_FragCoord;\n"
 "out vec4 out_color;\n"
+
 "void main(){\n"
-// setup pos
-"vec2 pos = gl_FragCoord.xy;\n"
-// setup params
-"float r = f_radius;\n"
-"float thick = f_thick;\n"
-"float soft = f_soft;\n"
-// calculate signed distance
-"vec2 d2 = abs(pos - f_center) - f_extent + vec2(r, r) + vec2(soft, soft);\n"
-"float d_neg =    min(max(d2.x, d2.y), 0);\n"
-"float d_pos = length(max(d2, vec2(0, 0)));\n"
-// apply radius
-"float d = d_neg + d_pos - r;\n"
-// distance response curve
-"float half_thick = thick * 0.5;\n"
-"float d_mir = abs(d + half_thick) - half_thick;\n"
-"float epsilon = 0.01;\n"
-"float m = smoothstep(soft + epsilon, -soft - epsilon, d_mir);\n"
-// blend color
-"float c_t = (f_pos_pattern_y + 1.0) * 0.5;\n"
-"vec4 c_base = f_color0 + (f_color1 - f_color0) * c_t;\n"
-// sample texture
-"float sample = texture(u_texture, f_uv).r;\n"
-"sample = max(sample, f_override_sample);\n"
-"out_color = vec4(c_base.xyz * sample, c_base.w * m);\n"
+// discard fragment outside clip rect
+"if (((f_flags & 0x20u) != 0u) &&\n"
+"    ((gl_FragCoord.x <  f_clip.x) ||\n"
+"     (gl_FragCoord.y <  f_clip.y) ||\n"
+"     (gl_FragCoord.x >= f_clip.z) ||\n"
+"     (gl_FragCoord.y >= f_clip.w))) { discard; }\n"
+
+// apply rotation
+"vec2 q = gl_FragCoord.xy - f_center;\n"
+"float stheta = sin(f_theta);\n"
+"float ctheta = cos(f_theta);\n"
+"vec2 p = vec2(ctheta*q.x + stheta*q.y, -stheta*q.x + ctheta*q.y);\n"
+
+// clamp radius
+"float half_short_side = min(f_extents.x, f_extents.y);\n"
+"float rad = min(f_radius, half_short_side);\n"
+
+// modify radius for quadrant
+"uint quadrant = uint(p.x < 0) + 2u * uint(p.y < 0);\n"
+"if ((f_flags & (1u << quadrant)) != 0u) rad = 0;\n"
+
+// setup rectangle relative sides
+"float r_b = -f_extents.y + rad;\n"
+"float r_t = -r_b;\n"
+"float r_l = -f_extents.x + rad;\n"
+"float r_r = -r_l;\n"
+
+// calculate distance
+"float r_in_x = max(r_l - p.x, p.x - r_r);\n"
+"float r_in_y = max(r_b - p.y, p.y - r_t);\n"
+"float r_in_max = max(r_in_x, r_in_y);\n"
+"float r_in_dist = min(0, r_in_max);\n"
+
+"vec2 r_ex_np = vec2(clamp(p.x, r_l, r_r), clamp(p.y, r_b, r_t));\n"
+"vec2 r_ex_d  = p - r_ex_np;\n"
+"float r_ex_dist = sqrt(r_ex_d.x*r_ex_d.x + r_ex_d.y*r_ex_d.y);\n"
+
+"float dist = r_ex_dist + r_in_dist - rad;\n"
+"float half_thick = f_thick*0.5;\n"
+"if (half_thick > 0) dist = abs(dist + half_thick) - half_thick;\n"
+
+// distance -> alpha
+"float sdf_a_unclamped = (0.5 - dist);\n"
+"float sdf_a = clamp(sdf_a_unclamped, 0, 1);\n"
+
+// texture sampling
+"float uv_xtu = (p.x + f_extents.x) / (2*f_extents.x);\n"
+"float uv_ytu = (p.y + f_extents.y) / (2*f_extents.y);\n"
+"float s = 1;\n"
+"if (f_uv.z > 0){\n"
+"  ivec2 texdim = textureSize(u_tex, 0);\n"
+"  vec2 htex = vec2(0.5/texdim.x, 0.5/texdim.y);\n"
+"  float uv_xu = f_uv.x + (f_uv.z - f_uv.x)*uv_xtu;\n"
+"  float uv_yu = f_uv.y + (f_uv.w - f_uv.y)*uv_ytu;\n"
+"  float uv_x = clamp(uv_xu, f_uv.x + htex.x, f_uv.z - htex.x);\n"
+"  float uv_y = clamp(uv_yu, f_uv.y + htex.y, f_uv.w - htex.y);\n"
+"  s = texture(u_tex, vec2(uv_x, uv_y)).r;\n"
+"}\n"
+
+// color interpolation
+"float color_tu = uv_ytu;\n"
+"if ((f_flags&0x10u) != 0u) color_tu = uv_xtu;\n"
+"float color_t = clamp(color_tu, 0, 1);\n"
+"vec4 color = f_c0 + (f_c1 - f_c0)*color_t;\n"
+
+// final color
+"out_color = vec4(color.rgb, sdf_a*color.a*s);\n"
 "}\n";
 
 //~ long: OpenGL Functions
@@ -127,15 +191,57 @@ function void R_Init(void)
     if (program.log.size) Outf("Program:\n%s\n", (char*)program.log.str);
     
     GLint viewTransform = glGetUniformLocation(program.handle, "u_view_xform");
-    GLint   mainTexture = glGetUniformLocation(program.handle, "u_texture");
+    GLint   mainTexture = glGetUniformLocation(program.handle, "u_tex");
     
     GLuint vao = 0;
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
     
-    GLuint vertexBuffer = 0;
-    glGenBuffers(1, &vertexBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    GLuint vbo = 0;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    
+    u64 quadOffset = sizeof(v2f32) * 6;
+    
+    glEnableVertexAttribArray(0);
+    glVertexAttribDivisor(0, 0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, false, sizeof(v2f32), 0);
+    
+    glEnableVertexAttribArray(1);
+    glVertexAttribDivisor(1, 1);
+    glVertexAttribPointer(1, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, xy)));
+    
+    glEnableVertexAttribArray(2);
+    glVertexAttribDivisor(2, 1);
+    glVertexAttribPointer(2, 1, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, roundness)));
+    
+    glEnableVertexAttribArray(3);
+    glVertexAttribDivisor(3, 1);
+    glVertexAttribPointer(3, 1, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, thickness)));
+    
+    glEnableVertexAttribArray(4);
+    glVertexAttribDivisor(4, 1);
+    glVertexAttribPointer(4, 1, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, theta)));
+    
+    glEnableVertexAttribArray(5);
+    glVertexAttribDivisor(5, 1);
+    glVertexAttribIPointer(5, 1, GL_UNSIGNED_INT, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, c[0])));
+    
+    glEnableVertexAttribArray(6);
+    glVertexAttribDivisor(6, 1);
+    glVertexAttribIPointer(6, 1, GL_UNSIGNED_INT, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, c[1])));
+    
+    glEnableVertexAttribArray(7);
+    glVertexAttribDivisor(7, 1);
+    glVertexAttribIPointer(7, 1, GL_UNSIGNED_INT, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, flags)));
+    
+    glEnableVertexAttribArray(8);
+    glVertexAttribDivisor(8, 1);
+    glVertexAttribPointer(8, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, uv)));
+    
+    glEnableVertexAttribArray(9);
+    glVertexAttribDivisor(9, 1);
+    glVertexAttribPointer(9, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, clip)));
     
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_BLEND);
@@ -163,7 +269,8 @@ function void R_Init(void)
     oglRenderer.viewTransform = viewTransform;
     oglRenderer.mainTexture = mainTexture;
     
-    oglRenderer.vertexBuffer = vertexBuffer;
+    oglRenderer.vao = vao;
+    oglRenderer.vbo = vbo;
     oglRenderer.fallbackTex = texture;
     
     //OGL_Free();
@@ -200,6 +307,7 @@ function void R_Submit(R_QuadNode* first, u64 count, R_Texture* texturePtr)
     // set buffer size
     GLintptr cursor = 0;
     u64 size = sizeof(v2f32)*6 + sizeof(R_Quad)*count;
+    glBindBuffer(GL_ARRAY_BUFFER, oglRenderer.vbo);
     glBufferData(GL_ARRAY_BUFFER, size, 0, GL_STREAM_DRAW);
     
     // set 6 points of a quad
@@ -223,43 +331,12 @@ function void R_Submit(R_QuadNode* first, u64 count, R_Texture* texturePtr)
     
     // call GPU program
     glUseProgram(oglRenderer.program);
-    glUniform2f(oglRenderer.viewTransform, 2.f/(f32)oglRenderer.dim.x, -2.f/(f32)oglRenderer.dim.y);
+    glUniform2f(oglRenderer.viewTransform, 2.f/(f32)oglRenderer.dim.x, 2.f/(f32)oglRenderer.dim.y);
     glUniform1i(oglRenderer.mainTexture, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
     
-    glEnableVertexAttribArray(0);
-    glVertexAttribDivisor(0, 0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, false, sizeof(v2f32), PtrFromInt(triaOffset));
-    
-    glEnableVertexAttribArray(1);
-    glVertexAttribDivisor(1, 1);
-    glVertexAttribPointer(1, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, xy)));
-    
-    glEnableVertexAttribArray(2);
-    glVertexAttribDivisor(2, 1);
-    glVertexAttribPointer(2, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, uv)));
-    
-    glEnableVertexAttribArray(3);
-    glVertexAttribDivisor(3, 1);
-    glVertexAttribPointer(3, 1, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, radius)));
-    
-    glEnableVertexAttribArray(4);
-    glVertexAttribDivisor(4, 1);
-    glVertexAttribPointer(4, 1, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, thickness)));
-    
-    glEnableVertexAttribArray(5);
-    glVertexAttribDivisor(5, 1);
-    glVertexAttribPointer(5, 1, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, softness)));
-    
-    glEnableVertexAttribArray(6);
-    glVertexAttribDivisor(6, 1);
-    glVertexAttribPointer(6, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, c0)));
-    
-    glEnableVertexAttribArray(7);
-    glVertexAttribDivisor(7, 1);
-    glVertexAttribPointer(7, 4, GL_FLOAT, false, sizeof(R_Quad), PtrFromInt(quadOffset + OffsetOf(R_Quad, c1)));
-    
+    glBindVertexArray(oglRenderer.vao);
     glDrawArraysInstanced(GL_TRIANGLES, 0, 6, (GLsizei)count);
 }
 

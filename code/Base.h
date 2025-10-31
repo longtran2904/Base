@@ -1304,13 +1304,13 @@ function f32 Sin_f32(f32 x);
 function f32 Cos_f32(f32 x);
 function f32 Tan_f32(f32 x);
 function f32 Atan_f32(f32 x);
-function f32 Atan2_f32(f32 x, f32 y);
+function f32 Atan2_f32(f32 y, f32 x);
 
 function f64 Sin_f64(f64 x);
 function f64 Cos_f64(f64 x);
 function f64 Tan_f64(f64 x);
 function f64 Atan_f64(f64 x);
-function f64 Atan2_f64(f64 x, f64 y);
+function f64 Atan2_f64(f64 y, f64 x);
 
 //- long: Vector Functions
 #define V2F32V(v) V2F32((f32)(v).x, (f32)(v).y)
@@ -1459,8 +1459,10 @@ function r1f32 IntersectR1F32(r1f32 a, r1f32 b);
 function f32 ClampR1F32(r1f32 r, f32 v);
 
 #define R2I32P(x, y, z, w) R2I32(V2I32((i32)(x), (i32)(y)), V2I32((i32)(z), (i32)(w)))
-#define R2I32V(v) R2I32P((v).x, (v).y, (v).z, (v).w)
-#define R2I32R(r) R2I32P((r).x0, (r).y0, (r).x1, (r).y1)
+#define R2I32V2(v0, v1)    R2I32P((v0).x, (v0).y, (v1).x, (v1).y)
+#define R2I32V4(v)         R2I32P((v).x, (v).y, (v).z, (v).w)
+#define R2I32R1(r0, r1)    R2I32P((r0).min, (r1).min, (r0).max, (r1).max)
+#define R2I32R2(r)         R2I32P((r).x0, (r).y0, (r).x1, (r).y1)
 function r2i32 R2I32(v2i32 min, v2i32 max);
 function r2i32 R2I32Size(v2i32 min, v2i32 size);
 function r2i32 ShiftR2I32(r2i32 r, v2i32 x);
@@ -1473,8 +1475,10 @@ function r2i32 IntersectR2I32(r2i32 a, r2i32 b);
 function v2i32 ClampR2I32(r2i32 r, v2i32 v);
 
 #define R2F32P(x, y, z, w) R2F32(V2F32((f32)(x), (f32)(y)), V2F32((f32)(z), (f32)(w)))
-#define R2F32V(v) R2F32P((v).x, (v).y, (v).z, (v).w)
-#define R2F32R(r) R2F32P((r).x0, (r).y0, (r).x1, (r).y1)
+#define R2F32V2(v0, v1)    R2F32P((v0).x, (v0).y, (v1).x, (v1).y)
+#define R2F32V4(v)         R2F32P((v).x, (v).y, (v).z, (v).w)
+#define R2F32R1(r0, r1)    R2F32P((r0).min, (r1).min, (r0).max, (r1).max)
+#define R2F32R2(r)         R2F32P((r).x0, (r).y0, (r).x1, (r).y1)
 function r2f32 R2F32(v2f32 min, v2f32 max);
 function r2f32 R2F32Size(v2f32 min, v2f32 size);
 function r2f32 ShiftR2F32(r2f32 r, v2f32 x);

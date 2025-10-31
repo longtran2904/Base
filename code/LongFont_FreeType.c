@@ -83,7 +83,7 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
             
             FT_GlyphSlot ftGlyph = face->glyph;
             glyph->advance = ftGlyph->advance.x >> 6;
-            glyph->offset = V2I32(ftGlyph->bitmap_left, -ftGlyph->bitmap_top);
+            glyph->offset = V2I32(ftGlyph->bitmap_left, ftGlyph->bitmap_top);
             
             FT_Bitmap bitmap = ftGlyph->bitmap;
             Assert(bitmap.pixel_mode == FT_PIXEL_MODE_GRAY);
@@ -93,9 +93,15 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
             u8* srcLine = bitmap.buffer;
             if (srcLine)
             {
+                // NOTE(long): FreeType bitmaps are always stored top-to-bottom in memory
+                // If bitmap.pitch is negative, bitmap.buffer points to the last (bottom) row
+                // We flip the pitch here because our renderer expects the origin at the bottom-left
+                i32 pitch = -bitmap.pitch;
+                if (pitch < 0)
+                    srcLine += -pitch * (bitmap.rows - 1);
+                
                 u8* dst = glyph->bitmap = PushArray(arena, u8, bitmap.width * bitmap.rows);
-                if (bitmap.pitch < 0)
-                    srcLine += -bitmap.pitch*(bitmap.rows - 1);
+                b32 mono = !(params->flags & FNT_RasterFlag_Smooth);
                 
                 for (u32 y = 0; y < bitmap.rows; ++y)
                 {
@@ -103,15 +109,15 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
                     for (u32 x = 0; x < bitmap.width; ++x)
                     {
                         u8 pixel = *src++;
-                        if (!(params->flags & FNT_RasterFlag_Smooth))
+                        if (mono)
                             pixel = (pixel >= 128) * 255;
                         *dst++ = pixel;
                     }
                     
-                    srcLine += bitmap.pitch;
+                    srcLine += pitch;
                 }
                 
-                //glyph->offset.y -= bitmap.rows;
+                glyph->offset.y -= bitmap.rows;
             }
         }
     }

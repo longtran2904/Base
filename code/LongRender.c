@@ -1,15 +1,15 @@
 
 //~ long: Helper Functions
 
-function void R_QuadPush(Arena* arena, R_QuadList* list, R_Quad* quad)
+function void R_BatchPushQuad(Arena* arena, R_Batch* batch, R_Quad* quad)
 {
-    R_QuadNode* tail = list->last;
+    R_QuadNode* tail = batch->last;
     if (tail == 0 || tail->count >= R_QUAD_CHUNK_CAP)
     {
         R_QuadNode* node = PushStruct(arena, R_QuadNode);
-        SLLQueuePush(list->first, list->last, node);
-        list->nodeCount++;
-        tail = node;
+        SLLQueuePush(batch->first, batch->last, node);
+        batch->nodeCount += 1;
+        tail = batch->last;
     }
     
     if (tail->quads == 0)
@@ -17,7 +17,56 @@ function void R_QuadPush(Arena* arena, R_QuadList* list, R_Quad* quad)
     
     tail->quads[tail->count] = *quad;
     tail->count++;
-    list->totalCount++;
+    batch->totalCount++;
+}
+
+function void R_BatchPushStr(Arena* arena, R_Batch* batch, FNT_Baked* font, String str, v2f32 p, u32 c, r2f32* clip)
+{
+    FNT_GlyphLayout* fallback = FNT_GlyphFromCP(font, '?');
+    v2f32 pos = p;
+    
+    for (u8* ptr = str.str,* opl = ptr + str.size; ptr < opl; ++ptr)
+    {
+        FNT_GlyphLayout* layout = 0;
+        {
+            u32 codepoint = *ptr;
+            if (ALWAYS(codepoint < 0x80))
+                layout = FNT_GlyphFromCP(font, codepoint);
+            
+            if (!layout)
+                layout = fallback;
+        }
+        
+        r2i32 xyTex = R2I32Size(layout->offset, DimR2I32(layout->xy));
+        r2f32 xy = ShiftR2F32(R2F32R2(xyTex), pos);
+        pos.x += (f32)layout->advance;
+        
+        R_Quad quad = (R_Quad){ xy, 0.f, 10000.f, 0.f, 0, { c, c }, layout->uv };
+        if (clip)
+        {
+            quad.flags |= R_QuadFlag_Clipped;
+            quad.clip = *clip;
+        }
+        
+        R_BatchPushQuad(arena, batch, &quad);
+    }
+}
+
+function void R_ListPushBatch(Arena* arena, R_List* list)
+{
+    R_Batch* batch = PushStruct(arena, R_Batch);
+    SLLQueuePush(list->first, list->last, batch);
+    list->batchCount++;
+}
+
+function void R_ListPrepBatch(Arena* arena, R_List* list, R_Texture* texture)
+{
+    R_Batch* last = list->last;
+    if (last == 0 || (texture && /*last->texture && */last->texture != texture))
+    {
+        R_ListPushBatch(arena, list);
+        list->last->texture = texture;
+    }
 }
 
 function R_Font R_FontBakeTexture(Arena* arena, FNT_Font* font, FNT_Packer* pack)
@@ -37,85 +86,81 @@ function R_Font R_FontBakeTexture(Arena* arena, FNT_Font* font, FNT_Packer* pack
     return (R_Font){ baked, texture };
 }
 
-function void R_StrPush(Arena* arena, R_QuadList* list, FNT_Baked* font, String str, v2f32 p, v4f32 color)
-{
-    FNT_GlyphLayout* fallback = FNT_GlyphFromCP(font, '?');
-    v2f32 pos = p;
-    
-    for (u8* ptr = str.str,* opl = ptr + str.size; ptr < opl; ++ptr)
-    {
-        FNT_GlyphLayout* layout = 0;
-        {
-            u32 codepoint = *ptr;
-            if (ALWAYS(codepoint < 0x80))
-                layout = FNT_GlyphFromCP(font, codepoint);
-            
-            if (!layout)
-                layout = fallback;
-        }
-        
-        r2i32 xyTex = R2I32Size(layout->offset, DimR2I32(layout->xy));
-        r2f32 xy = ShiftR2F32(R2F32R(xyTex), pos);
-        pos.x += (f32)layout->advance;
-        
-        R_QuadPush(arena, list, &(R_Quad){ xy, layout->uv, 0.f, 10000.f, 0.f, color, color });
-    }
-}
-
 //~ long: Context Functions
 
-threadvar R_Ctx* drawCtx;
-
-function void R_CtxBegin(void)
+function R_Ctx R_CtxMake(Arena* arena, R_List* list)
 {
-    if (drawCtx == 0)
+    R_Ctx result = (R_Ctx){ .arena = arena };
+    if (!list)
+        list = PushStruct(arena, R_List);
+    result.list = list;
+    return result;
+}
+
+function void R_CtxClip(R_Ctx* ctx, r2f32* clip)
+{
+    ctx->enableClip = !!clip;
+    if (ctx->enableClip)
+        ctx->clip = *clip;
+}
+
+function void R_CtxFont(R_Ctx* ctx, R_Font* font)
+{
+    if (font != 0)
+        ctx->font = *font;
+}
+
+function void R_PushRect(R_Ctx* ctx, r2f32 xy, f32 r, u32 c)
+{
+    R_PushQuad(ctx, &(R_Quad){ xy, r, 10000.f, 0.f, 0, { c, c }}, 0);
+}
+
+function void R_PushLine(R_Ctx* ctx, r2f32 xy, u32 c)
+{
+    v2f32 v = SubV2F32(xy.p1, xy.p0);
+    f32 theta = AngleV2F32(v);
+    f32 length = MagV2F32(v);
+    r2f32 rect = R2F32Size(xy.p0, V2F32(length, 1.f));
+    R_PushQuad(ctx, &(R_Quad){ rect, 0.f, 10000.f, theta, 0, .c = { c, c }, }, 0);
+}
+
+function void R_PushQuad(R_Ctx* ctx, R_Quad* quad, R_Texture* texture)
+{
+    R_ListPrepBatch(ctx->arena, ctx->list, texture);
+    if (!(quad->flags & R_QuadFlag_Clipped) && ctx->enableClip)
     {
-        Arena* arena = ArenaMake(1);
-        drawCtx = PushStruct(arena, R_Ctx);
-        drawCtx->arena = arena;
-        drawCtx->basePos = ArenaPos(arena);
+        quad->flags |= R_QuadFlag_Clipped;
+        quad->clip = ctx->clip;
     }
-    
-    ZeroStruct(&drawCtx->list);
-    drawCtx->font.texture = 0;
+    R_BatchPushQuad(ctx->arena, ctx->list->last, quad);
 }
 
-function void R_CtxEnd(void)
+function void R_PushChar(R_Ctx* ctx, u32 cp, v2f32 p, u32 c)
 {
-    R_Submit(drawCtx->list.first, drawCtx->list.totalCount, drawCtx->font.texture);
-    ArenaPopTo(drawCtx->arena, drawCtx->basePos);
-    
-    ZeroStruct(&drawCtx->list);
-    drawCtx->font.texture = 0;
-}
-
-function void R_CtxPushQuad(R_Quad* quad)
-{
-    R_QuadPush(drawCtx->arena, &drawCtx->list, quad);
-}
-
-function void R_CtxPushStr(R_Font* font, String str, v2f32 p, v4f32 color)
-{
-    R_Ctx* ctx = drawCtx;
-    if (ctx->font.texture && ctx->font.texture != font->texture)
-        R_CtxEnd();
-    
-    ctx->font = *font;
-    R_StrPush(ctx->arena, &ctx->list, &font->baked, str, p, color);
-}
-
-function void R_CtxPushChar(R_Font* font, u32 codepoint, v2f32 p, v4f32 color)
-{
-    R_Ctx* ctx = drawCtx;
-    if (ctx->font.texture && ctx->font.texture != font->texture)
-        R_CtxEnd();
-    ctx->font = *font;
-    
-    FNT_GlyphLayout* layout = FNT_GlyphFromCP(&font->baked, codepoint);
+    R_Font* font = &ctx->font;
+    FNT_GlyphLayout* layout = FNT_GlyphFromCP(&font->baked, cp);
     if (layout)
     {
         r2i32 xyTex = R2I32Size(layout->offset, DimR2I32(layout->xy));
-        r2f32 xy = ShiftR2F32(R2F32R(xyTex), p);
-        R_QuadPush(ctx->arena, &ctx->list, &(R_Quad){ xy, layout->uv, 0.f, 10000.f, 0.f, color, color });
+        r2f32 xy = ShiftR2F32(R2F32R2(xyTex), p);
+        R_PushQuad(ctx, &(R_Quad){ xy, 0.f, 10000.f, 0.f, 0, { c, c }, layout->uv }, font->texture);
     }
+}
+
+function void R_PushStr(R_Ctx* ctx, String str, v2f32 p, u32 c)
+{
+    R_ListPrepBatch(ctx->arena, ctx->list, ctx->font.texture);
+    R_BatchPushStr(ctx->arena, ctx->list->last, &ctx->font.baked,
+                   str, p, c, ctx->enableClip ? &ctx->clip : 0);
+}
+
+function void R_ListFlush(R_List* list)
+{
+    for (R_Batch* batch = list->first; batch != 0; batch = batch->next)
+        R_Submit(batch->first, batch->totalCount, batch->texture);
+}
+
+function void R_CtxFlush(R_Ctx* ctx)
+{
+    R_ListFlush(ctx->list);
 }

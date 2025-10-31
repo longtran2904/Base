@@ -62,12 +62,6 @@ struct Vertex
 #define R_Flag_SharpCornerBR (1 << 3)
 #define R_Flag_HzGradient    (1 << 4)
 
-#define GLSL_UNPACK_COLOR(u32c, c0, c1, c2, c3) \
-    "float " c0 " = ((" u32c " >>  0) & 0xFFu) / 255.0;\n"   \
-    "float " c1 " = ((" u32c " >>  8) & 0xFFu) / 255.0;\n"   \
-    "float " c2 " = ((" u32c " >> 16) & 0xFFu) / 255.0;\n"   \
-    "float " c3 " = ((" u32c " >> 24) & 0xFFu) / 255.0;\n"
-
 global char glsl_sdf_vshader[] =
 "#version 330\n"
 "uniform vec2 u_view_xform;\n"
@@ -205,8 +199,11 @@ global char glsl_sdf_fshader[] =
 global OGL_Shader vshader = {0};
 global OGL_Shader fshader = {0};
 global OGL_Shader program = {0};
-global GLint viewTransform = -1;
 
+global GLuint vao = 0;
+global GLuint vbo = 0;
+
+global GLint viewTransform = -1;
 global GLint sdfTexture = -1;
 global GLuint fallbackTexture = 0;
 
@@ -215,7 +212,7 @@ global GLuint msaaTexture = 0;
 
 function void DrawRects(Rect* r, u32 count, GLuint texture, v2f32 windim)
 {
-    if (texture == 0)
+    if (!glIsTexture(texture))
         texture = fallbackTexture;
     
     ScratchBlock(scratch)
@@ -304,8 +301,8 @@ function void DrawRects(Rect* r, u32 count, GLuint texture, v2f32 windim)
             }
         }
         
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, count*6*sizeof(*v), v, GL_STREAM_DRAW);
-        
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
         
@@ -313,73 +310,8 @@ function void DrawRects(Rect* r, u32 count, GLuint texture, v2f32 windim)
         glUniform2f(viewTransform, 2.f/windim.x, 2.f/windim.y);
         glUniform1i(sdfTexture, 0);
         
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 2, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, p)));
-        
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, center)));
-        
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, extent)));
-        
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 1, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, radius)));
-        
-        glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 1, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, thick)));
-        
-        glEnableVertexAttribArray(5);
-        glVertexAttribPointer(5, 1, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, theta)));
-        
-        glEnableVertexAttribArray(6);
-        glVertexAttribIPointer(6, 1, GL_UNSIGNED_INT, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, c[0])));
-        
-        glEnableVertexAttribArray(7);
-        glVertexAttribIPointer(7, 1, GL_UNSIGNED_INT, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, c[1])));
-        
-        glEnableVertexAttribArray(8);
-        glVertexAttribIPointer(8, 1, GL_UNSIGNED_INT, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, flags)));
-        
-        glEnableVertexAttribArray(9);
-        glVertexAttribPointer(9, 4, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, uv0)));
-        
-        glEnableVertexAttribArray(10);
-        glVertexAttribPointer(10, 4, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, clip)));
-        
-#if 1
-        for (int i = 0; i < 10; ++i)
-            glVertexAttribDivisor(i, 0);
-#endif
-        
+        glBindVertexArray(vao);
         glDrawArrays(GL_TRIANGLES, 0, count*6);
-    }
-}
-
-function void DrawQuads(R_Font font)
-{
-    R_QuadList list = {0};
-    ScratchBlock(scratch)
-    {
-        R_QuadPush(scratch, &list, &(R_Quad){
-                       R2F32P(200.f, 200.f, 300.f, 300.f), (r2f32){0},
-                       10.f, 5.f, 1.f,
-                       V4F32(1.f, .2f, 0.f, 1.f), V4F32(1.f, 0.f, .2f, 1.f)
-                   });
-        
-        R_QuadPush(scratch, &list, &(R_Quad){
-                       R2F32P(100.f, 400.f, 400.f, 500.f), (r2f32){0},
-                       20.f, 10000.f, 1.f,
-                       V4F32(1.f, 1.f, 1.f, 1.f), V4F32(0.f, 0.f, 0.f, 1.f)
-                   });
-        
-        R_QuadPush(scratch, &list, &(R_Quad){
-                       R2F32Size(V2F32(600.f, 400.f), V2F32V(font.baked.size)), R2F32P(0.f, 0.f, 1.f, 1.f),
-                       0.f, 10000.f, 1.f,
-                       V4F32(1.f, 1.f, 1.f, 1.f), V4F32(1.f, 1.f, 1.f, 1.f)
-                   });
-        
-        DEBUG(font);
-        R_Submit(list.first, list.totalCount, font.texture);
     }
 }
 
@@ -422,42 +354,75 @@ function void FrameEnd(FrameInfo* info)
     info->frames[frameIdx].end = frameEnd;
 }
 
-function void DrawRenderCtx(R_Font* fonts, u64 count, u64 fontello, FrameInfo* info)
+function void DrawQuads(R_Font* fonts, u64 count, u64 fontello, FrameInfo* info)
 {
-    u64 frameCount = ArrayCount(info->frames);
+    DEBUG(fonts);
+    DEBUG(count);
+    DEBUG(fontello);
+    DEBUG(info);
     
-    DeferBlock(R_CtxBegin(), R_CtxEnd())
+    ScratchBlock(scratch)
     {
-        v4f32 c0 = V4F32(0.9f, 0.1f, 0.0f, 1.0f);
-        v4f32 c1 = V4F32(0.8f, 0.0f, 0.0f, 1.0f);
-        v4f32 c2 = V4F32(0.1f, 0.9f, 0.0f, 1.0f);
-        v4f32 c3 = V4F32(0.0f, 0.9f, 0.1f, 1.0f);
+        R_Batch batch = {0};
         
-        R_CtxPushRect(.xy = R2F32P( 5,  5, 45, 45), .radius = 5.f, .c0 = c0, .c1 = c1);
-        R_CtxPushRect(.xy = R2F32P(55,  5, 95, 45), .radius = 5.f, .c0 = c0, .c1 = c1);
-        R_CtxPushRect(.xy = R2F32P( 5, 50, 45, 70), .radius = 0.f, .c0 = c2, .c1 = c3);
-        R_CtxPushRect(.xy = R2F32P(55, 50, 95, 70), .radius = 0.f, .c0 = c3, .c1 = c2);
-        R_CtxPushStr(&fonts[1%count], StrLit("The quick brown fox jumps over the lazy dog."),
-                     V2F32(25.f, 50.f), V4F32(1.0f, 1.0f, 0.5f, 1.0f));
+        R_BatchPushQuad(scratch, &batch, &(R_Quad){
+                            R2F32P(200.f, 200.f, 300.f, 300.f),
+                            10.f, 5.f, 0.f, 0,
+                            { PackV4F32(V4F32(1.f, .2f, 0.f, 1.f)), PackV4F32(V4F32(1.f, 0.f, .2f, 1.f)) },
+                        });
         
-        R_CtxPushRect(.xy = R2F32P( 5, 105, 45, 145), .radius = 5.f, .c0 = c0, .c1 = c1);
-        R_CtxPushRect(.xy = R2F32P(55, 105, 95, 145), .radius = 5.f, .c0 = c0, .c1 = c1);
-        R_CtxPushRect(.xy = R2F32P( 5, 150, 45, 170), .radius = 0.f, .c0 = c2, .c1 = c1);
-        R_CtxPushRect(.xy = R2F32P(55, 150, 95, 170), .radius = 0.f, .c0 = c1, .c1 = c2);
-        R_CtxPushStr(&fonts[2%count], StrLit("Hello, world!"),
-                     V2F32(25.f, 150.f), V4F32(1.0f, 1.0f, 0.5f, 1.0f));
+        R_BatchPushQuad(scratch, &batch, &(R_Quad){
+                            R2F32P(100.f, 400.f, 400.f, 500.f),
+                            20.f, 10000.f, 0.f, 0,
+                            { PackV4F32(V4F32(1.f, 1.f, 1.f, 1.f)), PackV4F32(V4F32(0.f, 0.f, 0.f, 1.f)) },
+                        });
         
-        R_CtxPushChar(&fonts[fontello], ICON_FOLDER, V2F32(25, 250), V4F32(.8f, 0.f, .4f, 1.f));
-        R_CtxPushChar(&fonts[fontello], ICON_CANCEL, V2F32(50, 250), V4F32(.8f, 0.f, .4f, 1.f));
+        R_BatchPushQuad(scratch, &batch, &(R_Quad){
+                            R2F32Size(V2F32(600.f, 400.f), V2F32V(fonts[0].baked.size)),
+                            0.f, 10000.f, 0.f, 0,
+                            { PackV4F32(V4F32(1.f, 1.f, 1.f, 1.f)), PackV4F32(V4F32(1.f, 1.f, 1.f, 1.f)) }, R2F32P(0.f, 0.f, 1.f, 1.f)
+                        });
         
-        ScratchBlock(scratch)
+        R_Submit(batch.first, batch.totalCount, batch.texture);
+    }
+    
+    ScratchBlock(scratch)
+    {
+        R_Ctx ctx = R_CtxMake(scratch, 0);
+        
+        u32 c0 = PackV4F32(V4F32(0.9f, 0.1f, 0.0f, 1.0f));
+        u32 c1 = PackV4F32(V4F32(0.8f, 0.0f, 0.0f, 1.0f));
+        u32 c2 = PackV4F32(V4F32(0.1f, 0.9f, 0.0f, 1.0f));
+        u32 c3 = PackV4F32(V4F32(0.0f, 0.9f, 0.1f, 1.0f));
+        
+        R_PushRect(&ctx, R2F32P( 5,  5, 45, 45), 5.f, c0);
+        R_PushRect(&ctx, R2F32P(55,  5, 95, 45), 5.f, c1);
+        R_PushRect(&ctx, R2F32P( 5, 50, 45, 70), 0.f, c2);
+        R_PushRect(&ctx, R2F32P(55, 50, 95, 70), 0.f, c3);
+        R_CtxFont(&ctx, fonts + 1);
+        R_PushStr(&ctx, StrLit("The quick brown fox jumps over the lazy dog."),
+                  V2F32(25.f, 50.f), PackV4F32(V4F32(1.0f, 1.0f, 0.5f, 1.0f)));
+        
+        R_PushRect(&ctx, R2F32P( 5, 105, 45, 145), 5.f, c0);
+        R_PushRect(&ctx, R2F32P(55, 105, 95, 145), 5.f, c1);
+        R_PushRect(&ctx, R2F32P( 5, 150, 45, 170), 0.f, c2);
+        R_PushRect(&ctx, R2F32P(55, 150, 95, 170), 0.f, c3);
+        R_PushStr(&ctx, StrLit("Hello, world!"),
+                  V2F32(25.f, 150.f), PackV4F32(V4F32(1.0f, 1.0f, 0.5f, 1.0f)));
+        
+        R_CtxFont (&ctx, &fonts[fontello]);
+        R_PushChar(&ctx, ICON_FOLDER, V2F32(25, 250), PackV4F32(V4F32(0.f, .4f, .8f, 1.f)));
+        R_PushChar(&ctx, ICON_CANCEL, V2F32(50, 250), PackV4F32(V4F32(0.f, .4f, .8f, 1.f)));
+        
+        R_PushLine(&ctx, R2F32P(info->lineX, 300, info->lineX, 400), PackV4F32(V4F32(1, 1, 1, 1)));
+        
+        u64 frameCount = ArrayCount(info->frames);
         {
             u64 idx = info->frameIdx ? (info->frameIdx-1)%frameCount : 0;
             String frameStr = StrPushf(scratch, "%llu", DimR1U64(info->frames[idx]));
-            R_CtxPushStr(&fonts[0], frameStr, V2F32(600, 50), V4F32(1.f, 1.f, 0.f, 1.f));
+            R_CtxFont(&ctx, fonts);
+            R_PushStr(&ctx, frameStr, V2F32(600, 50), PackV4F32(V4F32(1.f, 1.f, 0.f, 1.f)));
         }
-        
-        R_CtxPushLine(info->lineX, R1F32(300, 400), V4F32(1, 1, 1, 1));
         
         r1f32 xRange = R1F32(200, 700);
         r1f32  yMark = R1F32(100, 110);
@@ -492,14 +457,16 @@ function void DrawRenderCtx(R_Font* fonts, u64 count, u64 fontello, FrameInfo* i
             f32 xMark = Lerp(xRange.min, xRange.max, markT);
             f32  xEnd = Lerp(xRange.min, xRange.max,  endT);
             
-            v4f32 color = colors[i % ArrayCount(colors)];
-            R_CtxPushLine(xMark, yMark, color);
-            R_CtxPushLine( xEnd,  yEnd, color);
+            u32 color = PackV4F32(colors[i % ArrayCount(colors)]);
+            R_PushLine(&ctx, R2F32R1(R1F32(xMark, xMark), yMark), color);
+            R_PushLine(&ctx, R2F32R1(R1F32( xEnd,  xEnd),  yEnd), color);
             
             if (frame.max - frame.min != delta)
-                R_CtxPushRect(.xy = R2F32P(xMark-2, yMark.min-2, xMark+3, yMark.min+3),
-                              .radius = 0.5f, .c0 = V4F32(1, 0, 0, 1), .c1 = V4F32(1, 0, 0, 1));
+                R_PushRect(&ctx, R2F32P(xMark-2, yMark.min-2, xMark+3, yMark.min+3),
+                           0.5f, PackV4F32(V4F32(1, 0, 0, 1)));
         }
+        
+        R_CtxFlush(&ctx);
     }
 }
 
@@ -513,12 +480,13 @@ struct Grid
 
 function void FillTestRects(Rect* rects, f32 t, f32 tPrev)
 {
+    UNUSED(rects);
     UNUSED(t);
     UNUSED(tPrev);
     u32 shape_i = 0;
     
     // srgb test gradient
-#if 0
+#if 1
     {
         rects[shape_i].p0 = V2F32(550.f, 350.f);
         rects[shape_i].p1 = V2F32(700.f, 380.f);
@@ -530,7 +498,7 @@ function void FillTestRects(Rect* rects, f32 t, f32 tPrev)
 #endif
     
     // eliptical moving square
-#if 0
+#if 1
     {
         v2f32 p = V2F32(200 + Cos_f32(t*TAU_F32*5)*200,
                         300 + Sin_f32(t*TAU_F32*5)*300);
@@ -544,7 +512,7 @@ function void FillTestRects(Rect* rects, f32 t, f32 tPrev)
 #endif
     
     // still thin lines
-#if 0
+#if 1
     {
         f32 x[4] = { 1.f, 3.25f, 5.5f, 7.75f };
         f32 y_min = 8.f;
@@ -561,7 +529,7 @@ function void FillTestRects(Rect* rects, f32 t, f32 tPrev)
 #endif
     
     // slow thin line
-#if 0
+#if 1
     {
         f32 x = 5 + Sin_f32(t*TAU_F32)*5;
         f32 x_prev = 5 + Sin_f32(tPrev*TAU_F32)*5;
@@ -609,7 +577,7 @@ function void FillTestRects(Rect* rects, f32 t, f32 tPrev)
 #endif
     
     // slow square outline
-#if 0
+#if 1
     {
         f32 x      = 5 + Sin_f32(t*TAU_F32)*5;
         f32 y      = 5 + Sin_f32(t*TAU_F32*2)*2;
@@ -629,7 +597,7 @@ function void FillTestRects(Rect* rects, f32 t, f32 tPrev)
 #endif
     
     // textured squares
-#if 0
+#if 1
     {
         f32 x      = 300.f + Sin_f32(t*TAU_F32)*15;
         f32 x_prev = 300.f + Sin_f32(tPrev*TAU_F32)*15;
@@ -701,6 +669,8 @@ function void DrawVertLine(FrameInfo* info, Grid* grid)
     Rect fineRects[ArrayCount(testRects)] = {0};
     for (u64 i = 0; i < ArrayCount(fineRects); ++i)
     {
+        if (testRects[i].theta > 0.f)
+            continue;
         fineRects[i].p0   = AddV2F32(grid->pos, ScaleV2F32(testRects[i].p0, grid->size));
         fineRects[i].p1   = AddV2F32(grid->pos, ScaleV2F32(testRects[i].p1, grid->size));
         fineRects[i].c[0] = V4F32(1.f, 0.f, 1.f, .25f);
@@ -739,6 +709,7 @@ function void DrawVertLine(FrameInfo* info, Grid* grid)
     }
     DrawRects(fineRects, ArrayCount(fineRects), 0, grid->dim);
 }
+
 
 function void Draw10x10(Grid* grid)
 {
@@ -805,6 +776,7 @@ int WinMain(HINSTANCE hInstance,
             //.fps = 10,
         };
         
+#if 1
         GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
         {
             vshader = OGL_MakeShader(scratch, glsl_sdf_vshader, GL_VERTEX_SHADER);
@@ -822,13 +794,44 @@ int WinMain(HINSTANCE hInstance,
             viewTransform = glGetUniformLocation(program.handle, "u_view_xform");
             sdfTexture    = glGetUniformLocation(program.handle, "u_tex");
             
-            GLuint vao = 0;
             glGenVertexArrays(1, &vao);
             glBindVertexArray(vao);
             
-            GLuint vertexBuffer = 0;
-            glGenBuffers(1, &vertexBuffer);
-            glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+            glGenBuffers(1, &vbo);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, p)));
+            
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1, 2, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, center)));
+            
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(2, 2, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, extent)));
+            
+            glEnableVertexAttribArray(3);
+            glVertexAttribPointer(3, 1, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, radius)));
+            
+            glEnableVertexAttribArray(4);
+            glVertexAttribPointer(4, 1, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, thick)));
+            
+            glEnableVertexAttribArray(5);
+            glVertexAttribPointer(5, 1, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, theta)));
+            
+            glEnableVertexAttribArray(6);
+            glVertexAttribIPointer(6, 1, GL_UNSIGNED_INT, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, c[0])));
+            
+            glEnableVertexAttribArray(7);
+            glVertexAttribIPointer(7, 1, GL_UNSIGNED_INT, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, c[1])));
+            
+            glEnableVertexAttribArray(8);
+            glVertexAttribIPointer(8, 1, GL_UNSIGNED_INT, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, flags)));
+            
+            glEnableVertexAttribArray(9);
+            glVertexAttribPointer(9, 4, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, uv0)));
+            
+            glEnableVertexAttribArray(10);
+            glVertexAttribPointer(10, 4, GL_FLOAT, false, sizeof(Vertex), PtrFromInt(OffsetOf(Vertex, clip)));
             
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glEnable(GL_BLEND);
@@ -869,6 +872,7 @@ int WinMain(HINSTANCE hInstance,
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #endif
         }
+#endif
         
         const String paths[] = {
             StrLit("data/liberation-mono.ttf"),
@@ -908,8 +912,7 @@ int WinMain(HINSTANCE hInstance,
             FrameStart(info);
             DeferBlock(R_Begin(window), R_End())
             {
-                //DrawQuads(fonts[0]);
-                //DrawRenderCtx(fonts, fontCount, fontello, info);
+                DrawQuads(fonts, fontCount, fontello, info);
                 DrawVertLine(info, grid);
                 Draw10x10(grid);
             }
