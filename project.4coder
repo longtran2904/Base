@@ -50,21 +50,22 @@ commands = {
         .win = "build\\demo.exe",
         .linux = "build/demo.exe",
         .mac = "build/demo.exe", },
-    .demo_gfx = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
-        .win = "build\\demo_gfx.exe",
-        .linux = "build/demo_gfx.exe",
-        .mac = "build/demo_gfx.exe", },
+    .demo_render = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
+        .win = "build\\demo_render.exe",
+        .linux = "build/demo_render.exe",
+        .mac = "build/demo_render.exe", },
     .parser = { .out = "*run*", .footer_panel = false, .save_dirty_files = false,
-        .win = "build\\test_scanner.exe",
-        .linux = "build/test_scanner.exe",
-        .mac = "build/test_scanner.exe", },
+        .win = "build\\test_parser.exe",
+        .linux = "build/test_parser.exe",
+        .mac = "build/test_parser.exe", },
 };
+
 fkey_command = {
     .F1 = "build",
     .F2 = "build_release",
     .F3 = "build_clang",
     .F4 = "build_clang_release",
-    .F5 = "demo_gfx",
+    .F5 = "demo_render",
 };
 
 reference_paths =

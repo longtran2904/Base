@@ -39,14 +39,15 @@ i32 main(i32 argc, char** argv)
     //- long: search and parse metadesk files
     MG_NodeList parses = {0};
     String projectDir = StrChopLastSlash(OSGetExeDir());
-    String codeDir    = StrPushf(arena, "%.*s\\code", StrExpand(projectDir));
-    String ignoreDir  = StrPushf(arena, "%.*s\\retired", StrExpand(codeDir));
+    String     gitDir = StrPushf(arena, "%.*s\\git", StrExpand(projectDir));
+    String    codeDir = StrPushf(arena, "%.*s\\code", StrExpand(projectDir));
+    String  ignoreDir = StrPushf(arena, "%.*s\\retired", StrExpand(codeDir));
     
     DeferBlock(Outf("parsing metadesk..."), Outf(" %lld metadesk file(s) parsed\n", parses.count))
     {
-        FileIterBlock(arena, it, codeDir, FileIterFlag_SkipFolders|FileIterFlag_Recursive)
+        FileIterBlock(arena, it, projectDir, FileIterFlag_SkipFolders|FileIterFlag_Recursive)
         {
-            if (StrCompare(it.path, ignoreDir, 0))
+            if (StrCompare(it.path, ignoreDir, 0) || StrCompare(it.path, gitDir, 0))
                 continue;
             
             String filepath = StrPushf(arena, "%.*s/%.*s", StrExpand(it.path), StrExpand(it.name));

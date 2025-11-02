@@ -872,7 +872,7 @@ int main(void)
     TEST("OS")
     {
         {
-#define FileName(name) StrLit("code/examples/"name)
+#define FileName(name) StrLit("data/"name)
             String fileData = OSReadFile(arena, FileName("Test.txt"));
             TestResult(StrCompare(fileData, StrLit("This is a test file!"), 0));
             TestResult(OSWriteFile(FileName("Test2.txt"), fileData));
@@ -981,7 +981,7 @@ int main(void)
         String txt = StrListPop(&exts);
         StringList names = StrList(arena, ArrayExpand(String, StrLit("mdesk.h"), StrLit("mdesk.c")));
         
-        FileIterBlock(arena, iter, StrLit("code\\dependencies\\mdesk"))
+        FileIterBlock(arena, iter, StrLit("dependencies\\mdesk"))
         {
             String ext = StrSkipUntil(iter.name, StrLit("."), MatchStr_LastMatch);
             TestResult(StrCompareList(ext, &exts, 0) && !StrCompare(ext, txt, 0));

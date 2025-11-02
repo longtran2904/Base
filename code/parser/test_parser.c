@@ -796,27 +796,29 @@ internal String MD_DumpJSON(Arena* arena, MD_Node* node, i32 indent)
     return result;
 }
 
+#define TestFile(name) StrLit("data/"name)
+
 int main(void)
 {
     ScratchBegin(scratch);
     
     if (0)
     {
-        String file = StrLit("code/test.json");
+        String file = TestFile("test.json");
         MD_ParseResult parse = MD_ParseText(scratch, file, OSReadFile(scratch, file));
         String dump = MD_DumpJSON(scratch, parse.root->first, 0);
-        OSWriteFile(StrLit("code/out_test.mdesk"), dump);
+        OSWriteFile(TestFile("out_test.mdesk"), dump);
         Assert(parse.root->first == parse.root->last);
     }
     
-    String paths[] = { StrLit("code/test.json"), StrLit("code/test.mdesk"), StrLit("code/retired/syntax.mdesk") };
+    String paths[] = { TestFile("test.json"), TestFile("test.mdesk"), StrLit("code/retired/syntax.mdesk") };
     ForEach(pathIdx, ArrayCount(paths))
     {
         String text = OSReadFile(scratch, paths[pathIdx]);
         MD_TokenArray tokens1 = MD_TokenizeFromText(scratch, text).tokens;
         TokenArray tokens2 = MD_TokenArrayFromStr(scratch, text);
         
-        Assert(tokens1.count == tokens2.count);
+        Assert(tokens1.count == tokens2.count && tokens1.count);
         u64 count = Min(tokens1.count, tokens2.count);
         
         ForEach(i, count)
@@ -829,7 +831,7 @@ int main(void)
     }
     
     {
-        String data = OSReadFile(scratch, StrLit("code/examples/test_parser.c"));
+        String data = OSReadFile(scratch, TestFile("test.c"));
         TokenArray array = CL_TokenizeFromText(scratch, data);
         
         TokenArray array_ = CL_TokenArrayFromStr(scratch, data);
@@ -1139,17 +1141,17 @@ int main(void)
     
     if (0)
     {
-        String text = OSReadFile(scratch, StrLit("code/test.json"));
+        String text = OSReadFile(scratch, TestFile("test.json"));
         TokenArray array = JSON_TokenizeFromText(scratch, text);
         JSON_Value value = JSON_ValueFromTokens (scratch, text, array);
-        OSWriteFile(StrLit("code/out_test.json"), JSON_StrFromValue(scratch, value, 0));
+        OSWriteFile(TestFile("out_test.json"), JSON_StrFromValue(scratch, value, 0));
     }
     
     if (0)
     {
-        String text = OSReadFile(scratch, StrLit("code/test.csv"));
+        String text = OSReadFile(scratch, TestFile("test.csv"));
         StringTable table = CSV_TableFromStr(scratch, text);
-        OSWriteFile(StrLit("code/out_test.csv"), CSV_StrFromTable(scratch, table));
+        OSWriteFile(TestFile("out_test.csv"), CSV_StrFromTable(scratch, table));
     }
     
     Outf("\nDone");

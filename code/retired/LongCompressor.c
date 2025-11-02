@@ -1,9 +1,5 @@
 #include "Base.h"
 #include "Base.c"
-#include "LongGFX.h"
-#include "LongGFX_Win32.c"
-#include "LongGFX_OpenGL.h"
-#include "Win32_OpenGL.c"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_STATIC

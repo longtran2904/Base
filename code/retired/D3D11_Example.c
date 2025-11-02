@@ -1,8 +1,13 @@
 #include "Base.h"
 #include "Base.c"
 
+WarnPush(0)
+#define COBJMACROS
+#include <initguid.h>
+#include <d3d11.h>
+WarnPop()
+
 typedef u64 GFXWindow;
-#include "LongGFX_D3D11.h"
 
 // d3d11.h is for all the ID3D11... types and functions. It has already included dxgi.h and d3dcommon.h
 // dxgi.h is for all the IDXGI... types and functions
@@ -179,10 +184,9 @@ typedef u64 GFXWindow;
 #define Yellow                (f32[4]){ 1.000000000f, 1.000000000f, 0.000000000f, 1.000000000f }
 #define YellowGreen           (f32[4]){ 0.603921592f, 0.803921640f, 0.196078449f, 1.000000000f }
 
-#define KEEP_PREFIX
-
 #define DXGI_FUNCS(X) \
     X(HRESULT, CreateDXGIFactory, (REFIID, void**))
+
 #define FUNCTION_VALUE(X) DXGI_FUNCS(X)
 #define FUNCTION_PREFIX W32
 #define POINTER_PREFIX w32
@@ -194,19 +198,21 @@ typedef u64 GFXWindow;
     X(HRESULT, D3D11CreateDeviceAndSwapChain, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
                                                UINT, UINT, DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**, \
                                                ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**))
+
 #define FUNCTION_VALUE(X) D3D11_FUNCS(X)
+#define FUNCTION_PREFIX W32
+#define POINTER_PREFIX w32
 #include "XFunction.h"
 
 #define D3DCOMPILER_FUNCS(X) \
     X(HRESULT, D3DReadFileToBlob, (LPCWSTR, ID3DBlob**)) \
     X(HRESULT, D3DCompile, (LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, \
                             LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**))
-#define FUNCTION_VALUE(X) D3DCOMPILER_FUNCS(X)
-#include "XFunction.h"
 
-#undef KEEP_PREFIX
-#undef FUNCTION_PREFIX
-#undef POINTER_PREFIX
+#define FUNCTION_VALUE(X) D3DCOMPILER_FUNCS(X)
+#define FUNCTION_PREFIX W32
+#define POINTER_PREFIX w32
+#include "XFunction.h"
 
 #if 0
 global IID* iid_IDXGIFactory;
@@ -536,6 +542,7 @@ int WinMain(HINSTANCE hInstance,
 {
     W32WinMainInit(hInstance, hPrevInstance, lpCmdLine, nShowCmd);
     ScratchBegin(scratch);
+    UNUSED(scratch);
     
     if (!InitD3D11())
     {

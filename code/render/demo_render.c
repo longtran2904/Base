@@ -1,19 +1,19 @@
 #include "Base.h"
 #include "Base.c"
 
-#include "LongGFX.h"
-#include "LongGFX_Win32.c"
+#include "gfx/LongGFX.h"
+#include "gfx/LongGFX_Win32.c"
 
-#include "LongOGL.h"
-#include "LongOGL_Win32.c"
+#include "ogl/LongOGL.h"
+#include "ogl/LongOGL_Win32.c"
 
-#include "LongD3D11.h"
-#include "LongD3D11_Win32.c"
+#include "d3d11/LongD3D11.h"
+#include "d3d11/LongD3D11_Win32.c"
 
-#include "LongFont.h"
-#include "LongIcons.h"
-#include "LongFont.c"
-#include "LongFont_FreeType.c"
+#include "font/LongFont.h"
+#include "font/LongIcons.h"
+#include "font/LongFont.c"
+#include "font/LongFont_FreeType.c"
 
 #include "LongRender.h"
 #include "LongRender.c"

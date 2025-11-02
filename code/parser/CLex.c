@@ -660,7 +660,7 @@ function CL_ExprOpKind CL_ExprOpFromStr(String lexeme, CL_ParseWorkNode* work_to
     for (u64 i = 1; i < CL_ExprOpKind_Count && !op; ++i)
         if (StrCompare(lexeme, cl_exprSymbolTable[i], 0))
             if (lookupPrefix == (cl_exprKindTable[i] == CL_ExprKind_Prefix || cl_exprKindTable[i] == CL_ExprKind_Nil))
-                op = i;
+                op = (CL_ExprOpKind)i;
     
     return op;
 }
@@ -799,7 +799,6 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
     Token* tokens_first = array.tokens;
     Token* tokens_opl = tokens_first + array.count;
     Token* token = tokens_first;
-    Token* prevToken = tokens_first;
     
     while (token < tokens_opl)
     {
@@ -1294,11 +1293,7 @@ function CL_ParseResult CL_ParseFromTokens(Arena* arena, String text, TokenArray
         else Assert(0);
         
         if (inc)
-        {
-            if (!HasFlags(CL_TokenFlags_Ignorable))
-                prevToken = token;
             token += 1;
-        }
         
 #undef HasFlags
 #undef LexMatch
