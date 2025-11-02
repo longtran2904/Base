@@ -3,17 +3,25 @@
 #ifndef _LONG_RENDER_H
 #define _LONG_RENDER_H
 
+//~ TODO(long):
+// [ ] Support additional texture formats (currently only R8 is implemented)
+// [ ] Implement R_Info
+// [ ] Add D3D11 backend
+// [ ] Introduce a vtable for all API-specific functions
+// [ ] Error when the user try to init or begin the renderer multiple times
+// [ ] Shorten all the QuadFlag names
+
 //~ long: Render Types
 
-typedef struct R_Texture R_Texture;
+typedef u64 R_Texture;
 
 typedef Flags32 R_QuadFlags;
 enum
 {
-    R_QuadFlag_SharpCornerTL = (1 << 0),
-    R_QuadFlag_SharpCornerTR = (1 << 1),
-    R_QuadFlag_SharpCornerBL = (1 << 2),
-    R_QuadFlag_SharpCornerBR = (1 << 3),
+    R_QuadFlag_SharpCornerTR = (1 << 0),
+    R_QuadFlag_SharpCornerTL = (1 << 1),
+    R_QuadFlag_SharpCornerBR = (1 << 2),
+    R_QuadFlag_SharpCornerBL = (1 << 3),
     R_QuadFlag_HzGradient    = (1 << 4),
     R_QuadFlag_Clipped       = (1 << 5),
 };
@@ -52,7 +60,7 @@ struct R_Batch
     R_QuadNode* first;
     R_QuadNode* last;
     u64 nodeCount, totalCount;
-    R_Texture* texture;
+    R_Texture texture;
 };
 
 typedef struct R_List R_List;
@@ -68,8 +76,8 @@ struct R_List
 typedef struct R_Font R_Font;
 struct R_Font
 {
-    FNT_Baked baked;
-    R_Texture* texture;
+    FNT_Baked* baked;
+    R_Texture texture;
 };
 
 typedef struct R_Ctx R_Ctx;
@@ -82,17 +90,54 @@ struct R_Ctx
     Arena* arena;
 };
 
+//~ TODO(long)
+
+typedef Flags32 R_Features;
+enum
+{
+    R_Features_OriginTopLeft,
+    R_Features_ImageClampToBorder,
+    R_Features_MrtIndependentBlendState,
+    R_Features_MrtIndependentWriteMask,
+    R_Features_Compute,
+    R_Features_MsaaTextureBindings,
+    R_Features_SeparateBufferTypes,
+    R_Features_DrawBaseVertex,
+    R_Features_DrawBaseInstance,
+    R_Features_GLTextureViews,
+};
+
+typedef struct R_Info
+{
+    R_Features features;
+    i32 maxVertexAttrs;
+    i32 maxColorAttachments;
+    
+    i32 maxImageSize2d;
+    i32 maxImageSizeCube;
+    i32 maxImageSize3d;
+    i32 maxImageSizeArray;
+    i32 maxImageArrayLayers;
+    
+    i32 maxTextureBindingsPerStage;
+    i32 maxStorageBufferBindingsPerStage;
+    i32 maxStorageImageBindingsPerStage;
+    
+    i32 glMaxVertexUniformComponents;
+    i32 glMaxCombinedTextureImageUnits;
+    i32 d3d11MaxUnorderedAccessViews;
+} R_Info;
+
 //~ long: Render Functions
 
 function void R_Init(void);
 function void R_Begin(GFXWindow window);
 function void R_End(void);
-function void R_Submit(R_QuadNode* first, u64 count, R_Texture* texture);
+function void R_Submit(R_QuadNode* first, u64 count, R_Texture texture);
 
-function R_Texture* R_TextureCreate(u32 w, u32 h, void* data);
-function void       R_TextureUpdate(R_Texture* texture, r2i32 rect, void* data);
-function void       R_TextureDestroy(R_Texture* texture);
-function b32        R_TextureValid(R_Texture* texture);
+function R_Texture R_TextureCreate (u32 w, u32 h, void* data);
+function void      R_TextureUpdate (R_Texture texture, r2i32 rect, void* data);
+function void      R_TextureDestroy(R_Texture texture);
 
 //~ long: Batch Functions
 
@@ -102,7 +147,7 @@ function void R_BatchPushStr (Arena* arena, R_Batch* batch, FNT_Baked* font, Str
 // NOTE(long): These are used by the R_Ctx system to automatically handle textures
 // The user should generally not need to call these
 function void R_ListPushBatch(Arena* arena, R_List* list);
-function void R_ListPrepBatch(Arena* arena, R_List* list, R_Texture* texture);
+function void R_ListPrepBatch(Arena* arena, R_List* list, R_Texture texture);
 function void R_ListFlush(R_List* list);
 
 //~ long: Helper Functions
@@ -111,12 +156,12 @@ function R_Font R_FontBakeTexture(Arena* arena, FNT_Font* font, FNT_Packer* pack
 
 function R_Ctx R_CtxMake(Arena* arena, R_List* list);
 function void  R_CtxClip(R_Ctx* ctx, r2f32* clip);
-function void  R_CtxFont(R_Ctx* ctx, R_Font* font);
+function void  R_CtxFont(R_Ctx* ctx, R_Font font);
 function void  R_CtxFlush(R_Ctx* ctx);
 
 function void R_PushRect(R_Ctx* ctx, r2f32 xy, f32 r, u32 c);
 function void R_PushLine(R_Ctx* ctx, r2f32 xy, f32 r, u32 c);
-function void R_PushQuad(R_Ctx* ctx, R_Quad* quad, R_Texture* texture);
+function void R_PushQuad(R_Ctx* ctx, R_Quad* quad, R_Texture texture);
 function void R_PushChar(R_Ctx* ctx, u32 cp, v2f32 p, u32 c);
 function void R_PushStr (R_Ctx* ctx, String str, v2f32 p, u32 c);
 

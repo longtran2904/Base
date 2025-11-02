@@ -21,8 +21,5 @@ FUNCTION_VALUE(X)
 #undef X
 
 #undef FUNCTION_VALUE
-
-#ifndef KEEP_PREFIX
 #undef FUNCTION_PREFIX
 #undef POINTER_PREFIX
-#endif

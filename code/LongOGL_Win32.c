@@ -1,57 +1,4 @@
 
-//~ NOTE(long): OpenGL Helpers
-
-function OGL_Shader OGL_MakeShader(Arena* arena, char* src, GLenum type)
-{
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &src, 0);
-    glCompileShader(shader);
-    
-    GLint logLength = 0;
-    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
-    char* buffer = PushArray(arena, char, logLength + 1);
-    GLint length = 0;
-    glGetShaderInfoLog(shader, logLength + 1, &length, buffer);
-    
-    // Handle Error
-    GLint status = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
-    
-    if (status == 0)
-    {
-        glDeleteShader(shader);
-        shader = 0;
-    }
-    
-    return (OGL_Shader){ shader, Str(buffer, length) };
-}
-
-function OGL_Shader OGL_MakeProgram(Arena* arena, OGL_Shader* shaders, u64 count)
-{
-    GLuint program = glCreateProgram();
-    for (int i = 0; i < count; ++i)
-        glAttachShader(program, shaders[i].handle);
-    glLinkProgram(program);
-    
-    GLint logLength = 0;
-    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
-    char* buffer = PushArray(arena, char, logLength + 1);
-    GLint length = 0;
-    glGetProgramInfoLog(program, logLength + 1, &length, buffer);
-    
-    // Handle Error
-    GLint status = 0;
-    glGetProgramiv(program, GL_LINK_STATUS, &status);
-    
-    if (status == 0)
-    {
-        glDeleteProgram(program);
-        program = 0;
-    }
-    
-    return (OGL_Shader){ program, Str(buffer, length) };
-}
-
 //~ NOTE(long): Win32 OpenGL
 
 typedef struct W32OpenGLWindow W32OpenGLWindow;
@@ -221,11 +168,11 @@ function b32 OGL_Init(void)
                                   0, 0, 0, 0, 0,
                                   0, 0, W32GetInstance(), 0);
     
-	if (w32CoreWnd)
-	{
-		// Create real context
-		HDC dc = GetDC(w32CoreWnd);
-		
+    if (w32CoreWnd)
+    {
+        // Create real context
+        HDC dc = GetDC(w32CoreWnd);
+        
         int formatAttribsI[] = {
             WGL_DRAW_TO_WINDOW_ARB, TRUE,
             WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
@@ -245,77 +192,72 @@ function b32 OGL_Init(void)
         if (!cpf || numFormats == 0)
             ErrorSet(error, "Failed to choose graphics pixel format");
         
-		if (!error)
-		{
-			PIXELFORMATDESCRIPTOR formatDesc = {0};
-			BOOL spf = SetPixelFormat(dc, w32OpenGLPixelFormat, &formatDesc);
-			if (!spf)
-				ErrorSet(error, "Failed to set graphics pixel format");
-		}
-		
-		if (!error)
-		{
-			int attribs[] = {
-				WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-				WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-				WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
-				WGL_CONTEXT_PROFILE_MASK_ARB, /*WGL_CONTEXT_CORE_PROFILE_BIT_ARB*/WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
-				0
-			};
-			
-			w32OpenGLContext = w32WglCreateContextAttribsARB(dc, 0, attribs);
-			if (!w32OpenGLContext)
-				ErrorSet(error, "Failed to create graphics context");
-		}
-		
-		// Load opengl functions
-		{
+        if (!error)
+        {
+            PIXELFORMATDESCRIPTOR formatDesc = {0};
+            BOOL spf = SetPixelFormat(dc, w32OpenGLPixelFormat, &formatDesc);
+            if (!spf)
+                ErrorSet(error, "Failed to set graphics pixel format");
+        }
+        
+        if (!error)
+        {
+            int attribs[] = {
+                WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+                WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+                WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+                WGL_CONTEXT_PROFILE_MASK_ARB, /*WGL_CONTEXT_CORE_PROFILE_BIT_ARB*/WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+                0
+            };
+            
+            w32OpenGLContext = w32WglCreateContextAttribsARB(dc, 0, attribs);
+            if (!w32OpenGLContext)
+                ErrorSet(error, "Failed to create graphics context");
+        }
+        
+        // Load opengl functions
+        {
 #define X(r, n, p) if (!error) \
     { \
-        W32_GET_PROC_ADDR(n, w32OpenGLModule, Stringify(n)); \
-        if (!n) ErrorSet(error, "Failed to load "Stringify(n)); \
+        W32_GET_PROC_ADDR(gl##n, w32OpenGLModule, "gl"Stringify(n)); \
+        if (!gl##n) ErrorSet(error, "Failed to load gl"Stringify(n)); \
     }
             GL_FUNCS(X);
 #undef X
             
 #define X(r, n, p) if (!error) \
     { \
-        WGL_GET_PROC_ADDR(n, Stringify(n));\
-        if (!n) ErrorSet(error, "Faield to load "Stringify(n));\
+        WGL_GET_PROC_ADDR(gl##n, "gl"Stringify(n));\
+        if (!gl##n) ErrorSet(error, "Faield to load gl"Stringify(n));\
     }
             GL_EXT_FUNCS(X);
 #undef X
-		}
-		
-		ReleaseDC(w32CoreWnd, dc);
-	}
-	
+        }
+        
+        ReleaseDC(w32CoreWnd, dc);
+    }
+    
     // Clean up "temps"
     {
         if (bootstrapContext && !w32WglDeleteContext(bootstrapContext))
             ErrorSet(error, "Failed to destroy the bootstrap context");
-		
+        
         if (bootstrapWindow && !DestroyWindow(bootstrapWindow))
             ErrorSet(error, "Failed to destroy the bootstrap window");
-		
-#if 0
-		if (w32CoreWnd && !DestroyWindow(w32CoreWnd))
-			ErrorSet(error, "Failed to destroy the dummy context");
-#endif
         
         if (atom && !UnregisterClass(BOOTSTRAP_WINDOW_CLASS_NAME, instance))
             ErrorSet(error, "Failed to unregister the bootstrap class");
     }
     
-	// Clean up "non-temps"
+    // Clean up "non-temps"
     if (error)
     {
         // Clear modules
         if (w32OpenGLModule)
-			FreeLibrary(w32OpenGLModule);
-		
-		if (w32OpenGLContext)
-			Assert(w32WglDeleteContext(w32OpenGLContext));
+            FreeLibrary(w32OpenGLModule);
+        
+        if (w32OpenGLContext)
+            Assert(w32WglDeleteContext(w32OpenGLContext));
         
         // Clear function pointers
 #define X(r, n, p)  w32Wgl##n = 0;
@@ -323,13 +265,14 @@ function b32 OGL_Init(void)
         WGL_EXT_FUNCS(X);
 #undef X
         
-#define X(r, n, p) n = 0;
+#define X(r, n, p) gl##n = 0;
         GL_FUNCS(X);
+        GL_EXT_FUNCS(X);
 #undef X
-		
-		w32OpenGLModule = 0;
-		w32OpenGLContext = 0;
-		w32OpenGLPixelFormat = 0;
+        
+        w32OpenGLModule = 0;
+        w32OpenGLContext = 0;
+        w32OpenGLPixelFormat = 0;
     }
     
     return !error;
@@ -361,8 +304,9 @@ function b32 OGL_Free()
         WGL_EXT_FUNCS(X);
 #undef X
         
-#define X(r, n, p) n = 0;
+#define X(r, n, p) gl##n = 0;
         GL_FUNCS(X);
+        GL_EXT_FUNCS(X);
 #undef X
     }
     
@@ -388,51 +332,56 @@ function void W32CloseOpenGLWindow(GFXWindow window)
 function b32 OGL_WindowEquip(GFXWindow window)
 {
     b32 error = 1;
-	if (!GFXWindowIsValid(window))
-		ErrorFmt("Invalid window handle: %llu", window);
-	else if (GFXWindowIsEquipped(window))
-		ErrorFmt("Window is already equipped: %llu", window);
+    if (!GFXWindowIsValid(window))
+        ErrorFmt("Invalid window handle: %llu", window);
+    else if (GFXWindowIsEquipped(window))
+        ErrorFmt("Window is already equipped: %llu", window);
     else
         error = 0;
-	
-	if (!error)
-	{
-		W32Window* slot = W32WindowFromGFXHandle(window);
-		HDC dc = GetDC(slot->wnd);
-		
-		PIXELFORMATDESCRIPTOR formatDesc = {0};
-		BOOL spf = SetPixelFormat(dc, w32OpenGLPixelFormat, &formatDesc);
-		if (!spf)
-			ErrorSet(error, "Failed to set graphics pixel format");
-		
-		ReleaseDC(slot->wnd, dc);
-		
-		if (!error)
-		{
-			W32OpenGLWindow* equipped = w32OpenGLSlots + window - 1;
-			equipped->dummy = 1;
-			GFXWindowEquipData(window, equipped, W32CloseOpenGLWindow);
-		}
-		
-		if (error)
-		{
-			ZeroStruct(slot);
-			ZeroStruct(w32OpenGLSlots + window - 1);
-		}
-	}
+    
+    if (!error)
+    {
+        W32Window* slot = W32WindowFromGFXHandle(window);
+        HDC dc = GetDC(slot->wnd);
+        
+        PIXELFORMATDESCRIPTOR formatDesc = {0};
+        BOOL spf = SetPixelFormat(dc, w32OpenGLPixelFormat, &formatDesc);
+        if (!spf)
+            ErrorSet(error, "Failed to set graphics pixel format");
+        
+        ReleaseDC(slot->wnd, dc);
+        
+        if (!error)
+        {
+            W32OpenGLWindow* equipped = w32OpenGLSlots + window - 1;
+            equipped->dummy = 1;
+            GFXWindowEquipData(window, equipped, W32CloseOpenGLWindow);
+        }
+        
+        if (error)
+        {
+            ZeroStruct(slot);
+            ZeroStruct(w32OpenGLSlots + window - 1);
+        }
+    }
     
     return !error;
 }
 
 function void OGL_Begin(GFXWindow window)
 {
-    if (GFXWindowIsValid(window) && w32RenderDC == 0)
+    if (w32RenderDC == 0)
     {
-        W32Window* slot = W32WindowFromGFXHandle(window);
-        w32RenderWnd = slot->wnd;
-        w32RenderDC = GetDC(w32RenderWnd);
-		w32WglMakeCurrent(w32RenderDC, w32OpenGLContext);
-        DEBUG(error, GLenum error = glGetError());
+        if (GFXWindowIsValid(window))
+            w32RenderWnd = W32WindowFromGFXHandle(window)->wnd;
+        else if (window == 0)
+            w32RenderWnd = w32CoreWnd;
+        
+        if (w32RenderWnd)
+        {
+            w32RenderDC = GetDC(w32RenderWnd);
+            w32WglMakeCurrent(w32RenderDC, w32OpenGLContext);
+        }
     }
 }
 
@@ -445,4 +394,89 @@ function void OGL_End(void)
         w32RenderDC = 0;
         w32RenderWnd = 0;
     }
+}
+
+//~ NOTE(long): OpenGL Helpers
+// TODO(long): Maybe these should be moved to LongOGL.c
+
+function OGL_Shader OGL_MakeShader(Arena* arena, char* src, GLenum type)
+{
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &src, 0);
+    glCompileShader(shader);
+    
+    GLint logLength = 0;
+    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
+    char* buffer = PushArray(arena, char, logLength + 1);
+    GLint length = 0;
+    glGetShaderInfoLog(shader, logLength + 1, &length, buffer);
+    
+    // Handle Error
+    GLint status = 0;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+    
+    if (status == 0)
+    {
+        glDeleteShader(shader);
+        shader = 0;
+    }
+    
+    return (OGL_Shader){ shader, Str(buffer, length) };
+}
+
+function OGL_Shader OGL_MakeProgram(Arena* arena, OGL_Shader* shaders, u64 count)
+{
+    GLuint program = glCreateProgram();
+    for (int i = 0; i < count; ++i)
+        glAttachShader(program, shaders[i].handle);
+    glLinkProgram(program);
+    
+    GLint logLength = 0;
+    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
+    char* buffer = PushArray(arena, char, logLength + 1);
+    GLint length = 0;
+    glGetProgramInfoLog(program, logLength + 1, &length, buffer);
+    
+    // Handle Error
+    GLint status = 0;
+    glGetProgramiv(program, GL_LINK_STATUS, &status);
+    
+    if (status == 0)
+    {
+        glDeleteProgram(program);
+        program = 0;
+    }
+    
+    return (OGL_Shader){ program, Str(buffer, length) };
+}
+
+function OGL_Handle OGL_TextureCreate(u32 w, u32 h, void* data)
+{
+    GLuint texture = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    
+    return texture;
+}
+
+function void OGL_TextureUpdate(OGL_Handle texture, r2i32 rect, void* data)
+{
+    if (glIsTexture(texture))
+    {
+        glBindTexture(GL_TEXTURE_2D, texture);
+        v2i32 size = SubV2I32(rect.p1, rect.p0);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x0, rect.y0, size.x, size.y, GL_RED, GL_UNSIGNED_BYTE, data);
+    }
+}
+
+function void OGL_TextureDestroy(OGL_Handle texture)
+{
+    if (glIsTexture(texture))
+        glDeleteTextures(1, &texture);
 }

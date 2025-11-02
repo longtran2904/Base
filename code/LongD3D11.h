@@ -15,6 +15,71 @@ WarnPop()
 // initguid.h so I don't need to link with dxguid.lib
 // COBJMACROS is for COM objects in C
 
+//~ NOTE(long): D3DCOMPILE Flags (D3DComipler.h)
+
+#define D3DCOMPILE_DEBUG                                (1 << 0)
+#define D3DCOMPILE_SKIP_VALIDATION                      (1 << 1)
+#define D3DCOMPILE_SKIP_OPTIMIZATION                    (1 << 2)
+#define D3DCOMPILE_PACK_MATRIX_ROW_MAJOR                (1 << 3)
+#define D3DCOMPILE_PACK_MATRIX_COLUMN_MAJOR             (1 << 4)
+#define D3DCOMPILE_PARTIAL_PRECISION                    (1 << 5)
+#define D3DCOMPILE_FORCE_VS_SOFTWARE_NO_OPT             (1 << 6)
+#define D3DCOMPILE_FORCE_PS_SOFTWARE_NO_OPT             (1 << 7)
+#define D3DCOMPILE_NO_PRESHADER                         (1 << 8)
+#define D3DCOMPILE_AVOID_FLOW_CONTROL                   (1 << 9)
+#define D3DCOMPILE_PREFER_FLOW_CONTROL                  (1 << 10)
+#define D3DCOMPILE_ENABLE_STRICTNESS                    (1 << 11)
+#define D3DCOMPILE_ENABLE_BACKWARDS_COMPATIBILITY       (1 << 12)
+#define D3DCOMPILE_IEEE_STRICTNESS                      (1 << 13)
+#define D3DCOMPILE_OPTIMIZATION_LEVEL0                  (1 << 14)
+#define D3DCOMPILE_OPTIMIZATION_LEVEL1                  0
+#define D3DCOMPILE_OPTIMIZATION_LEVEL2                  ((1 << 14) | (1 << 15))
+#define D3DCOMPILE_OPTIMIZATION_LEVEL3                  (1 << 15)
+#define D3DCOMPILE_RESERVED16                           (1 << 16)
+#define D3DCOMPILE_RESERVED17                           (1 << 17)
+#define D3DCOMPILE_WARNINGS_ARE_ERRORS                  (1 << 18)
+#define D3DCOMPILE_RESOURCES_MAY_ALIAS                  (1 << 19)
+#define D3DCOMPILE_ENABLE_UNBOUNDED_DESCRIPTOR_TABLES   (1 << 20)
+#define D3DCOMPILE_ALL_RESOURCES_BOUND                  (1 << 21)
+#define D3DCOMPILE_DEBUG_NAME_FOR_SOURCE                (1 << 22)
+#define D3DCOMPILE_DEBUG_NAME_FOR_BINARY                (1 << 23)
+
+//~ NOTE(long): DXGI Definitions
+
+#define DXGI_FUNCS(X) \
+    X(HRESULT, CreateDXGIFactory, (REFIID, void**))
+
+#define FUNCTION_VALUE(X) DXGI_FUNCS(X)
+#define FUNCTION_PREFIX W32
+#define POINTER_PREFIX w32
+#include "XFunction.h"
+
+//~ NOTE(long): D3D11 Definitions
+
+#define D3D11_FUNCS(X) \
+    X(HRESULT, D3D11CreateDevice, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
+                                   UINT, UINT, ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**)) \
+    X(HRESULT, D3D11CreateDeviceAndSwapChain, (IDXGIAdapter*, D3D_DRIVER_TYPE, HMODULE, UINT, D3D_FEATURE_LEVEL*, \
+                                               UINT, UINT, DXGI_SWAP_CHAIN_DESC*, IDXGISwapChain**, \
+                                               ID3D11Device**, D3D_FEATURE_LEVEL*, ID3D11DeviceContext**))
+
+#define FUNCTION_VALUE(X) D3D11_FUNCS(X)
+#define FUNCTION_PREFIX W32
+#define POINTER_PREFIX w32
+#include "XFunction.h"
+
+//~ NOTE(long): D3DCompiler Definitions
+
+#define D3DCOMPILER_FUNCS(X) \
+    X(HRESULT, D3DReadFileToBlob, (LPCWSTR, ID3DBlob**)) \
+    X(HRESULT, D3DCompile, (LPCVOID, SIZE_T, LPCSTR, const D3D_SHADER_MACRO*, ID3DInclude*, \
+                            LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob**))
+
+#define FUNCTION_VALUE(X) D3DCOMPILER_FUNCS(X)
+#define FUNCTION_PREFIX W32
+#define POINTER_PREFIX w32
+#include "XFunction.h"
+
 //~ NOTE(long): Standard Colors (DirectXColors.h)
 
 #define AliceBlue             (f32[4]){ 0.941176534f, 0.972549081f, 1.000000000f, 1.000000000f }

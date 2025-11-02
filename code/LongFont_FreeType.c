@@ -1,3 +1,4 @@
+
 #pragma push_macro("internal")
 #undef internal
 #include "freetype/freetype.h"
@@ -5,36 +6,41 @@
 
 function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
 {
+    FNT_Font font = {0};
+    FNT_LoadParams p = *params;
+    if (p.path.size == 0)
+        return font;
+    
+    if (p.size == 0) p.size = 32;
+    if (p. dpi == 0) p. dpi = 96; // TODO(long): Query the platform DPI instead of using a fixed value
+    font.params = p;
+    
     ScratchBegin(scratch, arena);
     TempArena temp = TempBegin(arena);
     b32 error = 0;
-    FNT_Font font = {0};
-    
-    // TODO(long): If size and dpi are zero, use some default values
-    font.params = *params;
     
     //- long: FreeType Init
     FT_Library ft = {0};
     FT_Error initError = FT_Init_FreeType(&ft);
-    error = initError;
+    if (initError)
+        ErrorSet(error, "Failed to initialize FreeType");
     
     FT_Face face = {0};
     if (!error)
     {
-        String data = OSReadFile(scratch, params->path);
-        error = FT_Open_Face(ft, &(FT_Open_Args){
-                                 .flags = FT_OPEN_MEMORY,
-                                 .memory_base = data.str,
-                                 .memory_size = (FT_Long)data.size,
-                             }, 0, &face);
+        String data = OSReadFile(scratch, p.path);
+        FT_Open_Args args = { FT_OPEN_MEMORY, data.str, (FT_Long)data.size, };
+        if (FT_Open_Face(ft, &args, 0, &face))
+            ErrorSet(error, "Failed to load the font: %.*s", StrExpand(p.path));
     }
     
     //- long: Sizing
     if (!error)
     {
-        FT_F26Dot6 charSize = params->size << 6;
-        FT_UInt dpi = (FT_UInt)params->dpi;
-        error = FT_Set_Char_Size(face, charSize, charSize, dpi, dpi);
+        FT_F26Dot6 charSize = p.size << 6;
+        FT_UInt dpi = (FT_UInt)p.dpi;
+        if (FT_Set_Char_Size(face, charSize, charSize, dpi, dpi))
+            ErrorSet(error, "Failed to set the font size: %u", p.size);
     }
     
     //- long: Metrics Calculation
@@ -70,16 +76,19 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
     if (!error)
     {
         u32 loadFlags = FT_LOAD_RENDER;
-        if (params->flags & FNT_RasterFlag_Hinted)
+        if (p.flags & FNT_RasterFlag_Hinted)
             loadFlags |= FT_LOAD_FORCE_AUTOHINT|(FT_LOAD_TARGET_LIGHT*
-                                                 ((params->flags & FNT_RasterFlag_Light) == FNT_RasterFlag_Light));
+                                                 ((p.flags & FNT_RasterFlag_Light) == FNT_RasterFlag_Light));
         else
             loadFlags |= FT_LOAD_NO_AUTOHINT|FT_LOAD_NO_HINTING;
         
         for (FNT_Glyph* glyph = font.first; glyph; glyph = glyph->next)
         {
             if (FT_Load_Glyph(face, glyph->index, loadFlags))
+            {
+                ErrorFmt("Failed to load glyph %u at index %u", glyph->codepoint, glyph->index);
                 continue;
+            }
             
             FT_GlyphSlot ftGlyph = face->glyph;
             glyph->advance = ftGlyph->advance.x >> 6;
@@ -87,8 +96,8 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
             
             FT_Bitmap bitmap = ftGlyph->bitmap;
             Assert(bitmap.pixel_mode == FT_PIXEL_MODE_GRAY);
+            Assert(!!bitmap.width == !!bitmap.rows);
             glyph->size = V2I32(bitmap.width, bitmap.rows);
-            Assert((bitmap.width == 0 && bitmap.rows == 0) || (bitmap.width != 0 && bitmap.rows != 0));
             
             u8* srcLine = bitmap.buffer;
             if (srcLine)
@@ -101,7 +110,7 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
                     srcLine += -pitch * (bitmap.rows - 1);
                 
                 u8* dst = glyph->bitmap = PushArray(arena, u8, bitmap.width * bitmap.rows);
-                b32 mono = !(params->flags & FNT_RasterFlag_Smooth);
+                b32 mono = !(p.flags & FNT_RasterFlag_Smooth);
                 
                 for (u32 y = 0; y < bitmap.rows; ++y)
                 {

@@ -281,111 +281,113 @@ typedef iptr GLsizeiptr;
 //~ long: GL Functions
 
 #define GL_FUNCS(X) \
-    X(GLenum, glGetError, (void)) \
-    X(const GLubyte*, glGetString, (GLenum name)) \
-    X(void, glViewport, (GLint x, GLint y, GLsizei width, GLsizei height)) \
-    X(void, glScissor, (GLint x, GLint y, GLsizei width, GLsizei height)) \
-    X(void, glClearColor, (GLfloat r, GLfloat g, GLfloat b, GLfloat a)) \
-    X(void, glClear, (GLbitfield mask)) \
-    X(void, glBlendFunc, (GLenum sfactor, GLenum dfactor)) \
-    X(void, glDisable, (GLenum cap)) \
-    X(void, glEnable, (GLenum cap)) \
-    X(void, glPixelStorei, (GLenum pname, GLint param)) \
-    X(void, glReadPixels, (GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels)) \
-    X(void, glColor3f,  (GLfloat red, GLfloat green, GLfloat blue)) \
-    X(void, glVertex3f, (GLfloat x, GLfloat y, GLfloat z)) \
-    X(void, glFlush, (void)) \
-    X(void, glGetFloatv, (GLenum pname, GLfloat* data)) \
-    X(void, glGetIntegerv, (GLenum pname, GLint* data)) \
-    X(void, glTexParameteri, (GLenum target, GLenum pname, GLint param)) \
-    X(void, glTexImage1D, (GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, \
-                           GLenum format, GLenum type, const void* pixels)) \
-    X(void, glTexImage2D, (GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, \
-                           GLint border, GLenum format, GLenum type, const void* pixels))
+    X(GLenum, GetError, (void)) \
+    X(const GLubyte*, GetString, (GLenum name)) \
+    X(void, Viewport, (GLint x, GLint y, GLsizei width, GLsizei height)) \
+    X(void, Scissor, (GLint x, GLint y, GLsizei width, GLsizei height)) \
+    X(void, ClearColor, (GLfloat r, GLfloat g, GLfloat b, GLfloat a)) \
+    X(void, Clear, (GLbitfield mask)) \
+    X(void, BlendFunc, (GLenum sfactor, GLenum dfactor)) \
+    X(void, Disable, (GLenum cap)) \
+    X(void, Enable, (GLenum cap)) \
+    X(void, PixelStorei, (GLenum pname, GLint param)) \
+    X(void, ReadPixels, (GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels)) \
+    X(void, Color3f,  (GLfloat red, GLfloat green, GLfloat blue)) \
+    X(void, Vertex3f, (GLfloat x, GLfloat y, GLfloat z)) \
+    X(void, Flush, (void)) \
+    X(void, GetFloatv, (GLenum pname, GLfloat* data)) \
+    X(void, GetIntegerv, (GLenum pname, GLint* data)) \
+    X(void, TexParameteri, (GLenum target, GLenum pname, GLint param)) \
+    X(void, TexImage1D, (GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, \
+                         GLenum format, GLenum type, const void* pixels)) \
+    X(void, TexImage2D, (GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, \
+                         GLint border, GLenum format, GLenum type, const void* pixels))
 
 #define FUNCTION_VALUE(X) GL_FUNCS(X)
-#define FUNCTION_PREFIX GL
+#define FUNCTION_PREFIX OGL_
+#define POINTER_PREFIX gl
 #include "XFunction.h"
 
 #define GL_EXT_FUNCS(X) \
     /* blending */ \
-    X(void, glBlendFuncSeparate, (GLenum srcRGB, GLenum dstRGB, GLenum srcAlpha, GLenum dstAlpha)) \
-    X(void, glBlendEquation, (GLenum mode)) \
-    X(void, glBlendEquationSeparate, (GLenum modeRGB, GLenum modeAlpha)) \
+    X(void, BlendFuncSeparate, (GLenum srcRGB, GLenum dstRGB, GLenum srcAlpha, GLenum dstAlpha)) \
+    X(void, BlendEquation, (GLenum mode)) \
+    X(void, BlendEquationSeparate, (GLenum modeRGB, GLenum modeAlpha)) \
     /* buffers */ \
-    X(void, glGenBuffers, (GLsizei n, GLuint* buffers)) \
-    X(void, glDeleteBuffers, (GLsizei n, const GLuint* buffers)) \
-    X(void, glBindBuffer, (GLenum target, GLuint buffer)) \
-    X(void, glBufferData, (GLenum target, GLsizeiptr size, const void* data, GLenum usage)) \
-    X(void, glBufferSubData, (GLenum target, GLintptr offset, GLsizeiptr size, const void* data)) \
-    X(void, glGenVertexArrays, (GLsizei n, GLuint* arrays)) \
-    X(void, glDeleteVertexArrays, (GLsizei n, const GLuint* arrays)) \
-    X(void, glBindVertexArray, (GLuint array)) \
-    X(void, glActiveTexture, (GLenum texture)) \
+    X(void, GenBuffers, (GLsizei n, GLuint* buffers)) \
+    X(void, DeleteBuffers, (GLsizei n, const GLuint* buffers)) \
+    X(void, BindBuffer, (GLenum target, GLuint buffer)) \
+    X(void, BufferData, (GLenum target, GLsizeiptr size, const void* data, GLenum usage)) \
+    X(void, BufferSubData, (GLenum target, GLintptr offset, GLsizeiptr size, const void* data)) \
+    X(void, GenVertexArrays, (GLsizei n, GLuint* arrays)) \
+    X(void, DeleteVertexArrays, (GLsizei n, const GLuint* arrays)) \
+    X(void, BindVertexArray, (GLuint array)) \
+    X(void, ActiveTexture, (GLenum texture)) \
     /* textures */ \
-    X(void, glGenTextures, (GLsizei n, GLuint* textures)) \
-    X(void, glDeleteTextures, (GLsizei n, const GLuint* textures)) \
-    X(void, glBindTexture, (GLenum target, GLuint texture)) \
-    X(GLboolean, glIsTexture, (GLuint texture)) \
-    X(void, glTexSubImage1D, (GLenum target, GLint level, GLint xoffset, GLsizei width, \
-                              GLenum format, GLenum type, const void* pixels)) \
-    X(void, glTexSubImage2D, (GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, \
-                              GLenum format, GLenum type, const void* pixels)) \
-    X(void, glTexImage2DMultisample, (GLenum target, GLsizei samples, GLenum internalformat, \
-                                      GLsizei width, GLsizei height, GLboolean fixedsamplelocations)) \
+    X(void, GenTextures, (GLsizei n, GLuint* textures)) \
+    X(void, DeleteTextures, (GLsizei n, const GLuint* textures)) \
+    X(void, BindTexture, (GLenum target, GLuint texture)) \
+    X(GLboolean, IsTexture, (GLuint texture)) \
+    X(void, TexSubImage1D, (GLenum target, GLint level, GLint xoffset, GLsizei width, \
+                            GLenum format, GLenum type, const void* pixels)) \
+    X(void, TexSubImage2D, (GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, \
+                            GLenum format, GLenum type, const void* pixels)) \
+    X(void, TexImage2DMultisample, (GLenum target, GLsizei samples, GLenum internalformat, \
+                                    GLsizei width, GLsizei height, GLboolean fixedsamplelocations)) \
     /* shaders */ \
-    X(void, glAttachShader, (GLuint program, GLuint shader)) \
-    X(void, glCompileShader, (GLuint shader)) \
-    X(GLuint, glCreateProgram, (void)) \
-    X(GLuint, glCreateShader, (GLenum type)) \
-    X(void, glDeleteProgram, (GLuint program)) \
-    X(void, glDeleteShader, (GLuint shader)) \
-    X(void, glGetProgramiv, (GLuint program, GLenum pname, GLint* params)) \
-    X(void, glGetProgramInfoLog, (GLuint program, GLsizei bufSize, GLsizei* length, GLchar* infoLog)) \
-    X(void, glGetShaderiv, (GLuint shader, GLenum pname, GLint* params)) \
-    X(void, glGetShaderInfoLog, (GLuint shader, GLsizei bufSize, GLsizei* length, GLchar* infoLog)) \
-    X(void, glLinkProgram, (GLuint program)) \
-    X(void, glShaderSource, (GLuint shader, GLsizei count, const GLchar* const* string, const GLint* length)) \
-    X(void, glUseProgram, (GLuint program)) \
+    X(void, AttachShader, (GLuint program, GLuint shader)) \
+    X(void, CompileShader, (GLuint shader)) \
+    X(GLuint, CreateProgram, (void)) \
+    X(GLuint, CreateShader, (GLenum type)) \
+    X(void, DeleteProgram, (GLuint program)) \
+    X(void, DeleteShader, (GLuint shader)) \
+    X(void, GetProgramiv, (GLuint program, GLenum pname, GLint* params)) \
+    X(void, GetProgramInfoLog, (GLuint program, GLsizei bufSize, GLsizei* length, GLchar* infoLog)) \
+    X(void, GetShaderiv, (GLuint shader, GLenum pname, GLint* params)) \
+    X(void, GetShaderInfoLog, (GLuint shader, GLsizei bufSize, GLsizei* length, GLchar* infoLog)) \
+    X(void, LinkProgram, (GLuint program)) \
+    X(void, ShaderSource, (GLuint shader, GLsizei count, const GLchar* const* string, const GLint* length)) \
+    X(void, UseProgram, (GLuint program)) \
     /* draw calls */ \
-    X(void, glDrawArrays, (GLenum mode, GLint first, GLsizei count)) \
-    X(void, glDrawElements, (GLenum mode, GLsizei count, GLenum type, const void* indices)) \
-    X(void, glDrawArraysInstanced, (GLenum mode, GLint first, GLsizei count, GLsizei instancecount)) \
-    X(void, glDrawElementsInstanced, (GLenum mode, GLsizei count, GLenum type, const void* indices, GLsizei instancecount)) \
-    X(void, glEnableVertexAttribArray, (GLuint index)) \
-    X(void, glDisableVertexAttribArray, (GLuint index)) \
-    X(void, glVertexAttribPointer, (GLuint index, GLint size, GLenum type, GLboolean normalized, \
-                                    GLsizei stride, const void* pointer)) \
-    X(void, glVertexAttribIPointer, (GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer)) \
-    X(void, glVertexAttribDivisor, (GLuint index, GLuint divisor)) \
-    X(GLint, glGetUniformLocation, (GLuint program, const GLchar* name)) \
-    X(void, glUniform1f, (GLint location, GLfloat v0)) \
-    X(void, glUniform2f, (GLint location, GLfloat v0, GLfloat v1)) \
-    X(void, glUniform3f, (GLint location, GLfloat v0, GLfloat v1, GLfloat v2)) \
-    X(void, glUniform4f, (GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3)) \
-    X(void, glUniform1i, (GLint location, GLint v0)) \
-    X(void, glUniform1fv, (GLint location, GLsizei count, const GLfloat* value)) \
-    X(void, glUniform2fv, (GLint location, GLsizei count, const GLfloat* value)) \
-    X(void, glUniform3fv, (GLint location, GLsizei count, const GLfloat* value)) \
-    X(void, glDrawBuffers, (GLsizei n, const GLenum* bufs)) \
+    X(void, DrawArrays, (GLenum mode, GLint first, GLsizei count)) \
+    X(void, DrawElements, (GLenum mode, GLsizei count, GLenum type, const void* indices)) \
+    X(void, DrawArraysInstanced, (GLenum mode, GLint first, GLsizei count, GLsizei instancecount)) \
+    X(void, DrawElementsInstanced, (GLenum mode, GLsizei count, GLenum type, const void* indices, GLsizei instancecount)) \
+    X(void, EnableVertexAttribArray, (GLuint index)) \
+    X(void, DisableVertexAttribArray, (GLuint index)) \
+    X(void, VertexAttribPointer, (GLuint index, GLint size, GLenum type, GLboolean normalized, \
+                                  GLsizei stride, const void* pointer)) \
+    X(void, VertexAttribIPointer, (GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer)) \
+    X(void, VertexAttribDivisor, (GLuint index, GLuint divisor)) \
+    X(GLint, GetUniformLocation, (GLuint program, const GLchar* name)) \
+    X(void, Uniform1f, (GLint location, GLfloat v0)) \
+    X(void, Uniform2f, (GLint location, GLfloat v0, GLfloat v1)) \
+    X(void, Uniform3f, (GLint location, GLfloat v0, GLfloat v1, GLfloat v2)) \
+    X(void, Uniform4f, (GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3)) \
+    X(void, Uniform1i, (GLint location, GLint v0)) \
+    X(void, Uniform1fv, (GLint location, GLsizei count, const GLfloat* value)) \
+    X(void, Uniform2fv, (GLint location, GLsizei count, const GLfloat* value)) \
+    X(void, Uniform3fv, (GLint location, GLsizei count, const GLfloat* value)) \
+    X(void, DrawBuffers, (GLsizei n, const GLenum* bufs)) \
     /* framebuffers */ \
-    X(void, glGenFramebuffers, (GLsizei n, GLuint* framebuffers)) \
-    X(void, glDeleteFramebuffers, (GLsizei n, const GLuint* framebuffers)) \
-    X(void, glBindFramebuffer, (GLenum target, GLuint framebuffer)) \
-    X(GLboolean, glIsFramebuffer, (GLuint framebuffer)) \
-    X(GLenum, glCheckFramebufferStatus, (GLenum target)) \
-    X(void, glFramebufferTexture1D, (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)) \
-    X(void, glFramebufferTexture2D, (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)) \
-    X(void, glFramebufferTexture3D, (GLenum target, GLenum attachment, GLenum textarget, \
-                                     GLuint texture, GLint level, GLint zoffset)) \
-    X(void, glFramebufferRenderbuffer, (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)) \
-    X(void, glFramebufferTexture, (GLenum target, GLenum attachment, GLuint texture, GLint level)) \
-    X(void, glBlitFramebuffer, (GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, \
-                                GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter)) \
-    X(void, glGetFramebufferAttachmentParameteriv, (GLenum target, GLenum attachment, GLenum pname, GLint* params)) \
+    X(void, GenFramebuffers, (GLsizei n, GLuint* framebuffers)) \
+    X(void, DeleteFramebuffers, (GLsizei n, const GLuint* framebuffers)) \
+    X(void, BindFramebuffer, (GLenum target, GLuint framebuffer)) \
+    X(GLboolean, IsFramebuffer, (GLuint framebuffer)) \
+    X(GLenum, CheckFramebufferStatus, (GLenum target)) \
+    X(void, FramebufferTexture1D, (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)) \
+    X(void, FramebufferTexture2D, (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)) \
+    X(void, FramebufferTexture3D, (GLenum target, GLenum attachment, GLenum textarget, \
+                                   GLuint texture, GLint level, GLint zoffset)) \
+    X(void, FramebufferRenderbuffer, (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)) \
+    X(void, FramebufferTexture, (GLenum target, GLenum attachment, GLuint texture, GLint level)) \
+    X(void, BlitFramebuffer, (GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, \
+                              GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter)) \
+    X(void, GetFramebufferAttachmentParameteriv, (GLenum target, GLenum attachment, GLenum pname, GLint* params)) \
 
 #define FUNCTION_VALUE(X) GL_EXT_FUNCS(X)
-#define FUNCTION_PREFIX GL
+#define FUNCTION_PREFIX OGL_
+#define POINTER_PREFIX gl
 #include "XFunction.h"
 
 //~ long: WGL Functions
@@ -412,6 +414,7 @@ typedef iptr GLsizeiptr;
 #include "XFunction.h"
 
 //~ long: WGL Constants
+
 #define WGL_NUMBER_PIXEL_FORMATS_ARB            0x2000
 #define WGL_DRAW_TO_WINDOW_ARB                  0x2001
 #define WGL_DRAW_TO_BITMAP_ARB                  0x2002
@@ -477,5 +480,35 @@ typedef iptr GLsizeiptr;
 
 #define ERROR_INVALID_VERSION_ARB               0x2095
 #define ERROR_INVALID_PROFILE_ARB               0x2096
+
+//~ long: OGL System Functions
+
+function b32 OGL_Init(void);
+function b32 OGL_Free(void);
+function b32 OGL_WindowEquip(GFXWindow window);
+
+function void OGL_Begin(GFXWindow window);
+function void OGL_End(void);
+
+//~ long: OGL Helper Types
+
+typedef GLuint OGL_Handle;
+
+typedef struct OGL_Shader OGL_Shader;
+struct OGL_Shader
+{
+    OGL_Handle handle;
+    String log;
+};
+
+//~ long: OGL Helper Functions
+
+function OGL_Shader OGL_MakeShader(Arena* arena, char* src, GLenum type);
+function OGL_Shader OGL_MakeProgram(Arena* arena, OGL_Shader* shaders, u64 count);
+
+function OGL_Handle OGL_TextureCreate (u32 w, u32 h, void* data);
+function void       OGL_TextureUpdate (OGL_Handle texture, r2i32 rect, void* data);
+function void       OGL_TextureDestroy(OGL_Handle texture);
+function b32        OGL_TextureValid  (OGL_Handle texture);
 
 #endif //_LONG_O_G_L_H

@@ -20,13 +20,13 @@ struct OGL_Renderer
 
 global OGL_Renderer oglRenderer;
 
-//~ long: GLSL shaders
-
 #define GLSL_UNPACK_COLOR(u32c, c0, c1, c2, c3) \
     "float " c0 " = ((" u32c " >>  0) & 0xFFu) / 255.0;\n"   \
     "float " c1 " = ((" u32c " >>  8) & 0xFFu) / 255.0;\n"   \
     "float " c2 " = ((" u32c " >> 16) & 0xFFu) / 255.0;\n"   \
     "float " c3 " = ((" u32c " >> 24) & 0xFFu) / 255.0;\n"
+
+//~ long: GLSL shaders
 
 // NOTE(long): Uniform variables are set globally using glUniform* functions
 // Attributes with 'layout(location = x)' are fed using glVertexAttribPointer
@@ -160,7 +160,6 @@ global char* glsl_fshader =
 "float sdf_a = clamp(sdf_a_unclamped, 0, 1);\n"
 
 //- texture sampling
-// TODO(long): Sample all channels instead of using only the red channel as alpha
 "float uv_xtu = (p.x + f_extents.x) / (2*f_extents.x);\n"
 "float uv_ytu = (p.y + f_extents.y) / (2*f_extents.y);\n"
 "float s = 1;\n"
@@ -189,12 +188,8 @@ global char* glsl_fshader =
 function void R_Init(void)
 {
     ScratchBegin(scratch);
+    OGL_Begin(0);
     b32 error = 0;
-    
-    //- long: Make the "shared" dummy context current
-    w32RenderWnd = w32CoreWnd;
-    w32RenderDC = GetDC(w32RenderWnd);
-    w32WglMakeCurrent(w32RenderDC, w32OpenGLContext);
     
     //- long: Shaders
     OGL_Shader vshader = OGL_MakeShader(scratch, glsl_vshader, GL_VERTEX_SHADER);
@@ -313,23 +308,15 @@ function void R_Init(void)
     
     //- long: Fallback Texture
     GLuint fallbackTex = 0;
+    if (!error)
     {
-        glGenTextures(1, &fallbackTex);
-        glBindTexture(GL_TEXTURE_2D, fallbackTex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 4, 4, 0, GL_RED, GL_UNSIGNED_BYTE, 0);
-        
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        
+        fallbackTex = OGL_TextureCreate(4, 4, 0);
         GLenum glErr = glGetError();
         if (glErr != 0 || fallbackTex == 0)
             ErrorSet(error, "Failed to set the pixel pack mode: %u", glErr);
     }
     
     //- long: Main Framebuffer for SRGB
-    GLuint fbo = 0;
     GLuint canvasTex = 0;
     if (!error)
     {
@@ -342,6 +329,14 @@ function void R_Init(void)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         
+        GLenum glErr = glGetError();
+        if (glErr != 0 || canvasTex == 0)
+            ErrorSet(error, "Failed to set the pixel pack mode: %u", glErr);
+    }
+    
+    GLuint fbo = 0;
+    if (!error)
+    {
         glGenFramebuffers(1, &fbo);
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, canvasTex, 0);
@@ -388,6 +383,7 @@ function void R_Init(void)
         oglRenderer.fallbackTex = fallbackTex;
     }
     
+    OGL_End();
     ScratchEnd(scratch);
 }
 
@@ -422,9 +418,9 @@ function void R_End(void)
     OGL_End();
 }
 
-function void R_Submit(R_QuadNode* first, u64 count, R_Texture* texturePtr)
+function void R_Submit(R_QuadNode* first, u64 count, R_Texture rTexture)
 {
-    GLuint texture = (GLuint)IntFromPtr(texturePtr);
+    GLuint texture = (GLuint)rTexture;
     if (!glIsTexture(texture))
         texture = oglRenderer.fallbackTex;
     
@@ -493,42 +489,17 @@ function void R_Submit(R_QuadNode* first, u64 count, R_Texture* texturePtr)
 #endif
 }
 
-function R_Texture* R_TextureCreate(u32 w, u32 h, void* data)
+function R_Texture R_TextureCreate(u32 w, u32 h, void* data)
 {
-    GLuint texture = 0;
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, data);
-    
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    
-    return PtrFromInt(texture);
+    return (R_Texture)OGL_TextureCreate(w, h, data);
 }
 
-function void R_TextureUpdate(R_Texture* texturePtr, r2i32 rect, void* data)
+function void R_TextureUpdate(R_Texture texture, r2i32 rect, void* data)
 {
-    GLuint texture = (GLuint)IntFromPtr(texturePtr);
-    if (glIsTexture(texture))
-    {
-        glBindTexture(GL_TEXTURE_2D, texture);
-        v2i32 size = SubV2I32(rect.p1, rect.p0);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x0, rect.y0, size.x, size.y, GL_RED, GL_UNSIGNED_BYTE, data);
-    }
+    OGL_TextureUpdate((OGL_Handle)texture, rect, data);
 }
 
-function void R_TextureDestroy(R_Texture* texturePtr)
+function void R_TextureDestroy(R_Texture texture)
 {
-    GLuint texture = (GLuint)IntFromPtr(texturePtr);
-    if (glIsTexture(texture))
-        glDeleteTextures(1, &texture);
-}
-
-function b32 R_TextureValid(R_Texture* texturePtr)
-{
-    GLuint texture = (GLuint)IntFromPtr(texturePtr);
-    b32 result = glIsTexture(texture);
-    return result;
+    OGL_TextureDestroy((OGL_Handle)texture);
 }
