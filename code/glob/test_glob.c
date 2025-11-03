@@ -1,13 +1,11 @@
 #include "Base.h"
 #include "Base.c"
+#include "LongGlob.c"
 
 #define LONG_TEST_IMPLEMENTATION
 #define LT_NAME_PADDING 20
 #define LT_TEST_PADDING 45
 #include "LongTest.h"
-
-#define GLOB_STATIC_LIB 1
-#include "glob.c"
 
 function void GlobTestEx(String pattern, String text, b32 expected, Flags32 flags)
 {

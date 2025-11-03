@@ -1463,6 +1463,7 @@ function f32 ClampR1F32(r1f32 r, f32 v);
 #define R2I32V4(v)         R2I32P((v).x, (v).y, (v).z, (v).w)
 #define R2I32R1(r0, r1)    R2I32P((r0).min, (r1).min, (r0).max, (r1).max)
 #define R2I32R2(r)         R2I32P((r).x0, (r).y0, (r).x1, (r).y1)
+#define R2I32SizeP(minX, minY, sizeX, sizeY) R2I32Size(V2I32((minX), (minY)), V2I32((sizeX), (sizeY)))
 function r2i32 R2I32(v2i32 min, v2i32 max);
 function r2i32 R2I32Size(v2i32 min, v2i32 size);
 function r2i32 ShiftR2I32(r2i32 r, v2i32 x);
@@ -1479,6 +1480,7 @@ function v2i32 ClampR2I32(r2i32 r, v2i32 v);
 #define R2F32V4(v)         R2F32P((v).x, (v).y, (v).z, (v).w)
 #define R2F32R1(r0, r1)    R2F32P((r0).min, (r1).min, (r0).max, (r1).max)
 #define R2F32R2(r)         R2F32P((r).x0, (r).y0, (r).x1, (r).y1)
+#define R2F32SizeP(minX, minY, sizeX, sizeY) R2F32Size(V2F32((minX), (minY)), V2F32((sizeX), (sizeY)))
 function r2f32 R2F32(v2f32 min, v2f32 max);
 function r2f32 R2F32Size(v2f32 min, v2f32 size);
 function r2f32 ShiftR2F32(r2f32 r, v2f32 x);

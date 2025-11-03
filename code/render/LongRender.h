@@ -4,7 +4,7 @@
 #define _LONG_RENDER_H
 
 //~ TODO(long):
-// [ ] Support additional texture formats (currently only R8 is implemented)
+// [X] Support additional texture formats (currently only R8 is implemented)
 // [ ] Implement R_Info
 // [ ] Add D3D11 backend
 // [ ] Introduce a vtable for all API-specific functions
@@ -12,6 +12,20 @@
 // [ ] Shorten all the QuadFlag names
 
 //~ long: Render Types
+
+typedef enum R_TextureFmt
+{
+    R_TextureFmt_R8,
+    R_TextureFmt_RG8,
+    R_TextureFmt_RGBA8,
+    R_TextureFmt_SRGB8,
+    R_TextureFmt_R16,
+    R_TextureFmt_RG16,
+    R_TextureFmt_RGBA16,
+    R_TextureFmt_R32,
+    R_TextureFmt_RG32,
+    R_TextureFmt_RGBA32,
+} R_TextureFmt;
 
 typedef u64 R_Texture;
 
@@ -135,7 +149,8 @@ function void R_Begin(GFXWindow window);
 function void R_End(void);
 function void R_Submit(R_QuadNode* first, u64 count, R_Texture texture);
 
-function R_Texture R_TextureCreate (u32 w, u32 h, void* data);
+function R_TextureFmt R_FmtFromTexture(R_Texture texture); // TODO(long)
+function R_Texture R_TextureCreate (u32 w, u32 h, R_TextureFmt fmt, void* data);
 function void      R_TextureUpdate (R_Texture texture, r2i32 rect, void* data);
 function void      R_TextureDestroy(R_Texture texture);
 

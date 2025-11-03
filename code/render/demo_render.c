@@ -80,7 +80,7 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
     u32 c2 = U32LinFromSRGB3(0.0f, 0.9f, 0.5f);
     u32 c3 = U32LinFromSRGB3(1.0f, 1.0f, 0.5f);
     u32 c4 = U32LinFromSRGB3(1.0f, 1.0f, 0.0f);
-    u32 c5 = U32LinFromSRGB3(0.1f, 0.5f, 1.0f);
+    u32 c5 = U32LinFromSRGB3(0.0f, 0.4f, 0.8f);
     u32 c6 = U32LinFromSRGB3(1.0f, 1.0f, 0.0f);
     u32 c7 = U32LinFromSRGB3(0.0f, 1.0f, 1.0f);
     u32 c8 = U32LinFromSRGB3(0.4f, 0.9f, 0.1f);
@@ -89,6 +89,7 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
     u32 loopSpeed = info->fps * 2;
     u32 frameIdx = info->frameIdx;
     
+    r2f32 fullUV = R2F32P(0, 0, 1, 1);
     r2f32 clip = {0};
     b32 hasClip = frameIdx < loopSpeed;
     if (hasClip)
@@ -104,23 +105,23 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
     {
         R_Batch batch = {0};
         v2f32  rectBase = V2F32(600.f, 250.f);
-        v2f32  rectSize = V2F32(100.f, 100.f);
-        v2f32 rectShift = AddV2F32(rectSize, V2F32(25.f, 25.f));
         v2f32 atlasSize = V2F32V(fonts[0].baked->size);
+        f32  rectSize = 100.f;
+        f32 rectShift = rectSize + 25.f;
         
         R_BatchPushQuad(scratch, &batch, &(R_Quad){
-                            R2F32Size((v2f32){0}, rectSize), 10.f, 5.f,
+                            R2F32SizeP(0, 0, rectSize, rectSize), 10.f, 5.f,
                             .c = { U32LinFromSRGB3(1.f, .2f, 0.f), U32LinFromSRGB3(1.f, 0.f, .2f) },
                         });
         
         R_BatchPushQuad(scratch, &batch, &(R_Quad){
-                            R2F32Size(V2F32(rectShift.x, 0), rectSize), 50.f, 30.f, .c = { c7, c8 },
-                            R2F32Size((v2f32){0}, DivV2F32(ScaleV2F32(rectSize, 1.5f), atlasSize)),
+                            R2F32SizeP(rectShift, 0, rectSize, rectSize), 50.f, 30.f, .c = { c7, c8 },
+                            R2F32SizeP(0, 0, rectSize/atlasSize.x, rectSize/atlasSize.y),
                         });
         
         R_BatchPushQuad(scratch, &batch, &(R_Quad){
-                            R2F32Size(V2F32(0.f, rectShift.y), atlasSize),
-                            .c = { white, white }, R2F32P(0.f, 0.f, 1.f, 1.f),
+                            R2F32SizeP(0.f, rectShift, atlasSize.x, atlasSize.y),
+                            .c = { white, white }, fullUV,
                         });
         
         for (R_QuadNode* node = batch.first; node; node = node->next)
@@ -148,14 +149,15 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
         if (hasClip)
             R_CtxClip(&ctx, &clip);
         
+#define D_PushQuad(color0, color1, ...) \
+    R_PushQuad(&ctx, &(R_Quad){ __VA_ARGS__, .c = { color0, color1 } }, 0)
+        
         //- Basic Shapes
-        R_PushQuad(&ctx, &(R_Quad){ R2F32P( 5.f, 5.f, 45.f, 45.f), 10.f, 5.f, .c = { c0, c0 }, }, 0);
-        R_PushRect(&ctx, R2F32P(55.f, 5.f, 95.f, 45.f), 10.f, c0);
-        R_PushRect(&ctx, R2F32P(5.f, 50.f, 45.f, 70.f), 0.f, c1);
-        R_PushQuad(&ctx, &(R_Quad){
-                       R2F32P(55.f, 50.f, 95.f, 70.f), 15.f, .c = { c1, c2 },
-                       .flags = R_QuadFlag_SharpCornerTR|R_QuadFlag_SharpCornerBL,
-                   }, 0);
+        R_PushRect(&ctx, R2F32P(55.f,  5.f, 95.f, 45.f), 10.f, c0);
+        R_PushRect(&ctx, R2F32P( 5.f, 50.f, 45.f, 70.f),  0.f, c1);
+        D_PushQuad(c0, c0, R2F32P( 5.f,  5.f, 45.f, 45.f), 10.f, 5.f);
+        D_PushQuad(c1, c2, R2F32P(55.f, 50.f, 95.f, 70.f), 15.f,
+                   .flags = R_QuadFlag_SharpCornerTR|R_QuadFlag_SharpCornerBL, 0);
         
         //- Fonts
         R_CtxFont(&ctx, fonts[0]);
@@ -174,22 +176,18 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
         R_PushChar(&ctx, ICON_LOCK_OPEN_ALT, V2F32(275.f, 100.f), c5);
         
         //- Rotation/Gradient
-        R_PushQuad(&ctx, &(R_Quad){
-                       R2F32Size(V2F32(350.f, 90.f), V2F32(30.f, 30.f)),
-                       500.f, 50.f, DivF32(frameIdx, loopSpeed) * TAU_F32,
-                       R_QuadFlag_SharpCornerBL, { white, white },
-                   }, 0);
-        
-        R_PushQuad(&ctx, &(R_Quad){
-                       R2F32Size(V2F32(425.f, 75.f), V2F32(100.f, 2.f)),
-                       1.f, 10.f, DivF32(frameIdx, loopSpeed * 2) * TAU_F32,
-                       R_QuadFlag_HzGradient, { c6, c7 }
-                   }, 0);
-        
-        R_PushQuad(&ctx, &(R_Quad){
-                       R2F32P(125.f, 5.f, 250.f, 20.f),
-                       .flags = R_QuadFlag_HzGradient, { black, white },
-                   }, 0);
+        {
+            f32 theta = DivF32(frameIdx, loopSpeed) * TAU_F32;
+            
+            D_PushQuad(white, white, R2F32SizeP(350.f, 90.f, 30.f, 30.f),
+                       500.f, 50.f, theta, R_QuadFlag_SharpCornerBL, 0);
+            
+            D_PushQuad(c6, c7, R2F32SizeP(425.f, 75.f, 100.f, 2.f),
+                       1.f, 10.f, theta/2.f, R_QuadFlag_HzGradient, 0);
+            
+            D_PushQuad(black, white, R2F32P(125.f, 5.f, 250.f, 20.f),
+                       .flags = R_QuadFlag_HzGradient, 0);
+        }
         
         //- Lines
         {
@@ -205,6 +203,53 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
                 line = ShiftR2F32(line, origin);
                 R_PushLine(&ctx, line, 2.f, c8);
             }
+        }
+        
+        //- SRGB
+        {
+            global R_Texture texture = 0;
+#define CALIB_SIZE 120
+            
+            if (texture == 0)
+            {
+                u8 buf[CALIB_SIZE*CALIB_SIZE] = {0};
+                u32 size = CALIB_SIZE;
+                u32 extents = size/2;
+                
+                for (u32 x = 0; x < extents; ++x)
+                {
+                    for (u32 y = 0; y < extents; ++y)
+                    {
+                        u32 x0 = x;
+                        u32 y0 = y;
+                        u32 x1 = x + extents;
+                        u32 y1 = y + extents;
+                        
+                        // checkerboards
+                        u8 c = ((x + y)&1) == 1 ? 255 : 0;
+                        buf[x0 + y0*size] = c;
+                        buf[x1 + y1*size] = c;
+                        
+                        buf[x1 + y0*size] = 128; // 0.5 gray srgb
+                        buf[x0 + y1*size] = 188; // 0.5 gray linear
+                    }
+                }
+                
+                u8 img[CALIB_SIZE*CALIB_SIZE*3] = {0};
+                for (u32 i = 0; i < size*size; ++i)
+                {
+                    u8 c = buf[i];
+                    img[i*3 + 0] = c;
+                    img[i*3 + 1] = c;
+                    img[i*3 + 2] = c;
+                }
+                
+                texture = R_TextureCreate(size, size, R_TextureFmt_SRGB8, img);
+            }
+            
+            R_PushQuad(&ctx, &(R_Quad){
+                           R2F32SizeP(50, 600, CALIB_SIZE, CALIB_SIZE), .c = { white, white }, fullUV,
+                       }, texture);
         }
         
         R_CtxFlush(&ctx);
@@ -281,9 +326,10 @@ int WinMain(HINSTANCE hInstance,
                 DebugTimer("Show Window", timer);
             }
             
-            DeferBlock(FrameStart(info), FrameEnd(info))
-                DeferBlock(R_Begin(window), R_End())
-                    DrawQuads(fonts, fontello, info, window);
+            GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
+                DeferBlock(FrameStart(info), FrameEnd(info))
+                    DeferBlock(R_Begin(window), R_End())
+                        DrawQuads(fonts, fontello, info, window);
             
             if (!GFXPeekInput()) break;
             if (!GFXWindowIsValid(window)) break;

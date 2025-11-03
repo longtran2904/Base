@@ -84,10 +84,11 @@ typedef iptr GLsizeiptr;
 #define GL_NEAREST    0x2600
 #define GL_LINEAR     0x2601
 
-#define GL_TEXTURE_MAG_FILTER 0x2800
-#define GL_TEXTURE_MIN_FILTER 0x2801
-#define GL_TEXTURE_WRAP_S     0x2802
-#define GL_TEXTURE_WRAP_T     0x2803
+#define GL_TEXTURE_INTERNAL_FORMAT 0x1003
+#define GL_TEXTURE_MAG_FILTER      0x2800
+#define GL_TEXTURE_MIN_FILTER      0x2801
+#define GL_TEXTURE_WRAP_S          0x2802
+#define GL_TEXTURE_WRAP_T          0x2803
 
 #define GL_REPEAT 0x2901
 
@@ -97,8 +98,9 @@ typedef iptr GLsizeiptr;
 #define GL_MIN                   0x8007
 #define GL_MAX                   0x8008
 
-#define GL_RGB8  0x8051
-#define GL_RGBA8 0x8058
+#define GL_RGB8   0x8051
+#define GL_RGBA8  0x8058
+#define GL_RGBA16 0x805B
 
 #define GL_MULTISAMPLE 0x809D
 
@@ -297,6 +299,7 @@ typedef iptr GLsizeiptr;
     X(void, Flush, (void)) \
     X(void, GetFloatv, (GLenum pname, GLfloat* data)) \
     X(void, GetIntegerv, (GLenum pname, GLint* data)) \
+    X(void, GetTexLevelParameteriv, (GLenum target, GLint level, GLenum pname, GLint * params)) \
     X(void, TexParameteri, (GLenum target, GLenum pname, GLint param)) \
     X(void, TexImage1D, (GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, \
                          GLenum format, GLenum type, const void* pixels)) \
@@ -506,7 +509,7 @@ struct OGL_Shader
 function OGL_Shader OGL_MakeShader(Arena* arena, char* src, GLenum type);
 function OGL_Shader OGL_MakeProgram(Arena* arena, OGL_Shader* shaders, u64 count);
 
-function OGL_Handle OGL_TextureCreate (u32 w, u32 h, void* data);
+function OGL_Handle OGL_TextureCreate (GLint textureFmt, u32 w, u32 h, void* data);
 function void       OGL_TextureUpdate (OGL_Handle texture, r2i32 rect, void* data);
 function void       OGL_TextureDestroy(OGL_Handle texture);
 function b32        OGL_TextureValid  (OGL_Handle texture);

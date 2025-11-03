@@ -450,12 +450,29 @@ function OGL_Shader OGL_MakeProgram(Arena* arena, OGL_Shader* shaders, u64 count
     return (OGL_Shader){ program, Str(buffer, length) };
 }
 
-function OGL_Handle OGL_TextureCreate(u32 w, u32 h, void* data)
+function OGL_Handle OGL_TextureCreate(GLint textureFmt, u32 w, u32 h, void* data)
 {
     GLuint texture = 0;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+    
+    GLenum pixelFmt = 0;
+    GLenum pixelType = 0;
+    switch (textureFmt)
+    {
+        case GL_R8:      pixelFmt = GL_RED;  pixelType = GL_UNSIGNED_BYTE;  break;
+        case GL_RG8:     pixelFmt = GL_RG;   pixelType = GL_UNSIGNED_BYTE;  break;
+        case GL_RGBA8:   pixelFmt = GL_RGBA; pixelType = GL_UNSIGNED_BYTE;  break;
+        case GL_SRGB8:   pixelFmt = GL_RGB;  pixelType = GL_UNSIGNED_BYTE;  break;
+        case GL_R16:     pixelFmt = GL_RED;  pixelType = GL_UNSIGNED_SHORT; break;
+        case GL_RG16:    pixelFmt = GL_RG;   pixelType = GL_UNSIGNED_SHORT; break;
+        case GL_RGBA16:  pixelFmt = GL_RGBA; pixelType = GL_UNSIGNED_SHORT; break;
+        case GL_R32F:    pixelFmt = GL_RED;  pixelType = GL_FLOAT;          break;
+        case GL_RG32F:   pixelFmt = GL_RG;   pixelType = GL_FLOAT;          break;
+        case GL_RGBA32F: pixelFmt = GL_RGBA; pixelType = GL_FLOAT;          break;
+    }
+    
+    glTexImage2D(GL_TEXTURE_2D, 0, textureFmt, w, h, 0, pixelFmt, pixelType, data);
     
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -471,7 +488,26 @@ function void OGL_TextureUpdate(OGL_Handle texture, r2i32 rect, void* data)
     {
         glBindTexture(GL_TEXTURE_2D, texture);
         v2i32 size = SubV2I32(rect.p1, rect.p0);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x0, rect.y0, size.x, size.y, GL_RED, GL_UNSIGNED_BYTE, data);
+        
+        GLint textureFmt = 0;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &textureFmt);
+        
+        GLenum pixelFmt = 0;
+        GLenum pixelType = 0;
+        switch (textureFmt)
+        {
+            case GL_R8:      pixelFmt = GL_RED;  pixelType = GL_UNSIGNED_BYTE;  break;
+            case GL_RG8:     pixelFmt = GL_RG;   pixelType = GL_UNSIGNED_BYTE;  break;
+            case GL_RGBA8:   pixelFmt = GL_RGBA; pixelType = GL_UNSIGNED_BYTE;  break;
+            case GL_R16:     pixelFmt = GL_RED;  pixelType = GL_UNSIGNED_SHORT; break;
+            case GL_RG16:    pixelFmt = GL_RG;   pixelType = GL_UNSIGNED_SHORT; break;
+            case GL_RGBA16:  pixelFmt = GL_RGBA; pixelType = GL_UNSIGNED_SHORT; break;
+            case GL_R32F:    pixelFmt = GL_RED;  pixelType = GL_FLOAT;          break;
+            case GL_RG32F:   pixelFmt = GL_RG;   pixelType = GL_FLOAT;          break;
+            case GL_RGBA32F: pixelFmt = GL_RGBA; pixelType = GL_FLOAT;          break;
+        }
+        
+        glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x0, rect.y0, size.x, size.y, pixelFmt, pixelType, data);
     }
 }
 

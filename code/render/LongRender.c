@@ -88,7 +88,7 @@ function R_Font R_FontBakeTexture(Arena* arena, FNT_Font* font, FNT_Packer* pack
 {
     FNT_Baked* baked = PushStruct(arena, FNT_Baked);
     *baked = FNT_FontBake(arena, font, pack);
-    R_Texture texture = R_TextureCreate(baked->size.x, baked->size.y, 0);
+    R_Texture texture = R_TextureCreate(baked->size.x, baked->size.y, R_TextureFmt_R8, 0);
     
     for (FNT_Glyph* glyph = font->first; glyph; glyph = glyph->next)
     {

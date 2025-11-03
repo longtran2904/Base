@@ -310,7 +310,7 @@ function void R_Init(void)
     GLuint fallbackTex = 0;
     if (!error)
     {
-        fallbackTex = OGL_TextureCreate(4, 4, 0);
+        fallbackTex = OGL_TextureCreate(GL_R8, 4, 4, 0);
         GLenum glErr = glGetError();
         if (glErr != 0 || fallbackTex == 0)
             ErrorSet(error, "Failed to set the pixel pack mode: %u", glErr);
@@ -401,6 +401,10 @@ function void R_Begin(GFXWindow window)
     glBindFramebuffer(GL_FRAMEBUFFER, oglRenderer.fbo);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
+    
+    GLenum error = 0;
+    while ((error = glGetError()))
+        ErrorFmt("Failed to begin rendering: %u", error);
 }
 
 function void R_End(void)
@@ -414,6 +418,10 @@ function void R_End(void)
         glBlitFramebuffer(0, 0, dim.x, dim.y, 0, 0, dim.x, dim.y, GL_COLOR_BUFFER_BIT, GL_NEAREST);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
+    
+    GLenum error = 0;
+    while ((error = glGetError()))
+        ErrorFmt("Failed to end rendering: %u", error);
     
     OGL_End();
 }
@@ -489,9 +497,26 @@ function void R_Submit(R_QuadNode* first, u64 count, R_Texture rTexture)
 #endif
 }
 
-function R_Texture R_TextureCreate(u32 w, u32 h, void* data)
+function R_Texture R_TextureCreate(u32 w, u32 h, R_TextureFmt fmt, void* data)
 {
-    return (R_Texture)OGL_TextureCreate(w, h, data);
+    GLint textureFmt = 0;
+    GLenum pixelFmt = 0;
+    
+    switch (fmt)
+    {
+        case R_TextureFmt_R8:     textureFmt = GL_R8;      break;
+        case R_TextureFmt_RG8:    textureFmt = GL_RG8;     break;
+        case R_TextureFmt_RGBA8:  textureFmt = GL_RGBA8;   break;
+        case R_TextureFmt_SRGB8:  textureFmt = GL_SRGB8;   break;
+        case R_TextureFmt_R16:    textureFmt = GL_R16;     break;
+        case R_TextureFmt_RG16:   textureFmt = GL_RG16;    break;
+        case R_TextureFmt_RGBA16: textureFmt = GL_RGBA16;  break;
+        case R_TextureFmt_R32:    textureFmt = GL_R32F;    break;
+        case R_TextureFmt_RG32:   textureFmt = GL_RG32F;   break;
+        case R_TextureFmt_RGBA32: textureFmt = GL_RGBA32F; break;
+    }
+    
+    return (R_Texture)OGL_TextureCreate(textureFmt, w, h, data);
 }
 
 function void R_TextureUpdate(R_Texture texture, r2i32 rect, void* data)
