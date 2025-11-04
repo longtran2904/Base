@@ -6,8 +6,15 @@
 //~ TODO(long):
 // [ ] Custom printf format
 // [ ] Support for custom data structures
-// [ ] Property-based testing
+// [X] Replace all OSxxxFile to with OS_FileXXX
+// [ ] Replace memset, memcpy, and memcmp
+// [ ] Redesign UNUSED, DEBUG, and DebugReturn; as well as NotImplemented and Unreachable
+// [ ] Memory Protection (Read/Write/Execute)
 // [ ] Seperate backing buffer for arenas
+// [ ] Make sure FileIter also works across volumes
+// [ ] Clipboard for images/files
+// [ ] Network/Sockets/IPC
+// [ ] Property-based testing
 // [ ] Add profiling (Spall?)
 
 //~/////////////////////////////////////////////////////////////
@@ -460,7 +467,6 @@
 #define UNUSED(x) ((void)(x))
 #define DEBUG(x, ...) Stmnt(__VA_ARGS__; UNUSED(x))
 #define EXIT() Stmnt(if (0) return)
-// TODO(long): Redesign UNUSED, DEBUG, and DebugReturn. Add NotImplemented and Unreachable
 
 #define DebugPrint(str) OSWriteConsole(OS_STD_ERR, StrLit("\n\n" __FILE__ "(" Stringify(__LINE__) "): " __FUNCSIG__ ": " str))
 #define StaticAssert(c, ...) typedef u8 Concat(_##__VA_ARGS__, __LINE__) [(c)?1:-1]
@@ -590,7 +596,7 @@
 #define WspaceStr SpaceStr NlineStr
 
 //- long: Mem Macros
-#include <string.h> // TODO(long): Replace memset, memcpy, and memcmp
+#include <string.h>
 #define SetMem(ptr, val, size) memset((ptr), (val), (size))
 #define ZeroMem(ptr, size) SetMem((ptr), 0, (size))
 #define ZeroStruct(ptr) ZeroMem((ptr), sizeof(*(ptr)))
@@ -1081,15 +1087,24 @@ struct TempArena
     u64 pos;
 };
 
-// TODO(long): Make sure Mac (specifically M1/2/3) is the same
-#define ARCH_PAGE_SIZE KiB(4)
+#define SCRATCH_POOL_COUNT 2
+
+#if OS_MAC && ARCH_ARM64
+# define ARCH_PAGE_SIZE KiB(16)
+#else
+// NOTE(long): Unlike Windows or macOS, Linux page size depends on kernel build configuration
+// The most common size is 4 KiB, but it can differ between distributions
+# define ARCH_PAGE_SIZE KiB(4)
+#endif
+
 #if OS_WIN
 #define ARCH_ALLOC_GRANULARITY KiB(64)
 #else
-#define ARCH_ALLOC_GRANULARITY KiB(4)
+#define ARCH_ALLOC_GRANULARITY ARCH_PAGE_SIZE
 #endif
 
-#define SCRATCH_POOL_COUNT 2
+StaticAssert(ARCH_PAGE_SIZE >=                 KiB(4), checkArchDefault);
+StaticAssert(ARCH_PAGE_SIZE <= ARCH_ALLOC_GRANULARITY, checkArchDefault);
 
 // @RECONSIDER(long): Rather than constants, arenas can take runtime values and these just become default values
 #ifndef MEM_DEFAULT_RESERVE_SIZE
@@ -1107,18 +1122,18 @@ struct TempArena
 
 #ifndef MEM_POISON_SIZE
 #if ENABLE_SANITIZER
-#define MEM_POISON_SIZE 128
+#define MEM_POISON_SIZE    128
 #define MEM_POISON_ALIGNMENT 8
 #else
-#define MEM_POISON_SIZE ARCH_PAGE_SIZE
+#define MEM_POISON_SIZE      ARCH_PAGE_SIZE
 #define MEM_POISON_ALIGNMENT ARCH_PAGE_SIZE
 #endif
 #endif
 
-StaticAssert(MEM_DEFAULT_RESERVE_SIZE >= MEM_COMMIT_BLOCK_SIZE, checkMemDefault);
-StaticAssert(MEM_DEFAULT_ALIGNMENT <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
-StaticAssert(MEM_POISON_ALIGNMENT <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
-StaticAssert(ARCH_PAGE_SIZE <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
+StaticAssert(MEM_DEFAULT_RESERVE_SIZE >=  MEM_COMMIT_BLOCK_SIZE, checkMemDefault);
+StaticAssert(MEM_DEFAULT_ALIGNMENT    <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
+StaticAssert(MEM_POISON_ALIGNMENT     <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
+StaticAssert(ARCH_PAGE_SIZE           <= ARCH_ALLOC_GRANULARITY, checkMemDefault);
 StaticAssert(sizeof(Arena) <= MEM_INITIAL_COMMIT, checkMemDefault);
 
 //~ long: String Types
@@ -1940,7 +1955,6 @@ function void OSExit(u32 code);
 
 //~ long: Memory Functions
 
-// TODO(long): Memory Protection (Read/Write/Execute)
 function void* OSReserve(u64 size);
 function void  OSRelease(void* ptr);
 function void*  OSCommit(void* ptr, u64 size);
@@ -1964,16 +1978,6 @@ function void OSClearConsole(i32 handle);
 
 //~ long: File Handling
 
-function FileProperties OSFileProperties(String path);
-function String OSReadFile(Arena* arena, String path);
-function b32   OSWriteList(String path, StringList* data);
-#define OSWriteFile(file, data) OSWriteList((file), &(StringList) \
-                                            { \
-                                                .first = &(StringNode){ .string = (data) }, \
-                                                .last  = &(StringNode){ .string = (data) }, \
-                                                .nodeCount = 1, .totalSize = (data).size, \
-                                            })
-
 typedef Flags32 OS_AccessFlags;
 enum
 {
@@ -1984,19 +1988,22 @@ enum
     AccessFlag_NoCache = 1<<4,
 };
 
-// TODO(long): Replace OSxxxFile
-function OS_Handle OS_FileOpen(String path, OS_AccessFlags flags, OS_Handle queue);
-function void OS_FileClose(OS_Handle file);
-function FileProperties OS_FileProp(OS_Handle file);
+function OS_Handle      OS_FileOpen (String path, OS_AccessFlags flags, OS_Handle queue);
+function void           OS_FileClose(OS_Handle file);
+function FileProperties OS_FileProp (OS_Handle file);
 
 function u64 OS_FileRead (OS_Handle file, r1u64 rng, void* buffer);
 function u64 OS_FileWrite(OS_Handle file,   u64 pos, String  data);
 #define OS_FileAppend(file, data) OS_FileWrite((file), OS_FileProp(file).size, (data))
 
-function b32 OSRenameFile(String oldName, String newName); // NOTE(long): Can also move files/directories
-function b32 OSDeleteFile(String path);
-function b32 OSCreateDir (String path);
-function b32 OSDeleteDir (String path);
+function String         OS_PathRead (Arena* arena, String path);
+function b32            OS_PathWrite(String  path, String data);
+function FileProperties OS_PathProp (String  path);
+
+function b32 OS_FileMove  (String o, String n); // NOTE(long): Can also move files/directories
+function b32 OS_FileDelete(String path);
+function b32 OS_DirCreate (String path);
+function b32 OS_DirDelete (String path);
 
 function OS_Handle OS_PushFileQueue(void);
 function u64       OS_FileWaitAsync(OS_Handle queue, void** outUser, u64 timeoutMs);
@@ -2027,7 +2034,6 @@ struct OSFileIter
     u8 v[640-sizeof(OSFileIterFlags)];
 };
 
-// TODO(long): Make these work with volume
 // NOTE(long): The path passed in must have the same lifetime as OSFileIter
 function OSFileIter FileIterInit(Arena* arena, String path, OSFileIterFlags flags);
 function b32 FileIterNext(Arena* arena, OSFileIter* iter);
@@ -2038,8 +2044,6 @@ function void FileIterEnd(OSFileIter* iter);
          FileIterNext(arena, &iterName) ? 1 : (FileIterEnd(&iterName), 0);)
 
 // @CONSIDER(long): FileIterPush/Pop
-
-//~ TODO(long): Streaming/Buffering/Overlapping
 
 //~ long: Paths
 
@@ -2085,8 +2089,6 @@ function void OSGetEntropy(void* data, u64 size);
 
 function void   OSSetClipboard(String string);
 function String OSGetClipboard(Arena *arena);
-
-// TODO(long): Clipboard for images/files
 
 //~ long: System info
 
@@ -2143,7 +2145,5 @@ function void      OS_ThreadDetach(OS_Handle handle);
 //OSIsFileCompleted <- Maybe CloseHandle here?
 //OSCreate/ReleaseSemaphore
 //OSCreate/WaitMutex -> either CreateMutex or InitializeCriticalSection (like RAD debugger)
-
-//~ TODO(long): Network/Sockets/IPC
 
 #endif //_BASE_H

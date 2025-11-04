@@ -54,7 +54,7 @@ i32 main(i32 argc, char** argv)
             
             if (StrCompare(StrSkipLastDot(filepath), StrLit("mdesk"), 0))
             {
-                String data = OSReadFile(arena, filepath);
+                String data = OS_PathRead(arena, filepath);
                 MD_ParseResult parse = MD_ParseText(arena, filepath, data);
                 
                 for (MD_Msg* msg = parse.msgs.first; msg; msg = msg->next)
@@ -216,7 +216,7 @@ i32 main(i32 argc, char** argv)
                     
                     case MG_Gen_Embed:
                     {
-                        String data = OSReadFile(arena, node->first->string);
+                        String data = OS_PathRead(arena, node->first->string);
                         String embed = MG_ArrCFromData(arena, data);
                         StrListPushf(arena, out,
                                      CGlobalStr "u8 %.*s__data[] =\n{\n%.*s};\n\n"
@@ -260,7 +260,7 @@ i32 main(i32 argc, char** argv)
     DeferBlock(Outf("writting to files..."), Outf(success ? " done\n" : " failed\n"))
     {
         String generatedFolder = StrPushf(arena, "%.*s\\%s", StrExpand(codeDir), "generated");
-        if (OSCreateDir(generatedFolder))
+        if (OS_DirCreate(generatedFolder))
         {
             String hPath = StrPushf(arena, "%.*s/test.meta.h", StrExpand(generatedFolder));
             String cPath = StrPushf(arena, "%.*s/test.meta.c", StrExpand(generatedFolder));
@@ -280,8 +280,8 @@ i32 main(i32 argc, char** argv)
             }
             
             success = 1;
-            if (hData.size) success &= OSWriteFile(hPath, hData);
-            if (cData.size) success &= OSWriteFile(cPath, cData);
+            if (hData.size) success &= OS_PathWrite(hPath, hData);
+            if (cData.size) success &= OS_PathWrite(cPath, cData);
         }
     }
     

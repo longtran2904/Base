@@ -7,11 +7,13 @@
 #define LT_TEST_PADDING 45
 #include "LongTest.h"
 
+global LT_Ctx testCtx;
+
 function void GlobTestEx(String pattern, String text, b32 expected, Flags32 flags)
 {
     Flags32 syntax = 0;
     b32 result = glob(pattern, text, &syntax);
-    ALWAYS(TestResult(result == expected && flags == syntax));
+    ALWAYS(LT_Check(&testCtx, result == expected && flags == syntax));
 }
 
 function void PrintGlobStr(String pattern, String text)
@@ -25,7 +27,7 @@ function void PrintGlobStr(String pattern, String text)
 
 int main(void)
 {
-    TEST("Glob Normal")
+    LT_Block(&testCtx, "Glob Normal")
     {
         GlobTest("main.?", "main.c", 1);
         GlobTest("index.?", "main.c", 0);
@@ -83,7 +85,7 @@ int main(void)
         GlobTest("[A-Fa-f0-9]", "-", 0);
     }
     
-    TEST("Glob Special")
+    LT_Block(&testCtx, "Glob Special")
     {
         GlobTest("[][!]", "]", 1);
         GlobTest("[][!]", "[", 1);
@@ -123,7 +125,7 @@ int main(void)
         GlobTest("\\\\", "\\", 1);
     }
     
-    TEST("Glob Extension")
+    LT_Block(&testCtx, "Glob Extension")
     {
         GlobTest("[a-d-g]", "a", 1, GLOB_SYNTAX_EXTENSION);
         GlobTest("[a-d-g]", "b", 1, GLOB_SYNTAX_EXTENSION);
@@ -179,7 +181,7 @@ int main(void)
         GlobTest("[*---c]", "f", 0, GLOB_SYNTAX_EXTENSION);
     }
     
-    TEST("Glob Error")
+    LT_Block(&testCtx, "Glob Error")
     {
         GlobTest("*.[abc", "main.a", 1, GLOB_SYNTAX_ERROR);
         GlobTest("*.[abc", "main.z", 0, GLOB_SYNTAX_ERROR);

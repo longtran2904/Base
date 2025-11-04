@@ -805,16 +805,16 @@ int main(void)
     if (0)
     {
         String file = TestFile("test.json");
-        MD_ParseResult parse = MD_ParseText(scratch, file, OSReadFile(scratch, file));
+        MD_ParseResult parse = MD_ParseText(scratch, file, OS_PathRead(scratch, file));
         String dump = MD_DumpJSON(scratch, parse.root->first, 0);
-        OSWriteFile(TestFile("out_test.mdesk"), dump);
+        OS_PathWrite(TestFile("out_test.mdesk"), dump);
         Assert(parse.root->first == parse.root->last);
     }
     
     String paths[] = { TestFile("test.json"), TestFile("test.mdesk"), StrLit("code/retired/syntax.mdesk") };
     ForEach(pathIdx, ArrayCount(paths))
     {
-        String text = OSReadFile(scratch, paths[pathIdx]);
+        String text = OS_PathRead(scratch, paths[pathIdx]);
         MD_TokenArray tokens1 = MD_TokenizeFromText(scratch, text).tokens;
         TokenArray tokens2 = MD_TokenArrayFromStr(scratch, text);
         
@@ -831,7 +831,7 @@ int main(void)
     }
     
     {
-        String data = OSReadFile(scratch, TestFile("test.c"));
+        String data = OS_PathRead(scratch, TestFile("test.c"));
         TokenArray array = CL_TokenizeFromText(scratch, data);
         
         TokenArray array_ = CL_TokenArrayFromStr(scratch, data);
@@ -981,7 +981,7 @@ int main(void)
                          "enum { FooE } E\n"
                          "enum F { F1 = foo * bar / blah, F2 = {}, F3 = Func(&(Type){ .a = 100*100, .b = 0, }, baz), F4 = 100 }"
                          );
-    text = OSReadFile(scratch, StrLit("code/Base.h"));
+    text = OS_PathRead(scratch, StrLit("code/Base.h"));
     
     MD_Node* root = MD_ParseStrC(scratch, text);
     MD_DebugTree(root);
@@ -1078,7 +1078,7 @@ int main(void)
     if (0)
     {
         String inputs[] = {
-            OSReadFile(scratch, StrLit("code/Base.h")),
+            OS_PathRead(scratch, StrLit("code/Base.h")),
             StrLit("if (TweakB32(draw_ur_mom)) {\n"
                    "f32 height = TweakF32(mom_height, 1f, 2f);\n"
                    "EmbedFile(ur_mom_sprite, \"D:\\\\Documents\\\\Important\\\\my_mom.png\");\n"
@@ -1141,17 +1141,17 @@ int main(void)
     
     if (0)
     {
-        String text = OSReadFile(scratch, TestFile("test.json"));
+        String text = OS_PathRead(scratch, TestFile("test.json"));
         TokenArray array = JSON_TokenizeFromText(scratch, text);
         JSON_Value value = JSON_ValueFromTokens (scratch, text, array);
-        OSWriteFile(TestFile("out_test.json"), JSON_StrFromValue(scratch, value, 0));
+        OS_PathWrite(TestFile("out_test.json"), JSON_StrFromValue(scratch, value, 0));
     }
     
     if (0)
     {
-        String text = OSReadFile(scratch, TestFile("test.csv"));
+        String text = OS_PathRead(scratch, TestFile("test.csv"));
         StringTable table = CSV_TableFromStr(scratch, text);
-        OSWriteFile(TestFile("out_test.csv"), CSV_StrFromTable(scratch, table));
+        OS_PathWrite(TestFile("out_test.csv"), CSV_StrFromTable(scratch, table));
     }
     
     Outf("\nDone");

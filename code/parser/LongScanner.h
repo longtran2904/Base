@@ -141,7 +141,7 @@ struct Scanner
 
 //- long: Construction Functions
 #define  ScannerFromStr(str) ((Scanner){ .source = (str) })
-#define ScannerFromFile(arena, file) ScannerFromStr(OSReadFile((arena), (file), 0))
+#define ScannerFromFile(arena, file) ScannerFromStr(OS_PathRead((arena), (file), 0))
 
 #define ScannerRange(scanner, min, max) Substr((scanner)->source, (min), (max))
 #define ScannerStr(scanner, size) SubstrRange((scanner)->source, (scanner)->pos, (size))

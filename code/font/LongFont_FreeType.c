@@ -28,7 +28,7 @@ function FNT_Font FNT_FontOpen(Arena* arena, FNT_LoadParams* params)
     FT_Face face = {0};
     if (!error)
     {
-        String data = OSReadFile(scratch, p.path);
+        String data = OS_PathRead(scratch, p.path);
         FT_Open_Args args = { FT_OPEN_MEMORY, data.str, (FT_Long)data.size, };
         if (FT_Open_Face(ft, &args, 0, &face))
             ErrorSet(error, "Failed to load the font: %.*s", StrExpand(p.path));

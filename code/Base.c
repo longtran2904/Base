@@ -3476,58 +3476,6 @@ function void OSClearConsole(i32 handle)
                                                 __VA_ARGS__; \
                                             })
 
-function String OSReadFile(Arena* arena, String path)
-{
-    String result = {0};
-    HANDLE file = 0;
-    W32WidePath(path16, path, file = CreateFileW(path16.str,
-                                                 GENERIC_READ, FILE_SHARE_READ, NULL,
-                                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0));
-    
-    if (W32CheckHandle(file))
-    {
-        result = W32ReadFile(arena, file, (r1u64){0});
-        CloseHandle(file);
-    }
-    
-    return result;
-}
-
-function b32 OSWriteList(String path, StringList* data)
-{
-    b32 result = 0;
-    HANDLE file = 0;
-    W32WidePath(path16, path, file = CreateFileW(path16.str,
-                                                 GENERIC_WRITE, FILE_SHARE_WRITE, NULL,
-                                                 CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0));
-    
-    if (W32CheckHandle(file))
-    {
-        result = 1;
-        StrListIter(data, node)
-        {
-            u8* ptr = node->string.str;
-            u8* opl = ptr + node->string.size;
-            
-            for (; ptr < opl;)
-            {
-                DWORD writeAmount = (u32)ClampTop((u64)(opl - ptr), MAX_U32);
-                DWORD actualWrite = 0;
-                result = WriteFile(file, ptr, writeAmount, &actualWrite, 0);
-                if (!result)
-                    goto END;
-                
-                ptr += actualWrite;
-            }
-        }
-        
-        END:
-        CloseHandle(file);
-    }
-    
-    return result;
-}
-
 function OS_Handle OS_FileOpen(String path, OS_AccessFlags flags, OS_Handle queue)
 {
     OS_Handle result = {0};
@@ -3535,7 +3483,7 @@ function OS_Handle OS_FileOpen(String path, OS_AccessFlags flags, OS_Handle queu
     b32 is_async = OS_HandleIsValid(queue);
     
     if (flags & AccessFlag_Read)    { access |= GENERIC_READ; share |= FILE_SHARE_READ; }
-    if (flags & AccessFlag_Write)   { access |= GENERIC_WRITE;share |= FILE_SHARE_WRITE|FILE_SHARE_DELETE;creation = CREATE_ALWAYS; }
+    if (flags & AccessFlag_Write)   { access |= GENERIC_WRITE;share |= FILE_SHARE_WRITE/*|FILE_SHARE_DELETE*/; creation = CREATE_ALWAYS; }
     if (flags & AccessFlag_Append)  { access |= FILE_APPEND_DATA; creation = OPEN_ALWAYS; }
     if (flags & AccessFlag_Execute) { access |= GENERIC_EXECUTE; }
     if (flags & AccessFlag_NoCache) { attributes |= FILE_FLAG_NO_BUFFERING; }
@@ -3704,6 +3652,40 @@ function b32 OS_FileReadAsync(OS_Handle file, r1u64 rng, void* buffer, void* use
     return result;
 }
 
+function String OS_PathRead(Arena* arena, String path)
+{
+    String data = {0};
+    OS_Handle file = OS_FileOpen(path, AccessFlag_Read, (OS_Handle){0});
+    u64 size = OS_FileProp(file).size;
+    
+    if (size)
+    {
+        TempArena temp = TempBegin(arena);
+        u8* buffer = ArenaPush(arena, size);
+        u64 bytesRead = OS_FileRead(file, R1U64(0, size), buffer);
+        
+        if (bytesRead == size)
+            data = Str(buffer, size);
+        else
+            TempEnd(temp);
+    }
+    
+    if (OS_HandleIsValid(file))
+        OS_FileClose(file);
+    return data;
+}
+
+function b32 OS_PathWrite(String path, String data)
+{
+    b32 result = 0;
+    OS_Handle file = OS_FileOpen(path, AccessFlag_Write, (OS_Handle){0});
+    u64 bytesWritten = OS_FileWrite(file, 0, data);
+    
+    if (OS_HandleIsValid(file))
+        OS_FileClose(file);
+    return bytesWritten == data.size;
+}
+
 internal FilePropertyFlags W32FilePropertyFlagsFromAttributes(DWORD attributes)
 {
     FilePropertyFlags result = 0;
@@ -3724,7 +3706,7 @@ internal DataAccessFlags W32AccessFromAttributes(DWORD attributes)
     return result;
 }
 
-function FileProperties OSFileProperties(String path)
+function FileProperties OS_PathProp(String path)
 {
     FileProperties result = {0};
     WIN32_FILE_ATTRIBUTE_DATA attributes = {0};
@@ -3783,21 +3765,21 @@ function String OSGetCurrDir(Arena* arena)
     return result;
 }
 
-function b32 OSDeleteFile(String path)
+function b32 OS_FileDelete(String path)
 {
     b32 result = 0;
     W32WidePath(path16, path, result = DeleteFileW(path16.str));
     return result;
 }
 
-function b32 OSRenameFile(String oldName, String newName)
+function b32 OS_FileMove(String o, String n)
 {
     b32 result = 0;
     ScratchBlock(scratch)
     {
         // @W32WidePath
-        String16 o16 = Str16FromStr(scratch, oldName);
-        String16 n16 = Str16FromStr(scratch, newName);
+        String16 o16 = Str16FromStr(scratch, o);
+        String16 n16 = Str16FromStr(scratch, n);
         
         // NOTE(long): Can't move a directory across drives
         result = MoveFileW(o16.str, n16.str);
@@ -3805,7 +3787,7 @@ function b32 OSRenameFile(String oldName, String newName)
     return result;
 }
 
-function b32 OSCreateDir(String path)
+function b32 OS_DirCreate(String path)
 {
     b32 result = 0;
     ScratchBlock(scratch)
@@ -3821,7 +3803,7 @@ function b32 OSCreateDir(String path)
     return result;
 }
 
-function b32 OSDeleteDir(String path)
+function b32 OS_DirDelete(String path)
 {
     b32 result = 0;
     W32WidePath(wpath, path, result = RemoveDirectoryW(wpath.str));

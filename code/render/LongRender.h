@@ -6,10 +6,6 @@
 //~ TODO(long):
 // [ ] Add D3D11 backend
 // [ ] Introduce a vtable for all API-specific functions
-// [X] Error when the user try to init or begin the renderer multiple times
-// [X] Shorten all the QuadFlag names
-// [X] Support additional texture formats (currently only R8 is implemented)
-// [X] Query the texture format
 
 //~ long: Render Types
 

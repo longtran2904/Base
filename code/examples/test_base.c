@@ -30,7 +30,7 @@ void IncSnapshot(void)
     snapshot++;
 }
 
-function void TestFloat(f64 f, String str)
+function void TestFloat(LT_Ctx* ctx, f64 f, String str)
 {
     ScratchBlock(scratch)
     {
@@ -40,16 +40,16 @@ function void TestFloat(f64 f, String str)
         
         f64 f1 = atof(str1.str);
         f64 f2 = atof(str2.str);
-        TestResult(f1 == f2 && f1 == f);
+        LT_Check(ctx, f1 == f2 && f1 == f);
         
         f64 f3 = F64FromStr(str1, 0);
         f64 f4 = F64FromStr(str2, 0);
-        TestResult(f3 == f4 && f3 == f);
+        LT_Check(ctx, f3 == f4 && f3 == f);
         
         if (str.size)
         {
             f64 f5 = F64FromStr(str, 0);
-            TestResult(f5 == f);
+            LT_Check(ctx, f5 == f);
         }
     }
 }
@@ -58,6 +58,7 @@ MSVC(WarnDisable(28182 6011 4723))
 int main(void)
 {
     u64 elapsed = OSNowMS();
+    LT_Ctx ctx = {0};
     
     i32 space = Max(sizeof(CURRENT_COMPILER_NAME), Max(sizeof(CURRENT_OS_NAME), sizeof(CURRENT_ARCH_NAME))) - 1;
     Outf(  "------------------------------CONTEXT------------------------------\n");
@@ -67,14 +68,14 @@ int main(void)
     Outf("\n");
     Outf("------------------------------TESTING------------------------------\n");
     
-    TEST("Helper")
+    LT_Block(&ctx, "Helper")
     {
-        TestResult(StrCompare(GetEnumStr(Day, -1), StrLit("Invalid"), 0));
-        TestResult(StrCompare(GetEnumStr(Arch, 0), StrLit("None"), 0));
-        TestResult(StrCompare(GetEnumStr(Arch, Arch_ARM), StrLit("ARM"), 0));
-        TestResult(StrCompare(GetEnumStr(Compiler, CURRENT_COMPILER_NUMBER), StrLit(CURRENT_COMPILER_NAME), 0));
-        TestResult(StrCompare(GetEnumStr(OS,             CURRENT_OS_NUMBER), StrLit(      CURRENT_OS_NAME), 0));
-        TestResult(StrCompare(GetEnumStr(Arch,         CURRENT_ARCH_NUMBER), StrLit(    CURRENT_ARCH_NAME), 0));
+        LT_Check(&ctx, StrCompare(GetEnumStr(Day, -1), StrLit("Invalid"), 0));
+        LT_Check(&ctx, StrCompare(GetEnumStr(Arch, 0), StrLit("None"), 0));
+        LT_Check(&ctx, StrCompare(GetEnumStr(Arch, Arch_ARM), StrLit("ARM"), 0));
+        LT_Check(&ctx, StrCompare(GetEnumStr(Compiler, CURRENT_COMPILER_NUMBER), StrLit(CURRENT_COMPILER_NAME), 0));
+        LT_Check(&ctx, StrCompare(GetEnumStr(OS,             CURRENT_OS_NUMBER), StrLit(      CURRENT_OS_NAME), 0));
+        LT_Check(&ctx, StrCompare(GetEnumStr(Arch,         CURRENT_ARCH_NUMBER), StrLit(    CURRENT_ARCH_NAME), 0));
         
         StaticAssert(ArrayCount(Day_names) == 7);
         StaticAssert(ArrayCount(Month_names) == 12);
@@ -89,8 +90,8 @@ int main(void)
         
         i32 bar[100];
         CopyFixedArr(bar, foo);
-        TestResult(bar[0] == 0 && bar[50] == 50 && bar[99] == 99);
-        TestResult(CmpMem(foo, bar, sizeof(foo)));
+        LT_Check(&ctx, bar[0] == 0 && bar[50] == 50 && bar[99] == 99);
+        LT_Check(&ctx, CmpMem(foo, bar, sizeof(foo)));
         
         typedef struct TestStruct TestStruct;
         struct TestStruct
@@ -104,9 +105,9 @@ int main(void)
         StaticAssert(OffsetOf(TestStruct, d) == 12);
         
         TestStruct t = { 1, 2, 3, 4 };
-        TestResult(t.a == 1 && t.b == 2 && t.c == 3 && t.d == 4);
+        LT_Check(&ctx, t.a == 1 && t.b == 2 && t.c == 3 && t.d == 4);
         ZeroStruct(&t);
-        TestResult(t.a == 0 && t.b == 0 && t.c == 0 && t.d == 0);
+        LT_Check(&ctx, t.a == 0 && t.b == 0 && t.c == 0 && t.d == 0);
         
         StaticAssert(ChrIsUpper('A') == 1);
         StaticAssert(ChrIsUpper('c') == 0);
@@ -126,7 +127,7 @@ int main(void)
         
         i32 a = 10, b = 5;
         Swap(i32, a, b);
-        TestResult(a == 5 && b == 10);
+        LT_Check(&ctx, a == 5 && b == 10);
         
         StaticAssert(Min(  1, 100) ==   1);
         StaticAssert(Min(100,  20) ==  20);
@@ -167,300 +168,300 @@ int main(void)
 #define IsNanF32(x) (InfOrNan_f32(x) && (x) != Inf_f32() && (x) != NegInf_f32())
 #define IsNanF64(x) (InfOrNan_f64(x) && (x) != Inf_f64() && (x) != NegInf_f64())
     
-    TEST("Round F32")
+    LT_Block(&ctx, "Round F32")
     {
         f32 zero_f32 = 0.f;
         
-        TestResult(Trunc_f32(+2.0f) == +2.0f);
-        TestResult(Trunc_f32(+2.3f) == +2.0f);
-        TestResult(Trunc_f32(+2.5f) == +2.0f);
-        TestResult(Trunc_f32(+2.6f) == +2.0f);
-        TestResult(Trunc_f32(-2.0f) == -2.0f);
-        TestResult(Trunc_f32(-2.3f) == -2.0f);
-        TestResult(Trunc_f32(-2.5f) == -2.0f);
-        TestResult(Trunc_f32(-2.6f) == -2.0f);
+        LT_Check(&ctx, Trunc_f32(+2.0f) == +2.0f);
+        LT_Check(&ctx, Trunc_f32(+2.3f) == +2.0f);
+        LT_Check(&ctx, Trunc_f32(+2.5f) == +2.0f);
+        LT_Check(&ctx, Trunc_f32(+2.6f) == +2.0f);
+        LT_Check(&ctx, Trunc_f32(-2.0f) == -2.0f);
+        LT_Check(&ctx, Trunc_f32(-2.3f) == -2.0f);
+        LT_Check(&ctx, Trunc_f32(-2.5f) == -2.0f);
+        LT_Check(&ctx, Trunc_f32(-2.6f) == -2.0f);
         
-        TestResult(Trunc_f32(+1.f/zero_f32) == Inf_f32() && Trunc_f32(-1.f/zero_f32) == NegInf_f32());
-        TestResult(IsNanF32(Trunc_f32(0.f/zero_f32)));
+        LT_Check(&ctx, Trunc_f32(+1.f/zero_f32) == Inf_f32() && Trunc_f32(-1.f/zero_f32) == NegInf_f32());
+        LT_Check(&ctx, IsNanF32(Trunc_f32(0.f/zero_f32)));
         
-        TestResult(Floor_f32(+2.0f) == +2.0f);
-        TestResult(Floor_f32(+2.3f) == +2.0f);
-        TestResult(Floor_f32(+2.5f) == +2.0f);
-        TestResult(Floor_f32(+2.6f) == +2.0f);
-        TestResult(Floor_f32(-2.0f) == -2.0f);
-        TestResult(Floor_f32(-2.3f) == -3.0f);
-        TestResult(Floor_f32(-2.5f) == -3.0f);
-        TestResult(Floor_f32(-2.6f) == -3.0f);
+        LT_Check(&ctx, Floor_f32(+2.0f) == +2.0f);
+        LT_Check(&ctx, Floor_f32(+2.3f) == +2.0f);
+        LT_Check(&ctx, Floor_f32(+2.5f) == +2.0f);
+        LT_Check(&ctx, Floor_f32(+2.6f) == +2.0f);
+        LT_Check(&ctx, Floor_f32(-2.0f) == -2.0f);
+        LT_Check(&ctx, Floor_f32(-2.3f) == -3.0f);
+        LT_Check(&ctx, Floor_f32(-2.5f) == -3.0f);
+        LT_Check(&ctx, Floor_f32(-2.6f) == -3.0f);
         
-        TestResult(Floor_f32(+1.f/zero_f32) == Inf_f32() && Floor_f32(-1.f/zero_f32) == NegInf_f32());
-        TestResult(IsNanF32(Floor_f32(0.f/zero_f32)));
+        LT_Check(&ctx, Floor_f32(+1.f/zero_f32) == Inf_f32() && Floor_f32(-1.f/zero_f32) == NegInf_f32());
+        LT_Check(&ctx, IsNanF32(Floor_f32(0.f/zero_f32)));
         
-        TestResult(Ceil_f32(+2.0f) == +2.0f);
-        TestResult(Ceil_f32(+2.3f) == +3.0f);
-        TestResult(Ceil_f32(+2.5f) == +3.0f);
-        TestResult(Ceil_f32(+2.6f) == +3.0f);
-        TestResult(Ceil_f32(-2.0f) == -2.0f);
-        TestResult(Ceil_f32(-2.3f) == -2.0f);
-        TestResult(Ceil_f32(-2.5f) == -2.0f);
-        TestResult(Ceil_f32(-2.6f) == -2.0f);
+        LT_Check(&ctx, Ceil_f32(+2.0f) == +2.0f);
+        LT_Check(&ctx, Ceil_f32(+2.3f) == +3.0f);
+        LT_Check(&ctx, Ceil_f32(+2.5f) == +3.0f);
+        LT_Check(&ctx, Ceil_f32(+2.6f) == +3.0f);
+        LT_Check(&ctx, Ceil_f32(-2.0f) == -2.0f);
+        LT_Check(&ctx, Ceil_f32(-2.3f) == -2.0f);
+        LT_Check(&ctx, Ceil_f32(-2.5f) == -2.0f);
+        LT_Check(&ctx, Ceil_f32(-2.6f) == -2.0f);
         
-        TestResult(Ceil_f32(+1.f/zero_f32) == Inf_f32() && Ceil_f32(-1.f/zero_f32) == NegInf_f32());
-        TestResult(IsNanF32(Ceil_f32(0.f/zero_f32)));
+        LT_Check(&ctx, Ceil_f32(+1.f/zero_f32) == Inf_f32() && Ceil_f32(-1.f/zero_f32) == NegInf_f32());
+        LT_Check(&ctx, IsNanF32(Ceil_f32(0.f/zero_f32)));
         
-        TestResult(Round_f32(+2.0f) == +2.0f);
-        TestResult(Round_f32(+2.3f) == +2.0f);
-        TestResult(Round_f32(+2.5f) == +2.0f);
-        TestResult(Round_f32(-2.0f) == -2.0f);
-        TestResult(Round_f32(-2.3f) == -2.0f);
-        TestResult(Round_f32(-2.5f) == -2.0f);
-        TestResult(Round_f32(+2.6f) == +3.0f);
-        TestResult(Round_f32(-2.6f) == -3.0f);
+        LT_Check(&ctx, Round_f32(+2.0f) == +2.0f);
+        LT_Check(&ctx, Round_f32(+2.3f) == +2.0f);
+        LT_Check(&ctx, Round_f32(+2.5f) == +2.0f);
+        LT_Check(&ctx, Round_f32(-2.0f) == -2.0f);
+        LT_Check(&ctx, Round_f32(-2.3f) == -2.0f);
+        LT_Check(&ctx, Round_f32(-2.5f) == -2.0f);
+        LT_Check(&ctx, Round_f32(+2.6f) == +3.0f);
+        LT_Check(&ctx, Round_f32(-2.6f) == -3.0f);
         
-        TestResult(Round_f32(+1.f/zero_f32) == Inf_f32() && Round_f32(-1.f/zero_f32) == NegInf_f32());
-        TestResult(IsNanF32(Round_f32(0.f/zero_f32)));
+        LT_Check(&ctx, Round_f32(+1.f/zero_f32) == Inf_f32() && Round_f32(-1.f/zero_f32) == NegInf_f32());
+        LT_Check(&ctx, IsNanF32(Round_f32(0.f/zero_f32)));
     }
     
-    TEST("Round F64")
+    LT_Block(&ctx, "Round F64")
     {
         f64 zero_f64 = 0.;
         
-        TestResult(Trunc_f64(+2.0) == +2.0);
-        TestResult(Trunc_f64(+2.3) == +2.0);
-        TestResult(Trunc_f64(+2.5) == +2.0);
-        TestResult(Trunc_f64(+2.6) == +2.0);
-        TestResult(Trunc_f64(-2.0) == -2.0);
-        TestResult(Trunc_f64(-2.3) == -2.0);
-        TestResult(Trunc_f64(-2.5) == -2.0);
-        TestResult(Trunc_f64(-2.6) == -2.0);
+        LT_Check(&ctx, Trunc_f64(+2.0) == +2.0);
+        LT_Check(&ctx, Trunc_f64(+2.3) == +2.0);
+        LT_Check(&ctx, Trunc_f64(+2.5) == +2.0);
+        LT_Check(&ctx, Trunc_f64(+2.6) == +2.0);
+        LT_Check(&ctx, Trunc_f64(-2.0) == -2.0);
+        LT_Check(&ctx, Trunc_f64(-2.3) == -2.0);
+        LT_Check(&ctx, Trunc_f64(-2.5) == -2.0);
+        LT_Check(&ctx, Trunc_f64(-2.6) == -2.0);
         
-        TestResult(Trunc_f64(+1./zero_f64) == Inf_f64() && Trunc_f64(-1./zero_f64) == NegInf_f64());
-        TestResult(IsNanF64(Trunc_f64(0./zero_f64)));
+        LT_Check(&ctx, Trunc_f64(+1./zero_f64) == Inf_f64() && Trunc_f64(-1./zero_f64) == NegInf_f64());
+        LT_Check(&ctx, IsNanF64(Trunc_f64(0./zero_f64)));
         
-        TestResult(Floor_f64(+2.0) == +2.0);
-        TestResult(Floor_f64(+2.3) == +2.0);
-        TestResult(Floor_f64(+2.5) == +2.0);
-        TestResult(Floor_f64(+2.6) == +2.0);
-        TestResult(Floor_f64(-2.0) == -2.0);
-        TestResult(Floor_f64(-2.3) == -3.0);
-        TestResult(Floor_f64(-2.5) == -3.0);
-        TestResult(Floor_f64(-2.6) == -3.0);
+        LT_Check(&ctx, Floor_f64(+2.0) == +2.0);
+        LT_Check(&ctx, Floor_f64(+2.3) == +2.0);
+        LT_Check(&ctx, Floor_f64(+2.5) == +2.0);
+        LT_Check(&ctx, Floor_f64(+2.6) == +2.0);
+        LT_Check(&ctx, Floor_f64(-2.0) == -2.0);
+        LT_Check(&ctx, Floor_f64(-2.3) == -3.0);
+        LT_Check(&ctx, Floor_f64(-2.5) == -3.0);
+        LT_Check(&ctx, Floor_f64(-2.6) == -3.0);
         
-        TestResult(Floor_f64(+1./zero_f64) == Inf_f64() && Floor_f64(-1./zero_f64) == NegInf_f64());
-        TestResult(IsNanF64(Floor_f64(0./zero_f64)));
+        LT_Check(&ctx, Floor_f64(+1./zero_f64) == Inf_f64() && Floor_f64(-1./zero_f64) == NegInf_f64());
+        LT_Check(&ctx, IsNanF64(Floor_f64(0./zero_f64)));
         
-        TestResult(Ceil_f64(+2.0) == +2.0);
-        TestResult(Ceil_f64(+2.3) == +3.0);
-        TestResult(Ceil_f64(+2.5) == +3.0);
-        TestResult(Ceil_f64(+2.6) == +3.0);
-        TestResult(Ceil_f64(-2.0) == -2.0);
-        TestResult(Ceil_f64(-2.3) == -2.0);
-        TestResult(Ceil_f64(-2.5) == -2.0);
-        TestResult(Ceil_f64(-2.6) == -2.0);
+        LT_Check(&ctx, Ceil_f64(+2.0) == +2.0);
+        LT_Check(&ctx, Ceil_f64(+2.3) == +3.0);
+        LT_Check(&ctx, Ceil_f64(+2.5) == +3.0);
+        LT_Check(&ctx, Ceil_f64(+2.6) == +3.0);
+        LT_Check(&ctx, Ceil_f64(-2.0) == -2.0);
+        LT_Check(&ctx, Ceil_f64(-2.3) == -2.0);
+        LT_Check(&ctx, Ceil_f64(-2.5) == -2.0);
+        LT_Check(&ctx, Ceil_f64(-2.6) == -2.0);
         
-        TestResult(Ceil_f64(+1./zero_f64) == Inf_f64() && Ceil_f64(-1./zero_f64) == NegInf_f64());
-        TestResult(IsNanF64(Ceil_f64(0./zero_f64)));
+        LT_Check(&ctx, Ceil_f64(+1./zero_f64) == Inf_f64() && Ceil_f64(-1./zero_f64) == NegInf_f64());
+        LT_Check(&ctx, IsNanF64(Ceil_f64(0./zero_f64)));
         
-        TestResult(Round_f64(+2.0) == +2.0);
-        TestResult(Round_f64(+2.3) == +2.0);
-        TestResult(Round_f64(+2.5) == +2.0);
-        TestResult(Round_f64(-2.0) == -2.0);
-        TestResult(Round_f64(-2.3) == -2.0);
-        TestResult(Round_f64(-2.5) == -2.0);
-        TestResult(Round_f64(+2.6) == +3.0);
-        TestResult(Round_f64(-2.6) == -3.0);
+        LT_Check(&ctx, Round_f64(+2.0) == +2.0);
+        LT_Check(&ctx, Round_f64(+2.3) == +2.0);
+        LT_Check(&ctx, Round_f64(+2.5) == +2.0);
+        LT_Check(&ctx, Round_f64(-2.0) == -2.0);
+        LT_Check(&ctx, Round_f64(-2.3) == -2.0);
+        LT_Check(&ctx, Round_f64(-2.5) == -2.0);
+        LT_Check(&ctx, Round_f64(+2.6) == +3.0);
+        LT_Check(&ctx, Round_f64(-2.6) == -3.0);
         
-        TestResult(Round_f64(+1./zero_f64) == Inf_f64() && Round_f64(-1./zero_f64) == NegInf_f64());
-        TestResult(IsNanF64(Round_f64(0./zero_f64)));
+        LT_Check(&ctx, Round_f64(+1./zero_f64) == Inf_f64() && Round_f64(-1./zero_f64) == NegInf_f64());
+        LT_Check(&ctx, IsNanF64(Round_f64(0./zero_f64)));
     }
     
-    TEST("Trigonometric F32")
+    LT_Block(&ctx, "Trigonometric F32")
     {
         f32 debug = 0;
         f32 epsilon = 0.0000009f;
         
-        TestResult(        (debug = Sin_f32(0.0f        )) == 0.0f);
-        TestResult(Abs_f32((debug = Sin_f32(+PI_F32/2.0f)) - +1.0f) < epsilon);
-        TestResult(Abs_f32((debug = Sin_f32(+PI_F32     )) -  0.0f) < epsilon);
-        TestResult(Abs_f32((debug = Sin_f32(+PI_F32*1.5f)) - -1.0f) < epsilon);
-        TestResult(Abs_f32((debug = Sin_f32(+PI_F32/6.0f)) - +0.5f) < epsilon);
-        TestResult(Abs_f32((debug = Sin_f32(-PI_F32/2.0f)) - -1.0f) < epsilon);
-        TestResult(Abs_f32((debug = Sin_f32(-PI_F32     )) -  0.0f) < epsilon);
-        TestResult(Abs_f32((debug = Sin_f32(-PI_F32*1.5f)) - +1.0f) < epsilon);
-        TestResult(Abs_f32((debug = Sin_f32(-PI_F32/6.0f)) - -0.5f) < epsilon);
+        LT_Check(&ctx,         (debug = Sin_f32(0.0f        )) == 0.0f);
+        LT_Check(&ctx, Abs_f32((debug = Sin_f32(+PI_F32/2.0f)) - +1.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Sin_f32(+PI_F32     )) -  0.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Sin_f32(+PI_F32*1.5f)) - -1.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Sin_f32(+PI_F32/6.0f)) - +0.5f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Sin_f32(-PI_F32/2.0f)) - -1.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Sin_f32(-PI_F32     )) -  0.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Sin_f32(-PI_F32*1.5f)) - +1.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Sin_f32(-PI_F32/6.0f)) - -0.5f) < epsilon);
         
-        TestResult(        (debug = Cos_f32(0.0f        )) == 1.0f);
-        TestResult(Abs_f32((debug = Cos_f32(+PI_F32/2.0f)) -  0.0f) < epsilon);
-        TestResult(Abs_f32((debug = Cos_f32(+PI_F32     )) - -1.0f) < epsilon);
-        TestResult(Abs_f32((debug = Cos_f32(+PI_F32*1.5f)) -  0.0f) < epsilon);
-        TestResult(Abs_f32((debug = Cos_f32(+PI_F32/3.0f)) - +0.5f) < epsilon);
-        TestResult(Abs_f32((debug = Cos_f32(-PI_F32/2.0f)) -  0.0f) < epsilon);
-        TestResult(Abs_f32((debug = Cos_f32(-PI_F32     )) - -1.0f) < epsilon);
-        TestResult(Abs_f32((debug = Cos_f32(-PI_F32*1.5f)) -  0.0f) < epsilon);
-        TestResult(Abs_f32((debug = Cos_f32(-PI_F32/3.0f)) - +0.5f) < epsilon);
+        LT_Check(&ctx,         (debug = Cos_f32(0.0f        )) == 1.0f);
+        LT_Check(&ctx, Abs_f32((debug = Cos_f32(+PI_F32/2.0f)) -  0.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Cos_f32(+PI_F32     )) - -1.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Cos_f32(+PI_F32*1.5f)) -  0.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Cos_f32(+PI_F32/3.0f)) - +0.5f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Cos_f32(-PI_F32/2.0f)) -  0.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Cos_f32(-PI_F32     )) - -1.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Cos_f32(-PI_F32*1.5f)) -  0.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Cos_f32(-PI_F32/3.0f)) - +0.5f) < epsilon);
         
-        TestResult(        (debug = Tan_f32(0.0f            )) == 0.0f);
-        TestResult(Abs_f32((debug = Tan_f32(PI_F32          )) -  0.0f) < epsilon);
-        TestResult(Abs_f32((debug = Tan_f32(PI_F32*1.0f/4.0f)) - +1.0f) < epsilon);
-        TestResult(Abs_f32((debug = Tan_f32(PI_F32*3.0f/4.0f)) - -1.0f) < epsilon);
-        TestResult(Abs_f32((debug = Tan_f32(PI_F32*5.0f/4.0f)) - +1.0f) < epsilon);
-        TestResult(Abs_f32((debug = Tan_f32(PI_F32*7.0f/4.0f)) - -1.0f) < epsilon);
+        LT_Check(&ctx,         (debug = Tan_f32(0.0f            )) == 0.0f);
+        LT_Check(&ctx, Abs_f32((debug = Tan_f32(PI_F32          )) -  0.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Tan_f32(PI_F32*1.0f/4.0f)) - +1.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Tan_f32(PI_F32*3.0f/4.0f)) - -1.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Tan_f32(PI_F32*5.0f/4.0f)) - +1.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Tan_f32(PI_F32*7.0f/4.0f)) - -1.0f) < epsilon);
         
-        TestResult(        (debug = Atan_f32( 0.0f)) == 0.0f);
-        TestResult(Abs_f32((debug = Atan_f32(+1.0f)) - +PI_F32*1.0f/4.0f) < epsilon);
-        TestResult(Abs_f32((debug = Atan_f32(-1.0f)) - -PI_F32*1.0f/4.0f) < epsilon);
+        LT_Check(&ctx,         (debug = Atan_f32( 0.0f)) == 0.0f);
+        LT_Check(&ctx, Abs_f32((debug = Atan_f32(+1.0f)) - +PI_F32*1.0f/4.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Atan_f32(-1.0f)) - -PI_F32*1.0f/4.0f) < epsilon);
         
-        TestResult(Abs_f32((debug = Atan2_f32(+1.0f, +1.0f)) - +PI_F32*1.0f/4.0f) < epsilon);
-        TestResult(Abs_f32((debug = Atan2_f32(+1.0f, -1.0f)) - +PI_F32*3.0f/4.0f) < epsilon);
-        TestResult(Abs_f32((debug = Atan2_f32(-1.0f, -1.0f)) - -PI_F32*3.0f/4.0f) < epsilon);
-        TestResult(Abs_f32((debug = Atan2_f32(-1.0f, +1.0f)) - -PI_F32*1.0f/4.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Atan2_f32(+1.0f, +1.0f)) - +PI_F32*1.0f/4.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Atan2_f32(+1.0f, -1.0f)) - +PI_F32*3.0f/4.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Atan2_f32(-1.0f, -1.0f)) - -PI_F32*3.0f/4.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Atan2_f32(-1.0f, +1.0f)) - -PI_F32*1.0f/4.0f) < epsilon);
         
-        TestResult(Abs_f32((debug = Atan2_f32(+0.0f, +0.0f)) - 0.0f) < epsilon);
-        TestResult(Abs_f32((debug = Atan2_f32(+0.0f, -0.0f)) - PI_F32) < epsilon);
-        TestResult(Abs_f32((debug = Atan2_f32(+7.0f, +0.0f)) - PI_F32/2.0f) < epsilon);
-        TestResult(Abs_f32((debug = Atan2_f32(+7.0f, -0.0f)) - PI_F32/2.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Atan2_f32(+0.0f, +0.0f)) - 0.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Atan2_f32(+0.0f, -0.0f)) - PI_F32) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Atan2_f32(+7.0f, +0.0f)) - PI_F32/2.0f) < epsilon);
+        LT_Check(&ctx, Abs_f32((debug = Atan2_f32(+7.0f, -0.0f)) - PI_F32/2.0f) < epsilon);
     }
     
-    TEST("Trigonometric F64")
+    LT_Block(&ctx, "Trigonometric F64")
     {
         f64 debug = 0;
         f64 epsilon = 0.0000009;
         
-        TestResult(        (debug = Sin_f64(0.0        )) == 0.0);
-        TestResult(Abs_f64((debug = Sin_f64(+PI_F64/2.0)) - +1.0) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(+PI_F64     )) - 0.0) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(+PI_F64*1.5)) - -1.0) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(+PI_F64/6.0)) - +0.5) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(-PI_F64/2.0)) - -1.0) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(-PI_F64     )) - 0.0) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(-PI_F64*1.5)) - +1.0) < epsilon);
-        TestResult(Abs_f64((debug = Sin_f64(-PI_F64/6.0)) - -0.5) < epsilon);
+        LT_Check(&ctx,         (debug = Sin_f64(0.0        )) == 0.0);
+        LT_Check(&ctx, Abs_f64((debug = Sin_f64(+PI_F64/2.0)) - +1.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Sin_f64(+PI_F64     )) - 0.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Sin_f64(+PI_F64*1.5)) - -1.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Sin_f64(+PI_F64/6.0)) - +0.5) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Sin_f64(-PI_F64/2.0)) - -1.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Sin_f64(-PI_F64     )) - 0.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Sin_f64(-PI_F64*1.5)) - +1.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Sin_f64(-PI_F64/6.0)) - -0.5) < epsilon);
         
-        TestResult(        (debug = Cos_f64(0.0        )) == 1.0);
-        TestResult(Abs_f64((debug = Cos_f64(+PI_F64/2.0)) -  0.0) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(+PI_F64     ))- -1.0) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(+PI_F64*1.5)) -  0.0) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(+PI_F64/3.0)) - +0.5) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(-PI_F64/2.0)) -  0.0) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(-PI_F64     ))- -1.0) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(-PI_F64*1.5)) -  0.0) < epsilon);
-        TestResult(Abs_f64((debug = Cos_f64(-PI_F64/3.0)) - +0.5) < epsilon);
+        LT_Check(&ctx,         (debug = Cos_f64(0.0        )) == 1.0);
+        LT_Check(&ctx, Abs_f64((debug = Cos_f64(+PI_F64/2.0)) -  0.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Cos_f64(+PI_F64     ))- -1.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Cos_f64(+PI_F64*1.5)) -  0.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Cos_f64(+PI_F64/3.0)) - +0.5) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Cos_f64(-PI_F64/2.0)) -  0.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Cos_f64(-PI_F64     ))- -1.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Cos_f64(-PI_F64*1.5)) -  0.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Cos_f64(-PI_F64/3.0)) - +0.5) < epsilon);
         
-        TestResult(        (debug = Tan_f64(0.0            )) == 0.0);
-        TestResult(Abs_f64((debug = Tan_f64(PI_F64          )) -  0.0) < epsilon);
-        TestResult(Abs_f64((debug = Tan_f64(PI_F64*1.0/4.0)) - +1.0) < epsilon);
-        TestResult(Abs_f64((debug = Tan_f64(PI_F64*3.0/4.0)) - -1.0) < epsilon);
-        TestResult(Abs_f64((debug = Tan_f64(PI_F64*5.0/4.0)) - +1.0) < epsilon);
-        TestResult(Abs_f64((debug = Tan_f64(PI_F64*7.0/4.0)) - -1.0) < epsilon);
+        LT_Check(&ctx,         (debug = Tan_f64(0.0            )) == 0.0);
+        LT_Check(&ctx, Abs_f64((debug = Tan_f64(PI_F64          )) -  0.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Tan_f64(PI_F64*1.0/4.0)) - +1.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Tan_f64(PI_F64*3.0/4.0)) - -1.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Tan_f64(PI_F64*5.0/4.0)) - +1.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Tan_f64(PI_F64*7.0/4.0)) - -1.0) < epsilon);
         
-        TestResult(        (debug = Atan_f64( 0.0)) == 0.0);
-        TestResult(Abs_f64((debug = Atan_f64(+1.0)) - +PI_F64*1.0/4.0) < epsilon);
-        TestResult(Abs_f64((debug = Atan_f64(-1.0)) - -PI_F64*1.0/4.0) < epsilon);
+        LT_Check(&ctx,         (debug = Atan_f64( 0.0)) == 0.0);
+        LT_Check(&ctx, Abs_f64((debug = Atan_f64(+1.0)) - +PI_F64*1.0/4.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Atan_f64(-1.0)) - -PI_F64*1.0/4.0) < epsilon);
         
-        TestResult(Abs_f64((debug = Atan2_f64(+1.0, +1.0)) - +PI_F64*1.0/4.0) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(+1.0, -1.0)) - +PI_F64*3.0/4.0) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(-1.0, -1.0)) - -PI_F64*3.0/4.0) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(-1.0, +1.0)) - -PI_F64*1.0/4.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Atan2_f64(+1.0, +1.0)) - +PI_F64*1.0/4.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Atan2_f64(+1.0, -1.0)) - +PI_F64*3.0/4.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Atan2_f64(-1.0, -1.0)) - -PI_F64*3.0/4.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Atan2_f64(-1.0, +1.0)) - -PI_F64*1.0/4.0) < epsilon);
         
-        TestResult(Abs_f64((debug = Atan2_f64(+0.0, +0.0)) - 0.0) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(+0.0, -0.0)) - PI_F64) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(+7.0, +0.0)) - PI_F64/2.0) < epsilon);
-        TestResult(Abs_f64((debug = Atan2_f64(+7.0, -0.0)) - PI_F64/2.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Atan2_f64(+0.0, +0.0)) - 0.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Atan2_f64(+0.0, -0.0)) - PI_F64) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Atan2_f64(+7.0, +0.0)) - PI_F64/2.0) < epsilon);
+        LT_Check(&ctx, Abs_f64((debug = Atan2_f64(+7.0, -0.0)) - PI_F64/2.0) < epsilon);
     }
     
-    TEST("Numeric F32")
+    LT_Block(&ctx, "Numeric F32")
     {
-        TestResult(AbsI32(-3506708) == 3506708);
-        TestResult(Inf_f32() == -NegInf_f32());
-        TestResult(Abs_f32(-2.5f) == 2.5f);
-        TestResult(Abs_f32(-Inf_f32()) == Inf_f32());
+        LT_Check(&ctx, AbsI32(-3506708) == 3506708);
+        LT_Check(&ctx, Inf_f32() == -NegInf_f32());
+        LT_Check(&ctx, Abs_f32(-2.5f) == 2.5f);
+        LT_Check(&ctx, Abs_f32(-Inf_f32()) == Inf_f32());
         
-        TestResult(Sqrt_f32( +4.0f) ==  2.f);
-        TestResult(Sqrt_f32(1369.f) == 37.f);
-        TestResult(Sqrt_f32( +.25f) ==  .5f);
-        TestResult(Sqrt_f32( +2.0f) ==  1.4142135f);
-        TestResult(IsNanF32(Sqrt_f32( -1.0f)));
+        LT_Check(&ctx, Sqrt_f32( +4.0f) ==  2.f);
+        LT_Check(&ctx, Sqrt_f32(1369.f) == 37.f);
+        LT_Check(&ctx, Sqrt_f32( +.25f) ==  .5f);
+        LT_Check(&ctx, Sqrt_f32( +2.0f) ==  1.4142135f);
+        LT_Check(&ctx, IsNanF32(Sqrt_f32( -1.0f)));
         
         f32 epsilon = 0.0005f;
         f32 debug = 0;
         
-        TestResult((debug = Abs_f32(RSqrt_f32( +4.0f) - 1.f /  2.f)) <= epsilon);
-        TestResult((debug = Abs_f32(RSqrt_f32(1369.f) - 1.f / 37.f)) <= epsilon);
-        TestResult((debug = Abs_f32(RSqrt_f32( +.25f) - 1.f /  .5f)) <= epsilon);
-        TestResult(IsNanF32(RSqrt_f32( -1.0f)));
+        LT_Check(&ctx, (debug = Abs_f32(RSqrt_f32( +4.0f) - 1.f /  2.f)) <= epsilon);
+        LT_Check(&ctx, (debug = Abs_f32(RSqrt_f32(1369.f) - 1.f / 37.f)) <= epsilon);
+        LT_Check(&ctx, (debug = Abs_f32(RSqrt_f32( +.25f) - 1.f /  .5f)) <= epsilon);
+        LT_Check(&ctx, IsNanF32(RSqrt_f32( -1.0f)));
         
-        TestResult((debug = Abs_f32(Ln_f32(E_F32) - 1.0f)) <= epsilon);
-        TestResult((debug = Abs_f32(Ln_f32(+2.0f) - .69314718f)) <= epsilon);
-        TestResult(IsNanF32(Ln_f32(-1.0f)));
+        LT_Check(&ctx, (debug = Abs_f32(Ln_f32(E_F32) - 1.0f)) <= epsilon);
+        LT_Check(&ctx, (debug = Abs_f32(Ln_f32(+2.0f) - .69314718f)) <= epsilon);
+        LT_Check(&ctx, IsNanF32(Ln_f32(-1.0f)));
         
-        TestResult(Pow_f32(10.f,  9.0f) == (f32)GB(1));
-        TestResult(Pow_f32(2.0f, 12.0f) == (f32)KiB(4));
-        TestResult(Pow_f32(2.0f, -1.0f) == 0.5f);
-        TestResult(Pow_f32(0.0f, 10.0f) == 0.0f);
-        TestResult(Pow_f32(1.0f, 10.0f) == 1.0f);
-        TestResult(Pow_f32(3.0f,  0.0f) == 1.0f);
-        TestResult(Pow_f32(0.0f,  0.0f) == 1.0f);
+        LT_Check(&ctx, Pow_f32(10.f,  9.0f) == (f32)GB(1));
+        LT_Check(&ctx, Pow_f32(2.0f, 12.0f) == (f32)KiB(4));
+        LT_Check(&ctx, Pow_f32(2.0f, -1.0f) == 0.5f);
+        LT_Check(&ctx, Pow_f32(0.0f, 10.0f) == 0.0f);
+        LT_Check(&ctx, Pow_f32(1.0f, 10.0f) == 1.0f);
+        LT_Check(&ctx, Pow_f32(3.0f,  0.0f) == 1.0f);
+        LT_Check(&ctx, Pow_f32(0.0f,  0.0f) == 1.0f);
         
         i32 exp = 0;
-        TestResult(FrExp_f32(8.0f, &exp) == 0.5f && exp == +4);
-        TestResult(FrExp_f32(-.5f, &exp) == -.5f && exp ==  0);
-        TestResult(FrExp_f32(1.0f, &exp) == 0.5f && exp == +1);
-        TestResult(FrExp_f32(.25f, &exp) == 0.5f && exp == -1);
-        TestResult(FrExp_f32(0x1p23f, &exp) == 0.5f && exp == 24);
+        LT_Check(&ctx, FrExp_f32(8.0f, &exp) == 0.5f && exp == +4);
+        LT_Check(&ctx, FrExp_f32(-.5f, &exp) == -.5f && exp ==  0);
+        LT_Check(&ctx, FrExp_f32(1.0f, &exp) == 0.5f && exp == +1);
+        LT_Check(&ctx, FrExp_f32(.25f, &exp) == 0.5f && exp == -1);
+        LT_Check(&ctx, FrExp_f32(0x1p23f, &exp) == 0.5f && exp == 24);
     }
     
-    TEST("Numeric F64")
+    LT_Block(&ctx, "Numeric F64")
     {
-        TestResult(AbsI64(MIN_I64 + MAX_I32) == 9223372034707292161);
-        TestResult(Inf_f64() == -NegInf_f64());
-        TestResult(Abs_f64(-357.39460) == 357.39460);
-        TestResult(Abs_f64(NegInf_f64()) == Inf_f64());
+        LT_Check(&ctx, AbsI64(MIN_I64 + MAX_I32) == 9223372034707292161);
+        LT_Check(&ctx, Inf_f64() == -NegInf_f64());
+        LT_Check(&ctx, Abs_f64(-357.39460) == 357.39460);
+        LT_Check(&ctx, Abs_f64(NegInf_f64()) == Inf_f64());
         
-        TestResult(Sqrt_f64( +4.0) ==  2.);
-        TestResult(Sqrt_f64(1369.) == 37.);
-        TestResult(Sqrt_f64( +.25) ==  .5);
-        TestResult(Sqrt_f64( +2.0) ==  1.41421356237309504);
-        TestResult(IsNanF64(Sqrt_f64( -1.0)));
+        LT_Check(&ctx, Sqrt_f64( +4.0) ==  2.);
+        LT_Check(&ctx, Sqrt_f64(1369.) == 37.);
+        LT_Check(&ctx, Sqrt_f64( +.25) ==  .5);
+        LT_Check(&ctx, Sqrt_f64( +2.0) ==  1.41421356237309504);
+        LT_Check(&ctx, IsNanF64(Sqrt_f64( -1.0)));
         
         f64 epsilon = 0.0005;
         f64 debug = 0;
         
-        TestResult((debug = Abs_f64(Ln_f64(E_F64) - 1.0)) <= epsilon);
-        TestResult((debug = Abs_f64(Ln_f64( +2.0) - .69314718)) <= epsilon);
-        TestResult(IsNanF64(Ln_f64(-1.0)));
+        LT_Check(&ctx, (debug = Abs_f64(Ln_f64(E_F64) - 1.0)) <= epsilon);
+        LT_Check(&ctx, (debug = Abs_f64(Ln_f64( +2.0) - .69314718)) <= epsilon);
+        LT_Check(&ctx, IsNanF64(Ln_f64(-1.0)));
         
-        TestResult(Pow_f64(10.,  9.0) == (f64)GB(1));
-        TestResult(Pow_f64(2.0, 12.0) == (f64)KiB(4));
-        TestResult(Pow_f64(2.0, -1.0) == 0.5);
-        TestResult(Pow_f64(0.0, 10.0) == 0.0);
-        TestResult(Pow_f64(1.0, 10.0) == 1.0);
-        TestResult(Pow_f64(3.0,  0.0) == 1.0);
-        TestResult(Pow_f64(0.0,  0.0) == 1.0);
+        LT_Check(&ctx, Pow_f64(10.,  9.0) == (f64)GB(1));
+        LT_Check(&ctx, Pow_f64(2.0, 12.0) == (f64)KiB(4));
+        LT_Check(&ctx, Pow_f64(2.0, -1.0) == 0.5);
+        LT_Check(&ctx, Pow_f64(0.0, 10.0) == 0.0);
+        LT_Check(&ctx, Pow_f64(1.0, 10.0) == 1.0);
+        LT_Check(&ctx, Pow_f64(3.0,  0.0) == 1.0);
+        LT_Check(&ctx, Pow_f64(0.0,  0.0) == 1.0);
         
         i32 exp = 0;
-        TestResult(FrExp_f64(8.0, &exp) == 0.5 && exp == +4);
-        TestResult(FrExp_f64(-.5, &exp) == -.5 && exp ==  0);
-        TestResult(FrExp_f64(1.0, &exp) == 0.5 && exp == +1);
-        TestResult(FrExp_f64(.25, &exp) == 0.5 && exp == -1);
-        TestResult(FrExp_f64(0x1p23, &exp) == 0.5 && exp == 24);
+        LT_Check(&ctx, FrExp_f64(8.0, &exp) == 0.5 && exp == +4);
+        LT_Check(&ctx, FrExp_f64(-.5, &exp) == -.5 && exp ==  0);
+        LT_Check(&ctx, FrExp_f64(1.0, &exp) == 0.5 && exp == +1);
+        LT_Check(&ctx, FrExp_f64(.25, &exp) == 0.5 && exp == -1);
+        LT_Check(&ctx, FrExp_f64(0x1p23, &exp) == 0.5 && exp == 24);
     }
     
     Arena* arena = ArenaMake();
     
-    TEST("String")
+    LT_Block(&ctx, "String")
     {
         String str = StrLit("Here's a simple test!");
-        TestResult(ChrCompare('m', 'M', 1));
-        TestResult(ChrCompareArr('M', str, 1));
-        TestResult(ChrCompareArr('M', str, 0) == 0);
-        TestResult(StrCompare(str, StrLit("Here's a simple test!"), 0));
-        TestResult(StrCompare(str, StrLit("here's a simple tesT!"), 1));
-        TestResult(StrContainsChr(str, "!sa"));
+        LT_Check(&ctx, ChrCompare('m', 'M', 1));
+        LT_Check(&ctx, ChrCompareArr('M', str, 1));
+        LT_Check(&ctx, ChrCompareArr('M', str, 0) == 0);
+        LT_Check(&ctx, StrCompare(str, StrLit("Here's a simple test!"), 0));
+        LT_Check(&ctx, StrCompare(str, StrLit("here's a simple tesT!"), 1));
+        LT_Check(&ctx, StrContainsChr(str, "!sa"));
         
-        TestResult(StrCompare( StrPrefix(str, str.size / 2), StrLit( "Here's a s"), 0));
-        TestResult(StrCompare(   StrSkip(str, str.size / 2), StrLit("imple test!"), 0));
-        TestResult(StrCompare(   StrChop(str, 5), StrLit("Here's a simple "), 0));
-        TestResult(StrCompare(StrPostfix(str, 2), StrLit("t!"), 0));
-        TestResult(StrCompare( Substr(str, 2, 8), StrLit("re's a"), 0));
+        LT_Check(&ctx, StrCompare( StrPrefix(str, str.size / 2), StrLit( "Here's a s"), 0));
+        LT_Check(&ctx, StrCompare(   StrSkip(str, str.size / 2), StrLit("imple test!"), 0));
+        LT_Check(&ctx, StrCompare(   StrChop(str, 5), StrLit("Here's a simple "), 0));
+        LT_Check(&ctx, StrCompare(StrPostfix(str, 2), StrLit("t!"), 0));
+        LT_Check(&ctx, StrCompare( Substr(str, 2, 8), StrLit("re's a"), 0));
         
         {
             StringList list = StrSplitArr(arena, str, StrLit(" '"), 0);
@@ -468,20 +469,20 @@ int main(void)
             StrListIter(&list, node)
             {
                 if (node->next)
-                    TestResult(!StrContainsChr(node->string, " '"));
+                    LT_Check(&ctx, !StrContainsChr(node->string, " '"));
                 else
-                    TestResult(StrCompare(node->string, StrLit("Insert string"), 0));
+                    LT_Check(&ctx, StrCompare(node->string, StrLit("Insert string"), 0));
             }
             
-            TestResult(StrCompare(SubstrSplit(str, list.first->next->next->next->string).pre, StrLit("Here's a "), 0));
-            TestResult(StrCompare(SubstrSplit(str, list.first->next->next->string).post, StrLit(" simple test!"), 0));
+            LT_Check(&ctx, StrCompare(SubstrSplit(str, list.first->next->next->next->string).pre, StrLit("Here's a "), 0));
+            LT_Check(&ctx, StrCompare(SubstrSplit(str, list.first->next->next->string).post, StrLit(" simple test!"), 0));
             
             String newStr = StrJoin(arena, &list, .pre = StrLit("a"), .mid = StrLit("mc"), .post = StrLit(" mm "));
-            TestResult(StrCompare(newStr, StrLit("aHeremcsmcamcsimplemctest!mcInsert string mm "), 0));
+            LT_Check(&ctx, StrCompare(newStr, StrLit("aHeremcsmcamcsimplemctest!mcInsert string mm "), 0));
             
             String word = StrLit("Word");
             String data = StrPushf(arena, "%.*s %.*s!\nThe date is %d", StrExpand(StrLit("Hello")), StrExpand(word), 25);
-            TestResult(StrCompare(data, StrLit("Hello Word!\nThe date is 25"), 0));
+            LT_Check(&ctx, StrCompare(data, StrLit("Hello Word!\nThe date is 25"), 0));
         }
         
         {
@@ -490,64 +491,64 @@ int main(void)
             StrListPush(arena, &list, StrLit("B"));
             StrListPush(arena, &list, StrLit("C"));
             StrListPush(arena, &list, StrLit("D"));
-            TestResult(list.nodeCount == 4 && list.totalSize == 4);
-            TestResult(StrCompare(list.first->string, StrLit("A"), 0));
-            TestResult(StrCompare(list.last ->string, StrLit("D"), 0));
-            TestResult(StrCompareList(StrLit("A"), &list, 0));
-            TestResult(StrCompareList(StrLit("D"), &list, 0));
+            LT_Check(&ctx, list.nodeCount == 4 && list.totalSize == 4);
+            LT_Check(&ctx, StrCompare(list.first->string, StrLit("A"), 0));
+            LT_Check(&ctx, StrCompare(list.last ->string, StrLit("D"), 0));
+            LT_Check(&ctx, StrCompareList(StrLit("A"), &list, 0));
+            LT_Check(&ctx, StrCompareList(StrLit("D"), &list, 0));
             
             String last = StrListPop(&list);
-            TestResult(list.nodeCount == 3 && list.totalSize == 3);
-            TestResult(StrCompare(list.first->string, StrLit("A"), 0) && StrCompare(list.last->string, StrLit("C"), 0));
-            TestResult(StrCompare(last, StrLit("D"), 0));
+            LT_Check(&ctx, list.nodeCount == 3 && list.totalSize == 3);
+            LT_Check(&ctx, StrCompare(list.first->string, StrLit("A"), 0) && StrCompare(list.last->string, StrLit("C"), 0));
+            LT_Check(&ctx, StrCompare(last, StrLit("D"), 0));
             
             String first = StrListPopFront(&list);
-            TestResult(list.nodeCount == 2 && list.totalSize == 2);
-            TestResult(StrCompare(list.first->string, StrLit("B"), 0) && StrCompare(list.last->string, StrLit("C"), 0));
-            TestResult(StrCompare(first, StrLit("A"), 0));
+            LT_Check(&ctx, list.nodeCount == 2 && list.totalSize == 2);
+            LT_Check(&ctx, StrCompare(list.first->string, StrLit("B"), 0) && StrCompare(list.last->string, StrLit("C"), 0));
+            LT_Check(&ctx, StrCompare(first, StrLit("A"), 0));
             
-            TestResult(!StrCompareList(StrLit("A"), &list, 0));
-            TestResult(!StrCompareList(StrLit("D"), &list, 0));
+            LT_Check(&ctx, !StrCompareList(StrLit("A"), &list, 0));
+            LT_Check(&ctx, !StrCompareList(StrLit("D"), &list, 0));
             
             list = StrList(arena, ArrayExpand(String, StrLit("Long"), StrLit("Minh"), StrLit("Lan")));
-            TestResult(list.nodeCount == 3 && list.totalSize == StrLit("LongMinhLan").size);
-            TestResult(list.first->next->next == list.last);
-            TestResult(StrCompare(StrLit("Long"), list.first->string, 0));
-            TestResult(StrCompare( StrLit("Lan"), list. last->string, 0));
+            LT_Check(&ctx, list.nodeCount == 3 && list.totalSize == StrLit("LongMinhLan").size);
+            LT_Check(&ctx, list.first->next->next == list.last);
+            LT_Check(&ctx, StrCompare(StrLit("Long"), list.first->string, 0));
+            LT_Check(&ctx, StrCompare( StrLit("Lan"), list. last->string, 0));
         }
     }
     
-    TEST("CLI Parsing")
+    LT_Block(&ctx, "CLI Parsing")
     {
         // abc --foo -bar def /baz 123 456
         StringList args1 = StrList(arena, ArrayExpand(String, StrLit("myprogram.exe"),
                                                       StrLit("abc"), StrLit("--foo"), StrLit("-bar"),
                                                       StrLit("def"), StrLit("/baz"), StrLit("123"), StrLit("456")));
         CmdLine cmd = CmdLineFromList(arena, &args1);
-        TestResult(StrCompare(cmd.programName, StrLit("myprogram.exe"), 0));
+        LT_Check(&ctx, StrCompare(cmd.programName, StrLit("myprogram.exe"), 0));
         
-        TestResult(StrCompare(cmd.inputs.first->string, StrLit("abc"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->string, StrLit("def"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->next->string, StrLit("123"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->next->next->string, StrLit("456"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->string, StrLit("abc"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->string, StrLit("def"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->next->string, StrLit("123"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->next->next->string, StrLit("456"), 0));
         
-        TestResult(StrCompare(cmd.opts.first->name, StrLit("foo"), 0));
-        TestResult(StrCompare(cmd.opts.first->next->name, StrLit("bar"), 0));
-        TestResult(StrCompare(cmd.opts.first->next->next->name, StrLit("baz"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->name, StrLit("foo"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->next->name, StrLit("bar"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->next->next->name, StrLit("baz"), 0));
         
         // --a /b foo -- abc --def
         StringList args2 = StrList(arena, ArrayExpand(String, StrLit("myprogram"),
                                                       StrLit("--a"), StrLit("/b"), StrLit("foo"),
                                                       StrLit("--"), StrLit("abc"), StrLit("--def")));
         cmd = CmdLineFromList(arena, &args2);
-        TestResult(StrCompare(cmd.programName, StrLit("myprogram"), 0));
+        LT_Check(&ctx, StrCompare(cmd.programName, StrLit("myprogram"), 0));
         
-        TestResult(StrCompare(cmd.inputs.first->string, StrLit("foo"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->string, StrLit("abc"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->next->string, StrLit("--def"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->string, StrLit("foo"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->string, StrLit("abc"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->next->string, StrLit("--def"), 0));
         
-        TestResult(StrCompare(cmd.opts.first->name, StrLit("a"), 0));
-        TestResult(StrCompare(cmd.opts.first->next->name, StrLit("b"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->name, StrLit("a"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->next->name, StrLit("b"), 0));
         
         // --foo -- a- // \' "abc, cde" /, \:a,b"d::"a
         StringList args3 = StrList(arena, ArrayExpand(String, StrLit("build\\myprogram.exe"),
@@ -555,16 +556,16 @@ int main(void)
                                                       StrLit("//"), StrLit("\\'"), StrLit("abc, cde"),
                                                       StrLit("/,"), StrLit("\\:a,bd::a")));
         cmd = CmdLineFromList(arena, &args3);
-        TestResult(StrCompare(cmd.programName, StrLit("build\\myprogram.exe"), 0));
+        LT_Check(&ctx, StrCompare(cmd.programName, StrLit("build\\myprogram.exe"), 0));
         
-        TestResult(StrCompare(cmd.inputs.first->string, StrLit("a-"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->string, StrLit("//"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->next->string, StrLit("\\'"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->next->next->string, StrLit("abc, cde"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->next->next->next->string, StrLit("/,"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->next->next->next->next->string, StrLit("\\:a,bd::a"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->string, StrLit("a-"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->string, StrLit("//"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->next->string, StrLit("\\'"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->next->next->string, StrLit("abc, cde"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->next->next->next->string, StrLit("/,"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->next->next->next->next->string, StrLit("\\:a,bd::a"), 0));
         
-        TestResult(StrCompare(cmd.opts.first->name, StrLit("foo"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->name, StrLit("foo"), 0));
         
         // -arg: ,,,, , abc,def, 1, 2, 3 bar -a ,,, ,, --b=123, /456
         StringList args4 = StrList(arena, ArrayExpand(String, StrLit("Path/To/My/Program/myprogram"),
@@ -573,101 +574,101 @@ int main(void)
                                                       StrLit("3"), StrLit("bar"), StrLit("-a"), StrLit(",,,"),
                                                       StrLit(",,"), StrLit("--b=123,"), StrLit("/456")));
         cmd = CmdLineFromList(arena, &args4);
-        TestResult(StrCompare(cmd.programName, StrLit("Path/To/My/Program/myprogram"), 0));
+        LT_Check(&ctx, StrCompare(cmd.programName, StrLit("Path/To/My/Program/myprogram"), 0));
         
-        TestResult(StrCompare(cmd.inputs.first->string, StrLit("bar"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->string, StrLit(",,,"), 0));
-        TestResult(StrCompare(cmd.inputs.first->next->next->string, StrLit(",,"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->string, StrLit("bar"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->string, StrLit(",,,"), 0));
+        LT_Check(&ctx, StrCompare(cmd.inputs.first->next->next->string, StrLit(",,"), 0));
         
-        TestResult(StrCompare(cmd.opts.first->name, StrLit("arg"), 0));
-        TestResult(StrCompare(cmd.opts.first->next->name, StrLit("a"), 0));
-        TestResult(StrCompare(cmd.opts.first->next->next->name, StrLit("b"), 0));
-        TestResult(StrCompare(cmd.opts.first->next->next->next->name, StrLit("456"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->name, StrLit("arg"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->next->name, StrLit("a"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->next->next->name, StrLit("b"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->next->next->next->name, StrLit("456"), 0));
         
-        TestResult(StrCompare(cmd.opts.first->values.first->string, StrLit("abc"), 0));
-        TestResult(StrCompare(cmd.opts.first->values.first->next->string, StrLit("def"), 0));
-        TestResult(StrCompare(cmd.opts.first->values.first->next->next->string, StrLit("1"), 0));
-        TestResult(StrCompare(cmd.opts.first->values.first->next->next->next->string, StrLit("2"), 0));
-        TestResult(StrCompare(cmd.opts.first->values.first->next->next->next->next->string, StrLit("3"), 0));
-        TestResult(StrCompare(CmdOptLookup(&cmd, StrLit("b"), 0)->values.first->string, StrLit("123"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->values.first->string, StrLit("abc"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->values.first->next->string, StrLit("def"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->values.first->next->next->string, StrLit("1"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->values.first->next->next->next->string, StrLit("2"), 0));
+        LT_Check(&ctx, StrCompare(cmd.opts.first->values.first->next->next->next->next->string, StrLit("3"), 0));
+        LT_Check(&ctx, StrCompare(CmdOptLookup(&cmd, StrLit("b"), 0)->values.first->string, StrLit("123"), 0));
     }
     
-    TEST("Str -> I64")
+    LT_Block(&ctx, "Str -> I64")
     {
-        TestResult(I64FromStr(StrLit(            "28"), 10, 0) == 28);
-        TestResult(I64FromStr(StrLit(    "4000000024"), 10, 0) == 4000000024);
-        TestResult(I64FromStr(StrLit(    "2000000022"), 10, 0) == 2000000022);
-        TestResult(I64FromStr(StrLit(    "4000000000"), 10, 0) == 4000000000);
-        TestResult(I64FromStr(StrLit(    "9000000000"), 10, 0) == 9000000000);
-        TestResult(I64FromStr(StrLit(  "900000000001"), 10, 0) == 900000000001);
-        TestResult(I64FromStr(StrLit( "9000000000002"), 10, 0) == 9000000000002);
-        TestResult(I64FromStr(StrLit("90000000000004"), 10, 0) == 90000000000004);
+        LT_Check(&ctx, I64FromStr(StrLit(            "28"), 10, 0) == 28);
+        LT_Check(&ctx, I64FromStr(StrLit(    "4000000024"), 10, 0) == 4000000024);
+        LT_Check(&ctx, I64FromStr(StrLit(    "2000000022"), 10, 0) == 2000000022);
+        LT_Check(&ctx, I64FromStr(StrLit(    "4000000000"), 10, 0) == 4000000000);
+        LT_Check(&ctx, I64FromStr(StrLit(    "9000000000"), 10, 0) == 9000000000);
+        LT_Check(&ctx, I64FromStr(StrLit(  "900000000001"), 10, 0) == 900000000001);
+        LT_Check(&ctx, I64FromStr(StrLit( "9000000000002"), 10, 0) == 9000000000002);
+        LT_Check(&ctx, I64FromStr(StrLit("90000000000004"), 10, 0) == 90000000000004);
         
-        TestResult(I64FromStr(StrLit(                 "24"), 8, 0) == 024);
-        TestResult(I64FromStr(StrLit(         "4000000024"), 8, 0) == 04000000024);
-        TestResult(I64FromStr(StrLit(         "2000000022"), 8, 0) == 02000000022);
-        TestResult(I64FromStr(StrLit(         "4000000000"), 8, 0) == 04000000000);
-        TestResult(I64FromStr(StrLit(     "44000000000000"), 8, 0) == 044000000000000);
-        TestResult(I64FromStr(StrLit(  "44400000000000001"), 8, 0) == 044400000000000001);
-        TestResult(I64FromStr(StrLit("4444000000000000002"), 8, 0) == 04444000000000000002);
-        TestResult(I64FromStr(StrLit("4444000000000000004"), 8, 0) == 04444000000000000004);
+        LT_Check(&ctx, I64FromStr(StrLit(                 "24"), 8, 0) == 024);
+        LT_Check(&ctx, I64FromStr(StrLit(         "4000000024"), 8, 0) == 04000000024);
+        LT_Check(&ctx, I64FromStr(StrLit(         "2000000022"), 8, 0) == 02000000022);
+        LT_Check(&ctx, I64FromStr(StrLit(         "4000000000"), 8, 0) == 04000000000);
+        LT_Check(&ctx, I64FromStr(StrLit(     "44000000000000"), 8, 0) == 044000000000000);
+        LT_Check(&ctx, I64FromStr(StrLit(  "44400000000000001"), 8, 0) == 044400000000000001);
+        LT_Check(&ctx, I64FromStr(StrLit("4444000000000000002"), 8, 0) == 04444000000000000002);
+        LT_Check(&ctx, I64FromStr(StrLit("4444000000000000004"), 8, 0) == 04444000000000000004);
         
-        TestResult(I64FromStr(StrLit(               "2a"), 16, 0) == 42);
-        TestResult(I64FromStr(StrLit(         "A0000024"), 16, 0) == 2684354596);
-        TestResult(I64FromStr(StrLit(         "20000022"), 16, 0) == 536870946);
-        TestResult(I64FromStr(StrLit(         "A0000021"), 16, 0) == 2684354593);
-        TestResult(I64FromStr(StrLit(  "+8a000000000000"), 16, 0) == 38843546786070528);
-        TestResult(I64FromStr(StrLit("-75BFFFFFFFFFFFF0"), 16, 0) == -8484781697966014448);
-        TestResult(I64FromStr(StrLit("+4a44000000000020"), 16, 0) == 5351402257222991904);
-        TestResult(I64FromStr(StrLit("-75BBFFFFFFFFFFC0"), 16, 0) == -8483655798059171776);
+        LT_Check(&ctx, I64FromStr(StrLit(               "2a"), 16, 0) == 42);
+        LT_Check(&ctx, I64FromStr(StrLit(         "A0000024"), 16, 0) == 2684354596);
+        LT_Check(&ctx, I64FromStr(StrLit(         "20000022"), 16, 0) == 536870946);
+        LT_Check(&ctx, I64FromStr(StrLit(         "A0000021"), 16, 0) == 2684354593);
+        LT_Check(&ctx, I64FromStr(StrLit(  "+8a000000000000"), 16, 0) == 38843546786070528);
+        LT_Check(&ctx, I64FromStr(StrLit("-75BFFFFFFFFFFFF0"), 16, 0) == -8484781697966014448);
+        LT_Check(&ctx, I64FromStr(StrLit("+4a44000000000020"), 16, 0) == 5351402257222991904);
+        LT_Check(&ctx, I64FromStr(StrLit("-75BBFFFFFFFFFFC0"), 16, 0) == -8483655798059171776);
         
-        TestResult(I64FromStr(StrLit(       "10"), 2, 0) == 2);
-        TestResult(I64FromStr(StrLit( "10000011"), 2, 0) == 131);
-        TestResult(I64FromStr(StrLit("100000011"), 2, 0) == 259);
-        TestResult(I64FromStr(StrLit("101101011"), 2, 0) == 363);
-        TestResult(I64FromStr(StrLit( "10010100"), 2, 0) == 148);
-        TestResult(I64FromStr(StrLit(                                "11111111111111111111111111111111"), 2, 0) == MAX_U32);
-        TestResult(I64FromStr(StrLit("0000000000000000000000000000000000000000000000000000000000000000"), 2, 0) == 0);
-        TestResult(I64FromStr(StrLit("0000000000000000000000000000000000000000000000000000000000000001"), 2, 0) == 1);
+        LT_Check(&ctx, I64FromStr(StrLit(       "10"), 2, 0) == 2);
+        LT_Check(&ctx, I64FromStr(StrLit( "10000011"), 2, 0) == 131);
+        LT_Check(&ctx, I64FromStr(StrLit("100000011"), 2, 0) == 259);
+        LT_Check(&ctx, I64FromStr(StrLit("101101011"), 2, 0) == 363);
+        LT_Check(&ctx, I64FromStr(StrLit( "10010100"), 2, 0) == 148);
+        LT_Check(&ctx, I64FromStr(StrLit(                                "11111111111111111111111111111111"), 2, 0) == MAX_U32);
+        LT_Check(&ctx, I64FromStr(StrLit("0000000000000000000000000000000000000000000000000000000000000000"), 2, 0) == 0);
+        LT_Check(&ctx, I64FromStr(StrLit("0000000000000000000000000000000000000000000000000000000000000001"), 2, 0) == 1);
     }
     
-    TEST("Str <- I64")
+    LT_Block(&ctx, "Str <- I64")
     {
-        TestResult(StrCompare(StrFromI64(arena, 28, 10), StrLit("28"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 4000000024, 10), StrLit("4000000024"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 2000000022, 10), StrLit("2000000022"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 4000000000, 10), StrLit("4000000000"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 9000000000, 10), StrLit("9000000000"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 900000000001, 10), StrLit("900000000001"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 9000000000002, 10), StrLit("9000000000002"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 90000000000004, 10), StrLit("90000000000004"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 28, 10), StrLit("28"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 4000000024, 10), StrLit("4000000024"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 2000000022, 10), StrLit("2000000022"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 4000000000, 10), StrLit("4000000000"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 9000000000, 10), StrLit("9000000000"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 900000000001, 10), StrLit("900000000001"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 9000000000002, 10), StrLit("9000000000002"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 90000000000004, 10), StrLit("90000000000004"), 0));
         
-        TestResult(StrCompare(StrFromI64(arena, 024, 8), StrLit("24"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 04000000024, 8), StrLit("4000000024"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 02000000022, 8), StrLit("2000000022"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 04000000000, 8), StrLit("4000000000"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 044000000000000, 8), StrLit("44000000000000"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 044400000000000001, 8), StrLit("44400000000000001"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 04444000000000000002, 8), StrLit("4444000000000000002"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 04444000000000000004, 8), StrLit("4444000000000000004"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 024, 8), StrLit("24"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 04000000024, 8), StrLit("4000000024"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 02000000022, 8), StrLit("2000000022"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 04000000000, 8), StrLit("4000000000"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 044000000000000, 8), StrLit("44000000000000"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 044400000000000001, 8), StrLit("44400000000000001"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 04444000000000000002, 8), StrLit("4444000000000000002"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 04444000000000000004, 8), StrLit("4444000000000000004"), 0));
         
-        TestResult(StrCompare(StrFromI64(arena, 42, 16), StrLit("2a"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 2684354596, 16), StrLit("A0000024"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 536870946, 16), StrLit("20000022"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 2684354593, 16), StrLit("A0000021"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 38843546786070528, 16), StrLit("8a000000000000"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 8484781697966014448, 16), StrLit("75bffffffffffff0"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 5351402257222991904, 16), StrLit("4a44000000000020"), 1));
-        TestResult(StrCompare(StrFromI64(arena, 8483655798059171776, 16), StrLit("75bbffffffffffc0"), 1));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 42, 16), StrLit("2a"), 1));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 2684354596, 16), StrLit("A0000024"), 1));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 536870946, 16), StrLit("20000022"), 1));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 2684354593, 16), StrLit("A0000021"), 1));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 38843546786070528, 16), StrLit("8a000000000000"), 1));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 8484781697966014448, 16), StrLit("75bffffffffffff0"), 1));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 5351402257222991904, 16), StrLit("4a44000000000020"), 1));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 8483655798059171776, 16), StrLit("75bbffffffffffc0"), 1));
         
-        TestResult(StrCompare(StrFromI64(arena, 2, 2), StrLit("10"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 131, 2), StrLit("10000011"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 259, 2), StrLit("100000011"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 363, 2), StrLit("101101011"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 148, 2), StrLit("10010100"), 0));
-        TestResult(StrCompare(StrFromI64(arena, MAX_U32, 2), StrLit("11111111111111111111111111111111"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 0, 2), StrLit("0"), 0));
-        TestResult(StrCompare(StrFromI64(arena, 1, 2), StrLit("1"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 2, 2), StrLit("10"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 131, 2), StrLit("10000011"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 259, 2), StrLit("100000011"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 363, 2), StrLit("101101011"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 148, 2), StrLit("10010100"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, MAX_U32, 2), StrLit("11111111111111111111111111111111"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 0, 2), StrLit("0"), 0));
+        LT_Check(&ctx, StrCompare(StrFromI64(arena, 1, 2), StrLit("1"), 0));
     }
     
     typedef struct FloatTest
@@ -677,7 +678,7 @@ int main(void)
         String str;
     } FloatTest;
     
-    TEST("Str <-> F64 #1")
+    LT_Block(&ctx, "Str <-> F64 #1")
     {
         const FloatTest small_test[] =
         {
@@ -694,10 +695,10 @@ int main(void)
         };
         
         for (u64 i = 0; i < ArrayCount(small_test); ++i)
-            TestFloat(small_test[i].f, small_test[i].str);
+            TestFloat(&ctx, small_test[i].f, small_test[i].str);
     }
     
-    TEST("Str <-> F64 #2")
+    LT_Block(&ctx, "Str <-> F64 #2")
     {
         const FloatTest test[] =
         {
@@ -739,10 +740,10 @@ int main(void)
         };
         
         for (u64 i = 0; i < ArrayCount(test); ++i)
-            TestFloat(test[i].f, ZeroStr/*test[i].str*/);
+            TestFloat(&ctx, test[i].f, ZeroStr);
     }
     
-    TEST("Log")
+    LT_Block(&ctx, "Log")
     {
         StringList logs = {0};
         LogBegin();
@@ -774,25 +775,25 @@ int main(void)
                         LogPush(i % LogType_Count, "New Log: %llu", i);
                 }
                 
-                TestResult(snapshot == 1024);
-                TestResult(logs.nodeCount == 1025);
+                LT_Check(&ctx, snapshot == 1024);
+                LT_Check(&ctx, logs.nodeCount == 1025);
             }
             
-            TestResult(logs.nodeCount == 1024);
+            LT_Check(&ctx, logs.nodeCount == 1024);
         }
         i32 endLine = __LINE__;
         
         Logger logger = LogEnd(arena);
-        TestResult(logger.count == 12);
+        LT_Check(&ctx, logger.count == 12);
         for (u64 i = 0; i < logger.count; ++i)
         {
             Record record = logger.records[i];
-            TestResult(CmpMem(record.file, __FILE__, sizeof(__FILE__)));
-            TestResult(InRange(record.line, startLine, endLine) && InRange(record.level, 0, LogType_Count - 1));
+            LT_Check(&ctx, CmpMem(record.file, __FILE__, sizeof(__FILE__)));
+            LT_Check(&ctx, InRange(record.line, startLine, endLine) && InRange(record.level, 0, LogType_Count - 1));
         }
     }
     
-    TEST("Buffer")
+    LT_Block(&ctx, "Buffer")
     {
         u64 size = KiB(64);
         u16* buffer = PushArrayNZ(arena, u16, size);
@@ -805,10 +806,10 @@ int main(void)
         for (u64 i = 0; i < LANE_COUNT; ++i)
             lanes[i] = buffer + i * count;
         
-        TestResult(lanes[0] - buffer == 0);
-        TestResult(lanes[1] - lanes[0] == count);
-        TestResult(lanes[2] - lanes[1] == count);
-        TestResult(lanes[3] - lanes[2] == count);
+        LT_Check(&ctx, lanes[0] - buffer == 0);
+        LT_Check(&ctx, lanes[1] - lanes[0] == count);
+        LT_Check(&ctx, lanes[2] - lanes[1] == count);
+        LT_Check(&ctx, lanes[3] - lanes[2] == count);
         
         u64 elementSize = 2;
         String  result1 =   BufferInterleave(arena, (void**)lanes, LANE_COUNT, elementSize, count);
@@ -819,12 +820,12 @@ int main(void)
             lanes[i] = (u16*)result3[i].str;
         String result4 = BufferInterleave(arena, (void**)lanes, LANE_COUNT, elementSize, count);
         
-        TestResult(result1.size / elementSize == size);
-        TestResult(result4.size / elementSize == size);
+        LT_Check(&ctx, result1.size / elementSize == size);
+        LT_Check(&ctx, result4.size / elementSize == size);
         for (u64 i = 0; i < LANE_COUNT; ++i)
         {
-            TestResult(result2[i].size / elementSize == count);
-            TestResult(result3[i].size / elementSize == count);
+            LT_Check(&ctx, result2[i].size / elementSize == count);
+            LT_Check(&ctx, result3[i].size / elementSize == count);
         }
         
         // result1
@@ -840,7 +841,7 @@ int main(void)
                         break;
                 }
             }
-            TestResult(success);
+            LT_Check(&ctx, success);
         }
         
         // result2
@@ -856,53 +857,53 @@ int main(void)
                     break;
             }
             
-            TestResult(success);
+            LT_Check(&ctx, success);
         }
         
         // result3/4
-        TestResult(CmpMem(result4.str, result1.str, count));
+        LT_Check(&ctx, CmpMem(result4.str, result1.str, count));
         for (u64 lane = 0; lane < LANE_COUNT; ++lane)
         {
             u16* ptr = (u16*)result3[lane].str;
-            TestResult(CmpMem(ptr, buffer + count * lane, count));
+            LT_Check(&ctx, CmpMem(ptr, buffer + count * lane, count));
         }
 #undef LANE_COUNT
     }
     
-    TEST("OS")
+    LT_Block(&ctx, "OS")
     {
         {
 #define FileName(name) StrLit("data/"name)
-            String fileData = OSReadFile(arena, FileName("Test.txt"));
-            TestResult(StrCompare(fileData, StrLit("This is a test file!"), 0));
-            TestResult(OSWriteFile(FileName("Test2.txt"), fileData));
-            TestResult(StrCompare(OSReadFile(arena, FileName("Test2.txt")), fileData, 0));
-            TestResult(OSDeleteFile(FileName("Test2.txt")));
+            String fileData = OS_PathRead(arena, FileName("Test.txt"));
+            LT_Check(&ctx, StrCompare(fileData, StrLit("This is a test file!"), 0));
+            LT_Check(&ctx, OS_PathWrite(FileName("Test2.txt"), fileData));
+            LT_Check(&ctx, StrCompare(OS_PathRead(arena, FileName("Test2.txt")), fileData, 0));
+            LT_Check(&ctx, OS_FileDelete(FileName("Test2.txt")));
             
-            FileProperties file = OSFileProperties(FileName("Test.txt"));
-            OSRenameFile(FileName("Test.txt"), FileName("Test3.txt"));
-            TestResult(OSReadFile(arena, FileName("Test.txt")).size == 0);
+            FileProperties file = OS_PathProp(FileName("Test.txt"));
+            OS_FileMove(FileName("Test.txt"), FileName("Test3.txt"));
+            LT_Check(&ctx, OS_PathRead(arena, FileName("Test.txt")).size == 0);
             {
-                FileProperties _file = OSFileProperties(FileName("Test3.txt"));
-                TestResult(CmpMem(&file, &_file, sizeof(FileProperties)));
+                FileProperties _file = OS_PathProp(FileName("Test3.txt"));
+                LT_Check(&ctx, CmpMem(&file, &_file, sizeof(FileProperties)));
             }
-            OSRenameFile(FileName("Test3.txt"), FileName("Test.txt"));
-            TestResult(OSReadFile(arena, FileName("Test3.txt")).size == 0);
+            OS_FileMove(FileName("Test3.txt"), FileName("Test.txt"));
+            LT_Check(&ctx, OS_PathRead(arena, FileName("Test3.txt")).size == 0);
 #undef FileName
         }
         
         {
             u64 nameLen = sizeof("\\code\\examples\\test_base.c") - 1;
             String currentDir = OSGetCurrDir(arena);
-            TestResult(StrCompare(currentDir, StrChop(StrLit(__FILE__), nameLen), 0));
-            TestResult(StrCompare(OSGetExeDir(), StrJoin3(arena, currentDir, StrLit("\\build")), 0));
-            TestResult(StrCompare(OSGetUserDir(), StrLit("C:\\Users\\ADMIN"), 1));
-            TestResult(StrCompare(OSGetTempDir(), StrLit("C:\\Users\\ADMIN\\AppData\\Local\\Temp"), 1));
+            LT_Check(&ctx, StrCompare(currentDir, StrChop(StrLit(__FILE__), nameLen), 0));
+            LT_Check(&ctx, StrCompare(OSGetExeDir(), StrJoin3(arena, currentDir, StrLit("\\build")), 0));
+            LT_Check(&ctx, StrCompare(OSGetUserDir(), StrLit("C:\\Users\\ADMIN"), 1));
+            LT_Check(&ctx, StrCompare(OSGetTempDir(), StrLit("C:\\Users\\ADMIN\\AppData\\Local\\Temp"), 1));
         }
         
         u64 entropy;
         OSGetEntropy(&entropy, sizeof(entropy));
-        TestResult(entropy > 1000 && entropy != MAX_U64 && entropy != MAX_I64 && entropy != MAX_U32 && entropy != MAX_I32);
+        LT_Check(&ctx, entropy > 1000 && entropy != MAX_U64 && entropy != MAX_I64 && entropy != MAX_U32 && entropy != MAX_I32);
         
         StringList logs = {0};
         LogBlock(arena, logs)
@@ -911,21 +912,21 @@ int main(void)
             i32 (*init)(VoidFunc*, b32);
             PrcCast(init, OSGetProc(testLib, "DLLCallback"));
             snapshot = 0;
-            TestResult(init(IncSnapshot, 0) == 10 && snapshot == 1);
+            LT_Check(&ctx, init(IncSnapshot, 0) == 10 && snapshot == 1);
             u32(*func)(u32*, u64);
             PrcCast(func, OSGetProc(testLib, "Sum"));
             u32* array = (u32*)&entropy;
-            TestResult(func(array, 2) == array[0] + array[1]);
+            LT_Check(&ctx, func(array, 2) == array[0] + array[1]);
             i32* dllVar = (i32*)OSGetProc(testLib, "globalInt");
-            TestResult(*dllVar == 10);
+            LT_Check(&ctx, *dllVar == 10);
             *dllVar = 100;
-            TestResult(init(IncSnapshot, 0) == 100 && snapshot == 2);
+            LT_Check(&ctx, init(IncSnapshot, 0) == 100 && snapshot == 2);
             OSFreeLib(testLib);
         }
-        TestResult(logs.nodeCount == 2);
+        LT_Check(&ctx, logs.nodeCount == 2);
     }
     
-    TEST("Timer")
+    LT_Block(&ctx, "Timer")
     {
         DateTime dates[] =
         {
@@ -959,11 +960,11 @@ int main(void)
         for (u64 i = 0; i < ArrayCount(dates); ++i)
         {
             String str = StrFromTime(arena, dates[i]);
-            TestResult(StrCompare(str, strings[i], 0));
+            LT_Check(&ctx, StrCompare(str, strings[i], 0));
         }
     }
     
-    TEST("File Iter")
+    LT_Block(&ctx, "File Iter")
     {
         StringList exts = StrList(arena, ArrayExpand(String, StrLit("c"), StrLit("h"), StrLit("mdesk"),
                                                      StrLit("csv"), StrLit("json")));
@@ -971,11 +972,11 @@ int main(void)
         
         FileIterBlock(arena, iter, StrLit("code"))
         {
-            TestResult(iter.props.modifyTime >= iter.props.createTime);
+            LT_Check(&ctx, iter.props.modifyTime >= iter.props.createTime);
             if (iter.props.flags & FilePropertyFlag_IsFolder)
-                TestResult(!StrContainsChr(iter.name, ".\\/"));
+                LT_Check(&ctx, !StrContainsChr(iter.name, ".\\/"));
             else
-                TestResult(StrCompareList(StrSkipUntil(iter.name, StrLit("."), MatchStr_LastMatch), &exts, 0));
+                LT_Check(&ctx, StrCompareList(StrSkipUntil(iter.name, StrLit("."), MatchStr_LastMatch), &exts, 0));
         }
         
         String txt = StrListPop(&exts);
@@ -984,28 +985,28 @@ int main(void)
         FileIterBlock(arena, iter, StrLit("dependencies\\mdesk"))
         {
             String ext = StrSkipUntil(iter.name, StrLit("."), MatchStr_LastMatch);
-            TestResult(StrCompareList(ext, &exts, 0) && !StrCompare(ext, txt, 0));
-            TestResult(StrCompareList(iter.name, &names, 0) &&
-                       !(iter.props.flags & FilePropertyFlag_IsFolder));
+            LT_Check(&ctx, StrCompareList(ext, &exts, 0) && !StrCompare(ext, txt, 0));
+            LT_Check(&ctx, StrCompareList(iter.name, &names, 0) &&
+                     !(iter.props.flags & FilePropertyFlag_IsFolder));
         }
     }
     
-    TEST("Arena")
+    LT_Block(&ctx, "Arena")
     {
         ScratchBlock(scratch, arena)
-            TestResult(scratch != arena);
+            LT_Check(&ctx, scratch != arena);
         
         ArenaStack(stackArena, 1024);
-        TestResult(stackArena && stackArena->pos == ArenaMinSize(stackArena) && !(stackArena->flags & ArenaFlag_Growing));
+        LT_Check(&ctx, stackArena && stackArena->pos == ArenaMinSize(stackArena) && !(stackArena->flags & ArenaFlag_Growing));
         u8* stackPtr = ArenaPushNZ(stackArena, 1024);
-        TestResult(stackArena->pos == stackArena->cap && stackArena->commitPos == stackArena->cap);
-        TestResult(stackPtr - (u8*)stackArena == sizeof(Arena)); 
+        LT_Check(&ctx, stackArena->pos == stackArena->cap && stackArena->commitPos == stackArena->cap);
+        LT_Check(&ctx, stackPtr - (u8*)stackArena == sizeof(Arena)); 
         
         ArenaPopTo(arena, 0);
-        TestResult(arena->cap == MEM_DEFAULT_RESERVE_SIZE);
-        TestResult(arena->pos == ArenaMinSize(arena));
-        TestResult(arena->alignment == MEM_DEFAULT_ALIGNMENT);
-        TestResult(arena->commitPos == MEM_COMMIT_BLOCK_SIZE);
+        LT_Check(&ctx, arena->cap == MEM_DEFAULT_RESERVE_SIZE);
+        LT_Check(&ctx, arena->pos == ArenaMinSize(arena));
+        LT_Check(&ctx, arena->alignment == MEM_DEFAULT_ALIGNMENT);
+        LT_Check(&ctx, arena->commitPos == MEM_COMMIT_BLOCK_SIZE);
         
         u64 minPos = arena->pos;
         u64 bigCount = 1000;
@@ -1013,11 +1014,11 @@ int main(void)
         {
             i64* array = PushArray(arena, i64, bigCount);
             i64 arr[10] = {0};
-            TestResult(CmpMem(arr, array, 10));
-            TestResult(arena->pos == temp.pos + bigCount * sizeof(u64));
-            TestResult(temp.pos == minPos);
+            LT_Check(&ctx, CmpMem(arr, array, 10));
+            LT_Check(&ctx, arena->pos == temp.pos + bigCount * sizeof(u64));
+            LT_Check(&ctx, temp.pos == minPos);
         }
-        TestResult(arena->pos == minPos);
+        LT_Check(&ctx, arena->pos == minPos);
         
         u8* buffer1 = 0;
         u8* buffer2 = 0;
@@ -1025,19 +1026,19 @@ int main(void)
         {
             buffer1 = ArenaPushPoison(arena, bigCount);
             buffer2 =   ArenaPush(arena, bigCount);
-            TestResult(buffer2 == (buffer1 + bigCount + MEM_POISON_SIZE));
+            LT_Check(&ctx, buffer2 == (buffer1 + bigCount + MEM_POISON_SIZE));
             u8* ptr = PtrAdd(arena, AlignUpPow2(temp.pos, MEM_POISON_ALIGNMENT));
             ptr += AlignUpPow2(bigCount, MEM_POISON_ALIGNMENT) + MEM_POISON_SIZE * 2;
-            TestResult(buffer2 == ptr);
+            LT_Check(&ctx, buffer2 == ptr);
             
 #if ENABLE_SANITIZER
-            TestResult(AsanIsPoison(buffer2 + bigCount, 1));
-            TestResult(AsanIsPoison(buffer1 + bigCount, 1));
+            LT_Check(&ctx, AsanIsPoison(buffer2 + bigCount, 1));
+            LT_Check(&ctx, AsanIsPoison(buffer1 + bigCount, 1));
 #endif
         }
         
 #if ENABLE_SANITIZER
-        TestResult(AsanIsPoison(buffer1, buffer2 + bigCount - buffer1));
+        LT_Check(&ctx, AsanIsPoison(buffer1, buffer2 + bigCount - buffer1));
 #endif
         
         buffer1 = ArenaPush(arena, bigCount);
@@ -1052,25 +1053,25 @@ int main(void)
             
             offset = dPtr - (u8*)arena;
             i64 start = AlignUpPow2(buffer1 - (u8*)arena + bigCount, MEM_POISON_ALIGNMENT) + MEM_POISON_SIZE;
-            TestResult(start == (i64)temp.pos);
+            LT_Check(&ctx, start == (i64)temp.pos);
             
-            TestResult(aPtr - (u8*)arena == start);
+            LT_Check(&ctx, aPtr - (u8*)arena == start);
             start += AlignUpPow2(smallCount, arena->alignment);
-            TestResult(bPtr - (u8*)arena == start);
+            LT_Check(&ctx, bPtr - (u8*)arena == start);
             start += AlignUpPow2(smallCount, arena->alignment);
-            TestResult(cPtr - (u8*)arena == start);
+            LT_Check(&ctx, cPtr - (u8*)arena == start);
             start += AlignUpPow2(smallCount, arena->alignment);
-            TestResult(dPtr - (u8*)arena == start);
+            LT_Check(&ctx, dPtr - (u8*)arena == start);
         }
         
         buffer2 = ArenaPush(arena, bigCount);
         offset = AlignUpPow2(offset + smallCount, MEM_POISON_ALIGNMENT);
-        TestResult(buffer2 - (u8*)arena == offset + MEM_POISON_SIZE);
+        LT_Check(&ctx, buffer2 - (u8*)arena == offset + MEM_POISON_SIZE);
         
 #if ENABLE_SANITIZER
         u64 cap = arena->cap;
         ArenaRelease(arena);
-        TestResult(AsanIsPoison(arena, cap));
+        LT_Check(&ctx, AsanIsPoison(arena, cap));
 #endif
     }
     

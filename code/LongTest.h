@@ -11,18 +11,17 @@
 #define LT_TEST_PADDING 40
 #endif
 
-typedef struct TestCtx TestCtx;
-struct TestCtx
+typedef struct LT_Ctx
 {
     i32 testCount;
     i32 passCount;
-};
-global TestCtx testCtx; // TODO(long): Change from using a global to using a stack
+} LT_Ctx;
 
-function void TestBegin(char* name, i32 padding);
-function void TestEnd(i32 padding);
-function b32  TestResult(b32 result);
-#define TEST(name) DeferBlock(TestBegin(name, LT_NAME_PADDING), TestEnd(LT_TEST_PADDING))
+function void LT_Begin(LT_Ctx* ctx, char* name, i32 padding);
+function void LT_End  (LT_Ctx* ctx, i32 padding);
+function b32  LT_Check(LT_Ctx* ctx, b32 result);
+#define LT_Block(ctx, name) \
+    DeferBlock(LT_Begin((ctx), (name), LT_NAME_PADDING), LT_End((ctx), LT_TEST_PADDING))
 
 #endif //_LONG_TEST_H
 
@@ -36,33 +35,34 @@ function b32  TestResult(b32 result);
 #define LT_ASSERT(x)
 #endif
 
-function void TestBegin(char* name, i32 padding)
+function void LT_Begin(LT_Ctx* ctx, char* name, i32 padding)
 {
     String str = StrFromCStr(name);
     i32 spaces = ClampBot(padding - (i32)str.size, 0);
     LT_PRINTF("\"%.*s\"%.*s [", StrExpand(str), spaces, " ------------------------------");
     
-    testCtx.testCount = 0;
-    testCtx.passCount = 0;
+    ctx->testCount = 0;
+    ctx->passCount = 0;
 }
 
-function b32 TestResult(b32 result)
+function b32 LT_Check(LT_Ctx* ctx, b32 result)
 {
-    testCtx.testCount++;
-    testCtx.passCount += !!result;
+    ctx->testCount++;
+    ctx->passCount += !!result;
     LT_PRINTF(result ? "." : "X");
     
     LT_ASSERT(result);
     return result;
 }
 
-function void TestEnd(i32 padding)
+function void LT_End(LT_Ctx* ctx, i32 padding)
 {
-    i32 spaces = ClampBot(padding - testCtx.testCount, 0);
+    i32 spaces = ClampBot(padding - ctx->testCount, 0);
     
-    LT_PRINTF("]%.*s ", spaces, "                                                                                ");
+    LT_PRINTF("]%.*s ", spaces,
+              "                                                                                ");
     LT_PRINTF("[%2i/%-2i] %2i passed, %2i tests, ",
-              testCtx.passCount, testCtx.testCount, testCtx.passCount, testCtx.testCount);
-    LT_PRINTF(testCtx.testCount == testCtx.passCount ? "SUCCESS ( )\n" : "FAILED (X)\n");
+              ctx->passCount, ctx->testCount, ctx->passCount, ctx->testCount);
+    LT_PRINTF(ctx->testCount == ctx->passCount ? "SUCCESS ( )\n" : "FAILED (X)\n");
 }
 #endif // LONG_TEST_IMPLEMENTATION

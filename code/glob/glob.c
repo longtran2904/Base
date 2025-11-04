@@ -388,7 +388,7 @@ int main(i32 argc, char** argv)
             
             TIME_BLOCK(duration, iterFileMs += duration)
             {
-                if (OSFileProperties(arg).flags & FilePropertyFlag_IsFolder)
+                if (OS_PathProp(arg).flags & FilePropertyFlag_IsFolder)
                 {
                     OSFileIterFlags flg = FileIterFlag_SkipFolders;
                     flg |= (flags & Glob_CLI_Recursive) ? FileIterFlag_Recursive : 0;
