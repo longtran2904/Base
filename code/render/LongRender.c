@@ -45,7 +45,7 @@ function void R_BatchPushStr(Arena* arena, R_Batch* batch, FNT_Baked* font, Stri
         R_Quad quad = (R_Quad){ xy, 0.f, 10000.f, 0.f, 0, { c, c }, layout->uv };
         if (clip)
         {
-            quad.flags |= R_QuadFlag_Clipped;
+            quad.flags |= R_QFlag_Clipped;
             quad.clip = *clip;
         }
         
@@ -150,9 +150,9 @@ function void R_PushLine(R_Ctx* ctx, r2f32 xy, f32 r, u32 c)
 function void R_PushQuad(R_Ctx* ctx, R_Quad* quad, R_Texture texture)
 {
     R_ListPrepBatch(ctx->arena, ctx->list, texture);
-    if (!(quad->flags & R_QuadFlag_Clipped) && ctx->enableClip)
+    if (!(quad->flags & R_QFlag_Clipped) && ctx->enableClip)
     {
-        quad->flags |= R_QuadFlag_Clipped;
+        quad->flags |= R_QFlag_Clipped;
         quad->clip = ctx->clip;
     }
     R_BatchPushQuad(ctx->arena, ctx->list->last, quad);

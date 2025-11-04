@@ -4,12 +4,12 @@
 #define _LONG_RENDER_H
 
 //~ TODO(long):
-// [X] Support additional texture formats (currently only R8 is implemented)
-// [ ] Implement R_Info
 // [ ] Add D3D11 backend
 // [ ] Introduce a vtable for all API-specific functions
-// [ ] Error when the user try to init or begin the renderer multiple times
-// [ ] Shorten all the QuadFlag names
+// [X] Error when the user try to init or begin the renderer multiple times
+// [X] Shorten all the QuadFlag names
+// [X] Support additional texture formats (currently only R8 is implemented)
+// [X] Query the texture format
 
 //~ long: Render Types
 
@@ -32,22 +32,27 @@ typedef u64 R_Texture;
 typedef Flags32 R_QuadFlags;
 enum
 {
-    R_QuadFlag_SharpCornerTR = (1 << 0),
-    R_QuadFlag_SharpCornerTL = (1 << 1),
-    R_QuadFlag_SharpCornerBR = (1 << 2),
-    R_QuadFlag_SharpCornerBL = (1 << 3),
-    R_QuadFlag_HzGradient    = (1 << 4),
-    R_QuadFlag_Clipped       = (1 << 5),
+    R_QFlag_SharpTR   = (1 << 0),
+    R_QFlag_SharpTL   = (1 << 1),
+    R_QFlag_SharpBR   = (1 << 2),
+    R_QFlag_SharpBL   = (1 << 3),
+    R_QFlag_GradientH = (1 << 4),
+    R_QFlag_GradientV = (1 << 5),
+    R_QFlag_Clipped   = (1 << 6),
 };
 
 typedef struct R_Quad R_Quad;
 struct R_Quad
 {
     r2f32 xy;
-    
     f32 roundness, thickness, theta;
     u32 flags;
-    u32 c[2];
+    
+    union
+    {
+        struct { u32 c0, c1; };
+        u32 c[2];
+    };
     
     r2f32 uv;
     r2f32 clip;
@@ -104,44 +109,6 @@ struct R_Ctx
     Arena* arena;
 };
 
-//~ TODO(long)
-
-typedef Flags32 R_Features;
-enum
-{
-    R_Features_OriginTopLeft,
-    R_Features_ImageClampToBorder,
-    R_Features_MrtIndependentBlendState,
-    R_Features_MrtIndependentWriteMask,
-    R_Features_Compute,
-    R_Features_MsaaTextureBindings,
-    R_Features_SeparateBufferTypes,
-    R_Features_DrawBaseVertex,
-    R_Features_DrawBaseInstance,
-    R_Features_GLTextureViews,
-};
-
-typedef struct R_Info
-{
-    R_Features features;
-    i32 maxVertexAttrs;
-    i32 maxColorAttachments;
-    
-    i32 maxImageSize2d;
-    i32 maxImageSizeCube;
-    i32 maxImageSize3d;
-    i32 maxImageSizeArray;
-    i32 maxImageArrayLayers;
-    
-    i32 maxTextureBindingsPerStage;
-    i32 maxStorageBufferBindingsPerStage;
-    i32 maxStorageImageBindingsPerStage;
-    
-    i32 glMaxVertexUniformComponents;
-    i32 glMaxCombinedTextureImageUnits;
-    i32 d3d11MaxUnorderedAccessViews;
-} R_Info;
-
 //~ long: Render Functions
 
 function void R_Init(void);
@@ -149,7 +116,7 @@ function void R_Begin(GFXWindow window);
 function void R_End(void);
 function void R_Submit(R_QuadNode* first, u64 count, R_Texture texture);
 
-function R_TextureFmt R_FmtFromTexture(R_Texture texture); // TODO(long)
+function R_TextureFmt R_FmtFromTexture(R_Texture texture);
 function R_Texture R_TextureCreate (u32 w, u32 h, R_TextureFmt fmt, void* data);
 function void      R_TextureUpdate (R_Texture texture, r2i32 rect, void* data);
 function void      R_TextureDestroy(R_Texture texture);

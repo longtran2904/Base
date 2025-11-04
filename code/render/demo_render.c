@@ -17,7 +17,7 @@
 
 #include "LongRender.h"
 #include "LongRender.c"
-#include "LongRender_OpenGL.c"
+#include "LongRender_OGL.c"
 
 #define U32LinFromSRGB4(r, g, b, a) U32LinFromSRGB(Pack4F32(r, g, b, a))
 #define U32LinFromSRGB3(r, g, b)    U32LinFromSRGB(Pack4F32(r, g, b, 1.f))
@@ -89,7 +89,6 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
     u32 loopSpeed = info->fps * 2;
     u32 frameIdx = info->frameIdx;
     
-    r2f32 fullUV = R2F32P(0, 0, 1, 1);
     r2f32 clip = {0};
     b32 hasClip = frameIdx < loopSpeed;
     if (hasClip)
@@ -100,40 +99,40 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
         clip = R2F32P(0, 0, t, t);
     }
     
+#define TexturedQuad(x, y, w, h) &(R_Quad){ R2F32SizeP(x, y, w, h), .c0 = white, .uv = R2F32P(0, 0, 1, 1) }
+    
     //- Manual System
     ScratchBlock(scratch)
     {
         R_Batch batch = {0};
-        v2f32  rectBase = V2F32(600.f, 250.f);
-        v2f32 atlasSize = V2F32V(fonts[0].baked->size);
-        f32  rectSize = 100.f;
-        f32 rectShift = rectSize + 25.f;
+        v2f32 origin = V2F32(600.f, 250.f);
+        v2f32  atlas = V2F32V(fonts[0].baked->size);
+        f32  size = 100.f;
+        f32 shift = size + 25.f;
         
         R_BatchPushQuad(scratch, &batch, &(R_Quad){
-                            R2F32SizeP(0, 0, rectSize, rectSize), 10.f, 5.f,
-                            .c = { U32LinFromSRGB3(1.f, .2f, 0.f), U32LinFromSRGB3(1.f, 0.f, .2f) },
+                            R2F32SizeP(0, 0, size, size), 10.f, 5.f, 0.f, R_QFlag_GradientV,
+                            { U32LinFromSRGB3(1.f, .2f, 0.f), U32LinFromSRGB3(1.f, 0.f, .2f) },
                         });
         
         R_BatchPushQuad(scratch, &batch, &(R_Quad){
-                            R2F32SizeP(rectShift, 0, rectSize, rectSize), 50.f, 30.f, .c = { c7, c8 },
-                            R2F32SizeP(0, 0, rectSize/atlasSize.x, rectSize/atlasSize.y),
+                            R2F32SizeP(shift, 0, size, size), 50.f, 30.f, 0.f,
+                            R_QFlag_GradientH|R_QFlag_GradientV, { c7, c8 },
+                            R2F32SizeP(0, 0, size/atlas.x, size/atlas.y),
                         });
         
-        R_BatchPushQuad(scratch, &batch, &(R_Quad){
-                            R2F32SizeP(0.f, rectShift, atlasSize.x, atlasSize.y),
-                            .c = { white, white }, fullUV,
-                        });
+        R_BatchPushQuad(scratch, &batch, TexturedQuad(0.f, shift, atlas.x, atlas.y));
         
         for (R_QuadNode* node = batch.first; node; node = node->next)
         {
             for (u32 i = 0; i < node->count; ++i)
             {
                 R_Quad* quad = node->quads + i;
-                quad->xy = ShiftR2F32(quad->xy, rectBase);
+                quad->xy = ShiftR2F32(quad->xy, origin);
                 
                 if (hasClip)
                 {
-                    quad->flags |= R_QuadFlag_Clipped;
+                    quad->flags |= R_QFlag_Clipped;
                     quad->clip = clip;
                 }
             }
@@ -149,15 +148,13 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
         if (hasClip)
             R_CtxClip(&ctx, &clip);
         
-#define D_PushQuad(color0, color1, ...) \
-    R_PushQuad(&ctx, &(R_Quad){ __VA_ARGS__, .c = { color0, color1 } }, 0)
+#define D_PushQuad(x, y, w, h, ...) R_PushQuad(&ctx, &(R_Quad){ R2F32SizeP(x, y, w, h), __VA_ARGS__ }, 0)
         
         //- Basic Shapes
-        R_PushRect(&ctx, R2F32P(55.f,  5.f, 95.f, 45.f), 10.f, c0);
-        R_PushRect(&ctx, R2F32P( 5.f, 50.f, 45.f, 70.f),  0.f, c1);
-        D_PushQuad(c0, c0, R2F32P( 5.f,  5.f, 45.f, 45.f), 10.f, 5.f);
-        D_PushQuad(c1, c2, R2F32P(55.f, 50.f, 95.f, 70.f), 15.f,
-                   .flags = R_QuadFlag_SharpCornerTR|R_QuadFlag_SharpCornerBL, 0);
+        R_PushRect(&ctx, R2F32SizeP(5.f,  5.f, 40.f, 40.f), 10.f, c0);
+        R_PushRect(&ctx, R2F32SizeP(5.f, 50.f, 40.f, 20.f),  0.f, c1);
+        D_PushQuad(55.f,  5.f, 40.f, 40.f, 10.f, .flags = R_QFlag_GradientH|R_QFlag_GradientV, c0);
+        D_PushQuad(55.f, 50.f, 40.f, 20.f, 15.f, .flags = R_QFlag_SharpTR|R_QFlag_SharpBL|R_QFlag_GradientV, c1, c2);
         
         //- Fonts
         R_CtxFont(&ctx, fonts[0]);
@@ -178,15 +175,9 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
         //- Rotation/Gradient
         {
             f32 theta = DivF32(frameIdx, loopSpeed) * TAU_F32;
-            
-            D_PushQuad(white, white, R2F32SizeP(350.f, 90.f, 30.f, 30.f),
-                       500.f, 50.f, theta, R_QuadFlag_SharpCornerBL, 0);
-            
-            D_PushQuad(c6, c7, R2F32SizeP(425.f, 75.f, 100.f, 2.f),
-                       1.f, 10.f, theta/2.f, R_QuadFlag_HzGradient, 0);
-            
-            D_PushQuad(black, white, R2F32P(125.f, 5.f, 250.f, 20.f),
-                       .flags = R_QuadFlag_HzGradient, 0);
+            D_PushQuad(350.f, 90.f,  30.f, 30.f, 15.f, 50.f, theta*1.0f, R_QFlag_SharpBL, white);
+            D_PushQuad(425.f, 75.f, 100.f,  2.f,  1.f, 10.f, theta*0.5f, R_QFlag_GradientH, c6, c7);
+            D_PushQuad(125.f,  5.f, 125.f, 15.f,  0.f,  0.f,       0.0f, R_QFlag_GradientH, black, white);
         }
         
         //- Lines
@@ -247,9 +238,7 @@ function void DrawQuads(R_Font* fonts, u64 fontello, FrameInfo* info, GFXWindow 
                 texture = R_TextureCreate(size, size, R_TextureFmt_SRGB8, img);
             }
             
-            R_PushQuad(&ctx, &(R_Quad){
-                           R2F32SizeP(50, 600, CALIB_SIZE, CALIB_SIZE), .c = { white, white }, fullUV,
-                       }, texture);
+            R_PushQuad(&ctx, TexturedQuad(50, 600, CALIB_SIZE, CALIB_SIZE), texture);
         }
         
         R_CtxFlush(&ctx);

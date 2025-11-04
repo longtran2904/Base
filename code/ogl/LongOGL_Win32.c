@@ -450,28 +450,29 @@ function OGL_Shader OGL_MakeProgram(Arena* arena, OGL_Shader* shaders, u64 count
     return (OGL_Shader){ program, Str(buffer, length) };
 }
 
+#define OGL_PixelFromFmt(textureFmt, pixelFmt, pixelType) \
+    switch (textureFmt) \
+    { \
+        case GL_R8:      pixelFmt = GL_RED;  pixelType = GL_UNSIGNED_BYTE;  break; \
+        case GL_RG8:     pixelFmt = GL_RG;   pixelType = GL_UNSIGNED_BYTE;  break; \
+        case GL_RGBA8:   pixelFmt = GL_RGBA; pixelType = GL_UNSIGNED_BYTE;  break; \
+        case GL_SRGB8:   pixelFmt = GL_RGB;  pixelType = GL_UNSIGNED_BYTE;  break; \
+        case GL_R16:     pixelFmt = GL_RED;  pixelType = GL_UNSIGNED_SHORT; break; \
+        case GL_RG16:    pixelFmt = GL_RG;   pixelType = GL_UNSIGNED_SHORT; break; \
+        case GL_RGBA16:  pixelFmt = GL_RGBA; pixelType = GL_UNSIGNED_SHORT; break; \
+        case GL_R32F:    pixelFmt = GL_RED;  pixelType = GL_FLOAT;          break; \
+        case GL_RG32F:   pixelFmt = GL_RG;   pixelType = GL_FLOAT;          break; \
+        case GL_RGBA32F: pixelFmt = GL_RGBA; pixelType = GL_FLOAT;          break; \
+    } \
+
 function OGL_Handle OGL_TextureCreate(GLint textureFmt, u32 w, u32 h, void* data)
 {
     GLuint texture = 0;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
     
-    GLenum pixelFmt = 0;
-    GLenum pixelType = 0;
-    switch (textureFmt)
-    {
-        case GL_R8:      pixelFmt = GL_RED;  pixelType = GL_UNSIGNED_BYTE;  break;
-        case GL_RG8:     pixelFmt = GL_RG;   pixelType = GL_UNSIGNED_BYTE;  break;
-        case GL_RGBA8:   pixelFmt = GL_RGBA; pixelType = GL_UNSIGNED_BYTE;  break;
-        case GL_SRGB8:   pixelFmt = GL_RGB;  pixelType = GL_UNSIGNED_BYTE;  break;
-        case GL_R16:     pixelFmt = GL_RED;  pixelType = GL_UNSIGNED_SHORT; break;
-        case GL_RG16:    pixelFmt = GL_RG;   pixelType = GL_UNSIGNED_SHORT; break;
-        case GL_RGBA16:  pixelFmt = GL_RGBA; pixelType = GL_UNSIGNED_SHORT; break;
-        case GL_R32F:    pixelFmt = GL_RED;  pixelType = GL_FLOAT;          break;
-        case GL_RG32F:   pixelFmt = GL_RG;   pixelType = GL_FLOAT;          break;
-        case GL_RGBA32F: pixelFmt = GL_RGBA; pixelType = GL_FLOAT;          break;
-    }
-    
+    GLenum pixelFmt = 0, pixelType = 0;
+    OGL_PixelFromFmt(textureFmt, pixelFmt, pixelType);
     glTexImage2D(GL_TEXTURE_2D, 0, textureFmt, w, h, 0, pixelFmt, pixelType, data);
     
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -492,21 +493,8 @@ function void OGL_TextureUpdate(OGL_Handle texture, r2i32 rect, void* data)
         GLint textureFmt = 0;
         glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &textureFmt);
         
-        GLenum pixelFmt = 0;
-        GLenum pixelType = 0;
-        switch (textureFmt)
-        {
-            case GL_R8:      pixelFmt = GL_RED;  pixelType = GL_UNSIGNED_BYTE;  break;
-            case GL_RG8:     pixelFmt = GL_RG;   pixelType = GL_UNSIGNED_BYTE;  break;
-            case GL_RGBA8:   pixelFmt = GL_RGBA; pixelType = GL_UNSIGNED_BYTE;  break;
-            case GL_R16:     pixelFmt = GL_RED;  pixelType = GL_UNSIGNED_SHORT; break;
-            case GL_RG16:    pixelFmt = GL_RG;   pixelType = GL_UNSIGNED_SHORT; break;
-            case GL_RGBA16:  pixelFmt = GL_RGBA; pixelType = GL_UNSIGNED_SHORT; break;
-            case GL_R32F:    pixelFmt = GL_RED;  pixelType = GL_FLOAT;          break;
-            case GL_RG32F:   pixelFmt = GL_RG;   pixelType = GL_FLOAT;          break;
-            case GL_RGBA32F: pixelFmt = GL_RGBA; pixelType = GL_FLOAT;          break;
-        }
-        
+        GLenum pixelFmt = 0, pixelType = 0;
+        OGL_PixelFromFmt(textureFmt, pixelFmt, pixelType);
         glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x0, rect.y0, size.x, size.y, pixelFmt, pixelType, data);
     }
 }

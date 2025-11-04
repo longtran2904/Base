@@ -115,7 +115,7 @@ global char* glsl_fshader =
 
 "void main(){\n"
 //- discard fragments outside clip rect
-"if (((f_flags & 0x20u) != 0u) &&\n"
+"if (((f_flags & 0x40u) != 0u) &&\n"
 "    ((gl_FragCoord.x <  f_clip.x) ||\n"
 "     (gl_FragCoord.y <  f_clip.y) ||\n"
 "     (gl_FragCoord.x >= f_clip.z) ||\n"
@@ -174,9 +174,10 @@ global char* glsl_fshader =
 "}\n"
 
 //- color interpolation
-"float color_tu = uv_ytu;\n"
-"if ((f_flags&0x10u) != 0u) color_tu = uv_xtu;\n"
-"float color_t = clamp(color_tu, 0, 1);\n"
+"float color_xtu = ((f_flags&0x10u) != 0u) ? clamp(uv_xtu, 0, 1) : 0;\n"
+"float color_ytu = ((f_flags&0x20u) != 0u) ? clamp(uv_ytu, 0, 1) : 0;\n"
+"float color_t = color_xtu + color_ytu;\n"
+"if ((f_flags & 0x30u) == 0x30u) color_t = sqrt(color_xtu*color_xtu + color_ytu*color_ytu);\n"
 "vec4 color = f_c0 + (f_c1 - f_c0)*color_t;\n"
 
 //- final color
@@ -188,25 +189,33 @@ global char* glsl_fshader =
 function void R_Init(void)
 {
     ScratchBegin(scratch);
-    OGL_Begin(0);
     b32 error = 0;
+    OGL_Begin(0);
+    
+    if (oglRenderer.program != 0)
+        ErrorSet(error, "Renderer has already intialized");
     
     //- long: Shaders
-    OGL_Shader vshader = OGL_MakeShader(scratch, glsl_vshader, GL_VERTEX_SHADER);
-    OGL_Shader fshader = OGL_MakeShader(scratch, glsl_fshader, GL_FRAGMENT_SHADER);
-    OGL_Shader program = OGL_MakeProgram(scratch, ArrayExpand(OGL_Shader, vshader, fshader));
-    
-    if (vshader.log.size) ErrorSet(error,   "Vertex Shader:\n%.*s\n", StrExpand(vshader.log));
-    if (fshader.log.size) ErrorSet(error, "Fragment Shader:\n%.*s\n", StrExpand(fshader.log));
-    if (program.log.size) ErrorSet(error,         "Program:\n%.*s\n", StrExpand(program.log));
+    GLuint program = 0;
+    if (!error)
+    {
+        OGL_Shader vshader = OGL_MakeShader (scratch, glsl_vshader, GL_VERTEX_SHADER);
+        OGL_Shader fshader = OGL_MakeShader (scratch, glsl_fshader, GL_FRAGMENT_SHADER);
+        OGL_Shader oglProg = OGL_MakeProgram(scratch, ArrayExpand(OGL_Shader, vshader, fshader));
+        
+        if (vshader.log.size) ErrorSet(error,   "Vertex Shader:\n%.*s\n", StrExpand(vshader.log));
+        if (fshader.log.size) ErrorSet(error, "Fragment Shader:\n%.*s\n", StrExpand(fshader.log));
+        if (oglProg.log.size) ErrorSet(error,         "Program:\n%.*s\n", StrExpand(oglProg.log));
+        else program = oglProg.handle;
+    }
     
     //- long: Uniform Locations
     GLint uTransform = -1;
     GLint uTexture = -1;
     if (!error)
     {
-        uTransform = glGetUniformLocation(program.handle, "u_view_xform");
-        uTexture   = glGetUniformLocation(program.handle, "u_tex");
+        uTransform = glGetUniformLocation(program, "u_view_xform");
+        uTexture   = glGetUniformLocation(program, "u_tex");
         
         // NOTE(long): The locations can be -1 if the uniform variables are optimized out
         GLenum glErr = glGetError();
@@ -355,10 +364,10 @@ function void R_Init(void)
     }
     
     //- long: Clean up
-    if (NEVER(error))
+    if (error)
     {
-        if (program.handle != 0)
-            glDeleteProgram(program.handle);
+        if (program != 0)
+            glDeleteProgram(program);
         if (vao != 0)
             glDeleteVertexArrays(1, &vao);
         if (vbo != 0)
@@ -373,7 +382,7 @@ function void R_Init(void)
     
     else
     {
-        oglRenderer.program = program.handle;
+        oglRenderer.program = program;
         oglRenderer.uTransform = uTransform;
         oglRenderer.uTexture = uTexture;
         oglRenderer.vao = vao;
@@ -397,10 +406,18 @@ function void R_Begin(GFXWindow window)
         glViewport(0, 0, w, h);
         oglRenderer.dim = V2I32(w, h);
     }
+    else ErrorFmt("Failed to query the window's rect");
     
-    glBindFramebuffer(GL_FRAMEBUFFER, oglRenderer.fbo);
-    glClearColor(0, 0, 0, 1);
-    glClear(GL_COLOR_BUFFER_BIT);
+    GLint fbo = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+    
+    if (fbo != oglRenderer.fbo)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, oglRenderer.fbo);
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
+    else ErrorFmt("The renderer has already started");
     
     GLenum error = 0;
     while ((error = glGetError()))
@@ -409,7 +426,12 @@ function void R_Begin(GFXWindow window)
 
 function void R_End(void)
 {
-    DeferBlock(glEnable(GL_FRAMEBUFFER_SRGB), glDisable(GL_FRAMEBUFFER_SRGB))
+    GLint fbo = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+    if (fbo != oglRenderer.fbo)
+        ErrorFmt("The renderer hasn't started yet");
+    
+    else DeferBlock(glEnable(GL_FRAMEBUFFER_SRGB), glDisable(GL_FRAMEBUFFER_SRGB))
     {
         glBindFramebuffer(GL_READ_FRAMEBUFFER, oglRenderer.fbo);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
@@ -495,6 +517,35 @@ function void R_Submit(R_QuadNode* first, u64 count, R_Texture rTexture)
             OutputDebugString("Bindless textures are supported.\n");
     }
 #endif
+}
+
+function R_TextureFmt R_FmtFromTexture(R_Texture texture)
+{
+    R_TextureFmt result = 0;
+    GLuint handle = (GLuint)texture;
+    
+    if (glIsTexture((GLuint)handle))
+    {
+        GLint fmt = 0;
+        glBindTexture(GL_TEXTURE_2D, handle);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &fmt);
+        
+        switch (fmt)
+        {
+            case GL_R8:      result = R_TextureFmt_R8;     break;
+            case GL_RG8:     result = R_TextureFmt_RG8;    break;
+            case GL_RGBA8:   result = R_TextureFmt_RGBA8;  break;
+            case GL_SRGB8:   result = R_TextureFmt_SRGB8;  break;
+            case GL_R16:     result = R_TextureFmt_R16;    break;
+            case GL_RG16:    result = R_TextureFmt_RG16;   break;
+            case GL_RGBA16:  result = R_TextureFmt_RGBA16; break;
+            case GL_R32F:    result = R_TextureFmt_R32;    break;
+            case GL_RG32F:   result = R_TextureFmt_RG32;   break;
+            case GL_RGBA32F: result = R_TextureFmt_RGBA32; break;
+        }
+    }
+    
+    return result;
 }
 
 function R_Texture R_TextureCreate(u32 w, u32 h, R_TextureFmt fmt, void* data)
