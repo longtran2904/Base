@@ -4122,20 +4122,20 @@ function OS_Handle OS_ProcessLaunch(String cmd, OS_ProcessParams* params)
     return result;
 }
 
-function b32 OS_ProcessJoin(OS_Handle handle, u64 timeoutMs)
+function b32 OS_ProcessJoin(OS_Handle handle, u64 timeoutMs, i32* exitCode)
 {
     HANDLE process = W32FromHandle(handle);
     DWORD waitResult = WaitForSingleObject(process, W32TimeMS(timeoutMs));
-    b32 result = waitResult == WAIT_OBJECT_0;
     
+    b32 result = waitResult == WAIT_OBJECT_0;
     if (result)
     {
-        // TODO(long): Return the exit code somehow
-        DWORD exit_code = 0;
-        GetExitCodeProcess(process, &exit_code);
-        CloseHandle(process);
+        DWORD code = 0;
+        if (GetExitCodeProcess(process, &code) && exitCode)
+            *exitCode = code;
     }
     
+    CloseHandle(process);
     return result;
 }
 
@@ -4151,8 +4151,7 @@ function b32 OS_ProcessExec(String cmd, OS_ProcessParams* params)
     {
         cmd = StrPushf(scratch, "cmd.exe /C %.*s", StrExpand(cmd));
         OS_Handle handle = OS_ProcessLaunch(cmd, params);
-        result = OS_ProcessJoin(handle, INFINITE);
-        OS_ProcessDetach(handle);
+        result = OS_ProcessJoin(handle, INFINITE, &params->exitCode);
     }
     return result;
 }

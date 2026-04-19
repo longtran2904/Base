@@ -55,6 +55,7 @@ String StrFromExcel(Arena* arena, char* path, char sep)
     }
     
     result = StrJoin(arena, &list);
+    result = StrTrimEnd(result, "\n");
     ScratchEnd(scratch);
     
     xlsxioread_sheetlist_close(sheetList);
@@ -73,6 +74,7 @@ b32 ExcelWrite(String path, String text)
         String name = sheet.pre;
         String data = sheet.post;
         
+        // TODO(long): Replace this library with one that can actually writes multiple sheets
         xlsxiowriter handle = xlsxiowrite_open(path.str, StrToCStr(scratch, name));
         if (handle == NULL)
         {
@@ -175,17 +177,19 @@ i32 main(i32 argc, char **argv)
             // while git merge-file is `ours base theirs`
             String cmd = StrPushf(scratch, "git merge-file %.*s %.*s %.*s",
                                   StrExpand(files[1]), StrExpand(files[0]), StrExpand(files[2]));
-            i32 code = system(cmd.str);
             
-            if (code >= 0)
+            if (OS_ProcessExec(cmd, &(OS_ProcessParams){0}))
             {
                 String diff = OS_PathRead(scratch, files[1]);
                 if (!StrCompare(diff, oursData, 0))
                 {
-                    if (!ExcelWrite(StrPushf(scratch, "%.*s.new.xlsx", StrExpand(oursName)), diff))
-                        result = 2;
-                    else
+                    if (StrCompare(args.last->string, StrLit("-debug"), 0))
+                        oursName = StrPushf(scratch, "%.*s.debug.xlsx", StrExpand(oursName));
+                    b32 noWrite = StrCompare(args.last->string, StrLit("-nowrite"), 0);
+                    if (noWrite || ExcelWrite(oursName, diff))
                         result = 1;
+                    else
+                        result = 2;
                 }
             }
         }

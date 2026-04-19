@@ -54,7 +54,7 @@ if "%clang%"=="1" (
 	set opts=!opts! -I%code% -I%libs% -I%ftlib% %libs%\fast_float.o
 	set lib_opts=-fno-rtti -fno-exceptions -fno-async-exceptions -O2 -c
 	set links=-incremental:no -lKernel32.lib -lWinmm.lib -lUserenv.lib -lAdvapi32.lib -lUser32.lib -lGdi32.lib -lDwmapi.lib
-	set links=!links! -l%libs%\freetype.lib
+	set links=!links! -l%libs%\freetype.lib -l%libs%\libxlsxio_read.lib -l%libs%\libxlsxio_write.lib
 )
 
 if "%msvc%"=="1" (

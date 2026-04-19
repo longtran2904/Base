@@ -1626,7 +1626,7 @@ function StringJoin SubstrSplit(String str, String substr);
 
 function String StrTrim(String str, String arr, i32 dir);
 #define StrTrimStart(str, arr) StrTrim((str), StrLit(arr), -1)
-#define StrTrimEnd  (str, arr) StrTrim((str), StrLit(arr), +1)
+#define   StrTrimEnd(str, arr) StrTrim((str), StrLit(arr), +1)
 
 #define         StrTrimWspace(str) StrTrim((str), StrLit(WspaceStr),  0)
 #define  StrTrimLeadingWspace(str) StrTrim((str), StrLit(WspaceStr), -1)
@@ -2117,6 +2117,7 @@ struct OS_ProcessParams
 {
     StringList env;
     String path;
+    i32 exitCode;
     b32 consoleless;
     OS_Handle stdOutHandle;
     OS_Handle stdErrHandle;
@@ -2124,7 +2125,7 @@ struct OS_ProcessParams
 };
 
 function OS_Handle OS_ProcessLaunch(String cmd, OS_ProcessParams* params);
-function b32       OS_ProcessJoin(OS_Handle handle, u64 timeoutMs);
+function b32       OS_ProcessJoin(OS_Handle handle, u64 timeoutMs, i32* exitCode);
 function void      OS_ProcessDetach(OS_Handle handle);
 function b32       OS_ProcessExec(String cmd, OS_ProcessParams* params);
 
