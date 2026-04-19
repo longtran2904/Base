@@ -185,8 +185,8 @@ struct StringTable
     u64 rowCount, cellCount, totalSize;
 };
 
-function StringTable StrTableFromStr(Arena* arena, String str, u8 seperator, u8 terminator);
 function StringTable StrTablePushRow(Arena* arena, String row, u8 seperator);
+function StringTable StrTableFromStr(Arena* arena, String str, u8 seperator, u8 terminator);
 
 //- long: CSV
 function u64 CSV_StrListPushRow(Arena* arena, StringList* list, String text);

@@ -84,7 +84,7 @@ if "%msvc%"=="1" (
 	set opts=!opts! /I%code% /I%libs% /I%ftlib% %libs%\fast_float.obj
 	set lib_opts=/nologo /GR- /EHa- /O2 /c
 	set links=/incremental:no Kernel32.lib Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
-	set links=!links! %libs%\freetype.lib
+	set links=!links! %libs%\freetype.lib %libs%\libxlsxio_read.lib %libs%\libxlsxio_write.lib
 )
 
 :: --- Build Dependencies -----------------------------------------------------
@@ -116,6 +116,7 @@ del *.lib > NUL 2> NUL
 :: %compile% %opts% %warns% %code%\examples\bench_mem.c  %out%bench_mem.exe    %linker% %links%
 :: %compile% %opts% %warns% %code%\examples\print_args.c %out%args.exe         %linker% %links%
 
+%compile% %opts% %warns% %code%\diff\LongDiff.c %out%excel_diff.exe %linker% %links%
 :: %compile% %opts% %warns% %code%\glob\glob.c      %out%glob.exe       %linker% %links%
 :: %compile% %opts% %warns% %code%\glob\test_glob.c %out%test_glob.exe  %linker% %links%
 

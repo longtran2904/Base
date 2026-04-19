@@ -1126,11 +1126,18 @@ function String SubstrRange(String str, u64 first, u64 range)
 function StringJoin SubstrSplit(String str, String substr)
 {
     StringJoin result = {0};
+    i64 offset = -1;
+    
     if (StrIsSubstr(str, substr))
+        offset = substr.str - str.str;
+    else
+        offset = StrFindStr(str, substr, 0);
+    
+    if (offset >= 0)
     {
-        result.pre = StrRange(str.str, substr.str);
-        result.mid = substr;
-        result.post = StrRange(substr.str + substr.size, str.str + str.size);
+        result.pre = StrPrefix(str, offset);
+        result.mid = SubstrRange(str, offset, substr.size);
+        result.post = Substr(str, offset + substr.size, str.size);
     }
     return result;
 }
@@ -4120,8 +4127,15 @@ function b32 OS_ProcessJoin(OS_Handle handle, u64 timeoutMs)
     HANDLE process = W32FromHandle(handle);
     DWORD waitResult = WaitForSingleObject(process, W32TimeMS(timeoutMs));
     b32 result = waitResult == WAIT_OBJECT_0;
+    
     if (result)
+    {
+        // TODO(long): Return the exit code somehow
+        DWORD exit_code = 0;
+        GetExitCodeProcess(process, &exit_code);
         CloseHandle(process);
+    }
+    
     return result;
 }
 

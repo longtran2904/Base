@@ -301,14 +301,16 @@ int WinMain(HINSTANCE hInstance,
         GFXWindow window = 0;
         GFXErrorBlock(scratch, 1, .callback = GFXErrorFmt)
         {
-            window = GFXCreateWindowEx(StrLit("My Window"), CW_USEDEFAULT, CW_USEDEFAULT, 1200, 800);
+            window = GFXCreateWindowEx(StrLit("My Window"), 0, 0, 0, 0);
+            GFXWindowSetInnerRect(window, 680, 320, 1200, 800);
             OGL_WindowEquip(window);
             GFXShowWindow(window);
         }
         
-        FrameInfo* info = &(FrameInfo){ .fps = (u32)GFXWindowRefreshRate(window), };
+        FrameInfo* info = &(FrameInfo){0};
         for (TempArena temp = TempBegin(scratch); 1; TempEnd(temp))
         {
+            info->fps = (u32)GFXWindowRefreshRate(window);
             if (info->frameIdx == 0)
             {
                 timer = OSNowUS() - timer;

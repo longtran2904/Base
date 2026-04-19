@@ -423,6 +423,26 @@ function TokenArray TokenArrayFromChunkList(Arena* arena, TokenChunkList* chunks
 
 //~ long: CSV Parser
 
+function StringTable StrTableFromStr(Arena* arena, String str, u8 seperator, u8 terminator)
+{
+    ScratchBegin(scratch, arena);
+    StringList rows = StrSplit(scratch, str, StrFromChr(terminator), SplitStr_KeepEmpties);
+    
+    StringTable table = {0};
+    table.rows = PushArray(arena, StringList, rows.nodeCount);
+    
+    StrListIter(&rows, row)
+    {
+        u64 rowIdx = table.rowCount++;
+        table.rows[rowIdx] = StrSplit(arena, row->string, StrFromChr(seperator), SplitStr_KeepEmpties);
+        table.cellCount += table.rows[rowIdx].nodeCount;
+        table.totalSize += table.rows[rowIdx].totalSize;
+    }
+    
+    ScratchEnd(scratch);
+    return table;
+}
+
 function u64 CSV_StrListPushRow(Arena* arena, StringList* list, String text)
 {
     Scanner* scanner = &ScannerFromStr(text);
