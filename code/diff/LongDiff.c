@@ -140,8 +140,10 @@ i32 main(i32 argc, char **argv)
     if (argc == 2)
     {
         String tsv = StrFromExcel(scratch, argv[1], sep);
-        if ((result = !!tsv.size))
+        if (tsv.size)
             Outf("%.*s", StrExpand(tsv));
+        else
+            result = 1;
     }
     
     else if (argc >= 4)
