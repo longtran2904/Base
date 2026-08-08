@@ -498,7 +498,7 @@ function v3f32 RGBFromHSV(v3f32 hsv)
     f32 h6_mod2 = h6 - (f32)((case_n|1) - 1);
     f32 x = c * (1 - Abs_f32(h6_mod2 - 1));
     
-    f32 rp,gp,bp;
+    f32 rp = 0, gp = 0,bp = 0;
     switch (case_n)
     {
         case 0:
@@ -1029,7 +1029,7 @@ function void TempEnd(TempArena temp)
 #if !BASE_LIB_IMPORT_SYMBOLS && !BASE_LIB_RUNTIME_IMPORT
 global threadvar Arena* scratchPool[SCRATCH_POOL_COUNT] = {0};
 
-TempArena BASE_SHARABLE(GetScratch)(Arena** conflictArray, u64 count)
+sharable TempArena GetScratch(Arena** conflictArray, u64 count)
 {
     Arena** pool = scratchPool;
     if (pool[0] == 0)
@@ -2629,7 +2629,7 @@ struct LOG_Thread
 #if !BASE_LIB_IMPORT_SYMBOLS && !BASE_LIB_RUNTIME_IMPORT
 global threadvar LOG_Thread logThread = {0};
 
-void BASE_SHARABLE(LogBeginEx)(LogInfo info)
+sharable void LogBeginEx(LogInfo info)
 {
     if (!logThread.arena)
         logThread.arena = ArenaReserve(KiB(64), 1, 1);
@@ -2638,7 +2638,7 @@ void BASE_SHARABLE(LogBeginEx)(LogInfo info)
     SLLStackPush(logThread.stack, list);
 }
 
-Logger BASE_SHARABLE(LogEnd)(Arena* arena)
+sharable Logger LogEnd(Arena* arena)
 {
     Logger result = {0};
     LOG_List* list = logThread.stack;
@@ -2659,15 +2659,7 @@ Logger BASE_SHARABLE(LogEnd)(Arena* arena)
     return result;
 }
 
-LogInfo BASE_SHARABLE(LogGetInfo)(void)
-{
-    LogInfo result = (LogInfo){0};
-    if (logThread.stack)
-        result = logThread.stack->info;
-    return result;
-}
-
-CHECK_PRINTF_FUNC(4) void BASE_SHARABLE(LogPushf)(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...)
+sharable void LogPushfv(i32 level, char* file, i32 line, char* fmt, va_list args)
 {
     LOG_List* list = logThread.stack;
     if (NEVER(!InRange(level, 0, LogType_Count - 1)))
@@ -2689,15 +2681,21 @@ CHECK_PRINTF_FUNC(4) void BASE_SHARABLE(LogPushf)(i32 level, char* file, i32 lin
             date = OSToLocTime(date);
             node->record.time = TimeToDense(date);
             
-            va_list args;
-            va_start(args, fmt);
             list->info.callback(logThread.arena, &node->record, (char*)fmt, args);
-            va_end(args);
         }
     }
 }
+#endif
 
-void BASE_SHARABLE(LogFmtStd)(Arena* arena, Record* record, char* fmt, va_list args)
+CHECK_PRINTF_FUNC(4) function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    LogPushfv(level, file, line, (char*)fmt, args);
+    va_end(args);
+}
+
+function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args)
 {
     ScratchBlock(scratch, arena)
     {
@@ -2711,7 +2709,7 @@ void BASE_SHARABLE(LogFmtStd)(Arena* arena, Record* record, char* fmt, va_list a
     }
 }
 
-void BASE_SHARABLE(LogFmtANSIColor)(Arena* arena, Record* record, char* fmt, va_list args)
+function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list args)
 {
     ScratchBlock(scratch, arena)
     {
@@ -2732,7 +2730,6 @@ void BASE_SHARABLE(LogFmtANSIColor)(Arena* arena, Record* record, char* fmt, va_
         }
     }
 }
-#endif
 
 function StringList StrListFromLogger(Arena* arena, Logger* logger)
 {
@@ -2894,13 +2891,15 @@ global String win32TempPath = {0};
 #include <dbghelp.h>
 
 #define RUNTIME_FUNCS(X) \
-    X(GetScratch) \
-    X(LogBeginEx) \
-    X(LogEnd) \
-    X(LogGetInfo) \
-    X(LogPushf) \
-    X(LogFmtStd) \
-    X(LogFmtANSIColor)
+    X(GetScratch, TempArena, (Arena** conflictArray, u64 count), (conflictArray, count)) \
+    X(LogBeginEx, void, (LogInfo info), (info)) \
+    X(LogEnd, Logger, (Arena* arena), (arena)) \
+    X(LogPushfv, void, (i32 level, char* file, i32 line, char* fmt, va_list args), (level, file, line, fmt, args))
+
+#define X(name, ret, args, call) static ret (*name##_Ptr) args; \
+    sharable ret name args { return name##_Ptr call; }
+RUNTIME_FUNCS(X)
+#undef X
 
 #pragma comment(lib, "dbghelp.lib")
 
@@ -2989,15 +2988,16 @@ BeforeMain(BaseInitRuntime)
             
             for (i32 nameIdx = 0; nameIdx < exports.count; nameIdx++)
                 Outf("%-16.*s %p\n", StrExpand(exports.names[nameIdx]), exports.addrs[nameIdx]);
-            
 #else
-#define X(name) PrcCast(name, GetProcAddress(modules[i], Stringify(name)));
+            
+#define X(name, ...) PrcCast(name##_Ptr, GetProcAddress(modules[i], Stringify(name)));
             RUNTIME_FUNCS(X)
 #undef X
             
-#define X(name) if (!name) continue;
+#define X(name, ...) if (!name##_Ptr) continue;
             RUNTIME_FUNCS(X)
 #undef X
+            
 #undef RUNTIME_FUNCS
 #endif
             

@@ -65,14 +65,14 @@ if "%msvc%"=="1" (
 	set dll=/LD
 
 	:: --- base warnings ---
-	set warns=-D_CRT_SECURE_NO_WARNINGS /W4 /WX /wd4057 /wd4201 /wd4389 /wd4189
+	set warns=-D_CRT_SECURE_NO_WARNINGS /W4 /WX /wd4057 /wd4201 /wd4389 /wd4189 /wd4319
 
 	:: --- unused flags ---
 	REM set warns=!warns! /wd4100 /wd4101
 	:: --- analyze flags ---
 	REM set warns=!warns! /analyze /wd28251 /wd28182 /wd6287 /wd6387
 	:: --- this might be useful ---
-	set warns=!warns! /wd5287
+	set warns=!warns! /wd5287 /wd4098
 
 	:: --- compile options ---
 	set opts=/FC /GR- /EHa- /nologo /Zi /Zc:preprocessor
@@ -82,7 +82,7 @@ if "%msvc%"=="1" (
 
 	:: --- dependencies setup ---
 	set opts=!opts! /I%code% /I%libs% /I%ftlib% %libs%\fast_float.obj
-	set lib_opts=/nologo /GR- /EHa- /O2 /c
+	set lib_opts=/nologo /GR- /EHa- /O2 /c /I%code% /I%libs%
 	set links=/incremental:no Kernel32.lib Winmm.lib Userenv.lib Advapi32.lib User32.lib Gdi32.lib Dwmapi.lib
 	set links=!links! %libs%\freetype.lib %libs%\libxlsxio_read.lib %libs%\libxlsxio_write.lib
 )
@@ -106,17 +106,19 @@ del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
 del *.lib > NUL 2> NUL
 
-%compile% %opts% %warns% %code%\render\demo_render.c %out%demo_render.exe %linker% %links%
+:: %compile% %opts% %warns% %code%\render\demo_render.c %out%demo_render.exe %linker% %links%
 :: %compile% %opts% %warns% %code%\parser\test_parser.c %out%test_parser.exe %linker% %links%
 :: %compile% %opts% %warns% %code%\metagen\Metamain.c   %out%metagen.exe     %linker% %links%
 
-:: %compile% %opts% %warns% %code%\examples\demo.c       %out%demo.exe         %linker% %links%
-:: %compile% %opts% %warns% %code%\examples\test_base.c  %out%test_base.exe    %linker% %links%
-:: %compile% %opts% %warns% %code%\examples\TestDLL.c    %out%test.dll   %dll% %linker% %links%
-:: %compile% %opts% %warns% %code%\examples\bench_mem.c  %out%bench_mem.exe    %linker% %links%
-:: %compile% %opts% %warns% %code%\examples\print_args.c %out%args.exe         %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\demo.c       %out%demo.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\test_base.c  %out%test_base.exe  %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\TestDLL.c    %out%test.dll %dll% %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\print_args.c %out%args.exe       %linker% %links%
+:: %compile% %opts% %warns% %code%\examples\bench_mem.c  %out%bench_mem.exe  %linker% %links%
+%compile% %opts% %warns% %code%\examples\bench_str.c  %out%bench_str.exe  %linker% %links%
 
-%compile% %opts% %warns% %code%\diff\LongDiff.c %out%excel_diff.exe %linker% %links%
+:: %compile% %lib_opts% %code%\parser\LExcel_xlnt.cpp /Fo%libs%\ %linker%
+:: %compile% %opts% %warns% %code%\diff\LongDiff.c %libs%\LExcel_xlnt.obj %out%excel_diff.exe %linker% %links% %libs%\xlnt.lib
 :: %compile% %opts% %warns% %code%\glob\glob.c      %out%glob.exe       %linker% %links%
 :: %compile% %opts% %warns% %code%\glob\test_glob.c %out%test_glob.exe  %linker% %links%
 

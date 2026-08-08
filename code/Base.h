@@ -4,6 +4,7 @@
 #define _BASE_H
 
 //~ TODO(long):
+// [ ] Switch from fast_float.cpp to ffc.h
 // [ ] Custom printf format
 // [ ] Support for custom data structures
 // [X] Replace all OSxxxFile to with OS_FileXXX
@@ -40,13 +41,11 @@
 #endif
 
 #if BASE_LIB_EXPORT_SYMBOLS
-#define BASE_SHARABLE(name) libexport name
+#define sharable libexport
 #elif BASE_LIB_IMPORT_SYMBOLS
-#define BASE_SHARABLE(name) libimport name
-#elif BASE_LIB_RUNTIME_IMPORT
-#define BASE_SHARABLE(name) function (*name)
+#define sharable libimport
 #else
-#define BASE_SHARABLE(name) function name
+#define sharable function
 #endif
 
 #ifndef global
@@ -301,6 +300,20 @@
 #define clinkage extern
 #endif
 
+#if LANG_C
+#define fallthrough
+#endif
+
+#if COMPILER_CL
+#define forceinline __forceinline
+#define neverinline __declspec(noinline)
+#elif COMPILER_GCC || COMPILER_CLANG
+#define forceinline inline __attribute__((always_inline))
+#define neverinline __attribute__((noinline))
+#else
+#error force/no inline is not defined for this compiler
+#endif
+
 #if COMPILER_CL
 #define threadvar __declspec(thread)
 #elif COMPILER_GCC || COMPILER_CLANG
@@ -463,7 +476,6 @@
 
 //- long: Debug/Assert Macros
 #define Stmnt(S) do { S; } while (0)
-#define fallthrough
 #define UNUSED(x) ((void)(x))
 #define DEBUG(x, ...) Stmnt(__VA_ARGS__; UNUSED(x))
 #define EXIT() Stmnt(if (0) return)
@@ -488,7 +500,7 @@
 #endif
 
 //- long: Cast Macros
-#define BitCast(type, var) (*((type)*)(&(var))) // @UB(long)
+#define BitCast(type, var) (*(type*)&(var)) // @UB(long)
 #define PrcCast(a, b) ((*(VoidFunc**)(&(a))) = (VoidFunc*)(b))
 
 // @UB(long): Clang complains about these
@@ -714,7 +726,7 @@ StaticAssert(sizeof(uptr) == ARCH_SIZE/8, CheckUPTRSize);
 #define U32L(x) (x ## U)
 #define U64L(x) (x ## ULL)
 
-#ifdef LANG_C
+#if LANG_C
 #define false 0
 #define true  1
 #endif
@@ -1568,7 +1580,7 @@ function void ArenaAlignNZ(Arena* arena, u32 alignment);
 #define    PushArray(arena, type, count) (type*)ArenaPush  ((arena), sizeof(type) * (count))
 #define  PushArrayNZ(arena, type, count) (type*)ArenaPushNZ((arena), sizeof(type) * (count))
 
-TempArena BASE_SHARABLE(GetScratch)(Arena** conflictArray, u64 count);
+sharable TempArena GetScratch(Arena** conflictArray, u64 count);
 function TempArena TempBegin(Arena* arena);
 function void      TempEnd(TempArena temp);
 
@@ -1598,16 +1610,26 @@ function void      TempEnd(TempArena temp);
 //~ long: String Functions
 
 //- long: Constructor Functions
-#define ZeroStr    ((String  ){0})
-#define ZeroStr16  ((String16){0})
-#define ZeroStr32  ((String32){0})
+#if LANG_C
 #define   Str(...) ((String  ){ __VA_ARGS__ })
 #define Str16(...) ((String16){ __VA_ARGS__ })
 #define Str32(...) ((String32){ __VA_ARGS__ })
+#define ZeroStr     Str(0)
+#define ZeroStr16 Str16(0)
+#define ZeroStr32 Str32(0)
+
+#else
+#define   Str(...) (String  { __VA_ARGS__ })
+#define Str16(...) (String16{ __VA_ARGS__ })
+#define Str32(...) (String32{ __VA_ARGS__ })
+#define ZeroStr     Str()
+#define ZeroStr16 Str16()
+#define ZeroStr32 Str32()
+#endif
 
 #define StrRange(first, opl) (String){ (first), (opl) - (first) }
 #define StrConst(s) { (u8*)(s), sizeof(s) - 1 }
-#define StrLit(s) (String){ (u8*)(s), sizeof(s) - 1 }
+#define StrLit(s) Str((u8*)(s), sizeof(s) - 1)
 #define StrFromChr(c) Str(.str = &(c), .size = 1)
 #define StrExpand(s) (i32)((s).size), ((s).str)
 
@@ -1884,14 +1906,13 @@ struct Logger
                                         UNIQUE(dummy) = LogEnd(arena), list = StrListFromLogger(arena, &UNIQUE(dummy)))
 #define LogPush(level, log, ...) LogPushf((level), __FILE__, __LINE__, (log), ##__VA_ARGS__)
 
-void BASE_SHARABLE(LogBeginEx)(LogInfo info);
-Logger BASE_SHARABLE(LogEnd)(Arena* arena);
+sharable void LogBeginEx(LogInfo info);
+sharable Logger LogEnd(Arena* arena);
+sharable void LogPushfv(i32 level, char* file, i32 line, char* fmt, va_list args);
 
-void BASE_SHARABLE(LogPushf)(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(4);
-void BASE_SHARABLE(LogFmtStd)(Arena* arena, Record* record, char* fmt, va_list args);
-void BASE_SHARABLE(LogFmtANSIColor)(Arena* arena, Record* record, char* fmt, va_list args);
-LogInfo BASE_SHARABLE(LogGetInfo)(void);
-
+function void LogPushf(i32 level, char* file, i32 line, CHECK_PRINTF char* fmt, ...) CHECK_PRINTF_FUNC(4);
+function void LogFmtStd(Arena* arena, Record* record, char* fmt, va_list args);
+function void LogFmtANSIColor(Arena* arena, Record* record, char* fmt, va_list args);
 function StringList StrListFromLogger(Arena* arena, Logger* logger);
 
 #define ErrorBegin(...) LogBegin(.level = LOG_ERROR, __VA_ARGS__)

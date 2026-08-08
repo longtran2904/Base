@@ -1,13 +1,19 @@
+#define function
 #include "Base.h"
 #include "Base.c"
+
 #include "parser/LongScanner.h"
 #include "parser/LongScanner.c"
+
+#include "parser/Lexcel.h"
 #include "xlsxio_read.h"
 #include "xlsxio_write.h"
 
+// TODO(long): Should we sort the sheets, or is the API always deterministic?
 #define SHEET_PREFIX "=== SHEET: "
 #define SHEET_POSTFIX " ===\n"
 
+#if 0
 String StrFromExcel(Arena* arena, char* path, char sep)
 {
     String result = {0};
@@ -131,6 +137,107 @@ b32 ExcelWrite(String path, String text)
     return 1;
 }
 
+#else
+String StrFromExcel(Arena* arena, char* path, char sep)
+{
+    ScratchBegin(scratch, arena);
+    String result = {0};
+    
+    Workbook wb = ExcelOpen(arena, StrFromCStr(path));
+    StringList list = {0};
+    
+    for (i32 sid = 0; sid < wb.count; ++sid)
+    {
+        StrListPushf(scratch, &list, SHEET_PREFIX "%.*s" SHEET_POSTFIX, StrExpand(wb.sheetNames[sid]));
+        
+        for (CellBlock* row = wb.sheets[sid].first; row; row = row->next)
+        {
+            for (i32 i = 0; i < row->count; ++i)
+            {
+                Cell* cell = row->cells + i;
+                StrListPushf(scratch, &list, "%.*s%c", StrExpand(cell->str), sep);
+            }
+        }
+        
+        StrListPushf(scratch, &list, "\n");
+    }
+    
+    result = StrJoin(arena, &list);
+    result = StrTrimEnd(result, "\n");
+    
+    ScratchEnd(scratch);
+    return result;
+}
+
+b32 ExcelWrite(String path, String text)
+{
+    ScratchBegin(scratch);
+    StringList sheets = StrSplit(scratch, text, StrLit(SHEET_PREFIX), 0);
+    
+    for (StringNode* node = sheets.first; node; node = node->next)
+    {
+        StringJoin sheet = SubstrSplit(node->string, StrLit(SHEET_POSTFIX));
+        String name = sheet.pre;
+        String data = sheet.post;
+        
+        // TODO(long): Replace this library with one that can actually writes multiple sheets
+        xlsxiowriter handle = xlsxiowrite_open(path.str, StrToCStr(scratch, name));
+        if (handle == NULL)
+        {
+            Errf("Error creating .xlsx file\n");
+            return 0;
+        }
+        
+        StringTable table = StrTableFromStr(scratch, data, '\t', '\n');
+        String prefix = {0};
+        for (i32 row = 0; row < table.rowCount; ++row)
+        {
+            StringList cells = table.rows[row];
+            
+            for (StringNode* col = cells.first; col; col = col->next)
+            {
+                if (prefix.size)
+                {
+                    col->string = StrPushf(scratch, "%.*s: %.*s", StrExpand(prefix), StrExpand(col->string));
+                    prefix = ZeroStr;
+                }
+                
+                else if (StrStartsWith(col->string, StrLit("<<<<<<<"), 0))
+                {
+                    prefix = StrLit("OURS");
+                    goto SKIP_ROW;
+                }
+                
+                else if (StrStartsWith(col->string, StrLit("======="), 0))
+                {
+                    prefix = StrLit("THEIRS");
+                    goto SKIP_ROW;
+                }
+                
+                else if (StrStartsWith(col->string, StrLit(">>>>>>>"), 0))
+                {
+                    goto SKIP_ROW;
+                }
+                
+                char* str = StrToCStr(scratch, col->string);
+                if (row == 0) //write column names
+                    xlsxiowrite_add_column(handle, str, 0);
+                else
+                    xlsxiowrite_add_cell_string(handle, str);
+            }
+            
+            xlsxiowrite_next_row(handle);
+            SKIP_ROW:;
+        }
+        
+        xlsxiowrite_close(handle);
+    }
+    
+    ScratchEnd(scratch);
+    return 1;
+}
+#endif
+
 i32 main(i32 argc, char **argv)
 {
     ScratchBegin(scratch);
@@ -187,6 +294,7 @@ i32 main(i32 argc, char **argv)
                 {
                     if (StrCompare(args.last->string, StrLit("-debug"), 0))
                         oursName = StrPushf(scratch, "%.*s.debug.xlsx", StrExpand(oursName));
+                    
                     b32 noWrite = StrCompare(args.last->string, StrLit("-nowrite"), 0);
                     if (noWrite || ExcelWrite(oursName, diff))
                         result = 1;
