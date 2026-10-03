@@ -1,6 +1,9 @@
 #include "Base.h"
 #include "Base.c"
 
+// https://longtran2904.substack.com/p/c-strings-a-50-year-mistake/comment/306788293
+// https://godbolt.org/z/axvv5WfKv
+
 neverinline u32 foo1(char* ptr)
 {
     u32 result = 0;

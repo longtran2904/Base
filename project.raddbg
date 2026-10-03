@@ -1,0 +1,16 @@
+// raddbg 0.9.30 project file
+
+name: Base
+target:
+{
+  executable: "build/bench_str.exe"
+  working_directory: ""
+  label: BenchStr
+}
+target:
+{
+  executable: "../smalloc/build/smalloc.exe"
+  working_directory: "../smalloc"
+  enabled: 1
+  label: Smalloc
+}

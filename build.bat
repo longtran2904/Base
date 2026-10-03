@@ -106,21 +106,19 @@ del *.exe > NUL 2> NUL
 del *.dll > NUL 2> NUL
 del *.lib > NUL 2> NUL
 
-:: %compile% %opts% %warns% %code%\render\demo_render.c %out%demo_render.exe %linker% %links%
-:: %compile% %opts% %warns% %code%\parser\test_parser.c %out%test_parser.exe %linker% %links%
-:: %compile% %opts% %warns% %code%\metagen\Metamain.c   %out%metagen.exe     %linker% %links%
+%compile% %opts% %warns% %code%\render\demo_render.c %out%demo_render.exe %linker% %links%
+%compile% %opts% %warns% %code%\parser\test_parser.c %out%test_parser.exe %linker% %links%
+%compile% %opts% %warns% %code%\metagen\Metamain.c   %out%metagen.exe     %linker% %links%
 
-:: %compile% %opts% %warns% %code%\examples\demo.c       %out%demo.exe       %linker% %links%
-:: %compile% %opts% %warns% %code%\examples\test_base.c  %out%test_base.exe  %linker% %links%
-:: %compile% %opts% %warns% %code%\examples\TestDLL.c    %out%test.dll %dll% %linker% %links%
-:: %compile% %opts% %warns% %code%\examples\print_args.c %out%args.exe       %linker% %links%
-:: %compile% %opts% %warns% %code%\examples\bench_mem.c  %out%bench_mem.exe  %linker% %links%
+%compile% %opts% %warns% %code%\examples\demo.c       %out%demo.exe       %linker% %links%
+%compile% %opts% %warns% %code%\examples\test_base.c  %out%test_base.exe  %linker% %links%
+%compile% %opts% %warns% %code%\examples\TestDLL.c    %out%test.dll %dll% %linker% %links%
+%compile% %opts% %warns% %code%\examples\print_args.c %out%args.exe       %linker% %links%
+%compile% %opts% %warns% %code%\examples\bench_mem.c  %out%bench_mem.exe  %linker% %links%
 %compile% %opts% %warns% %code%\examples\bench_str.c  %out%bench_str.exe  %linker% %links%
 
-:: %compile% %lib_opts% %code%\parser\LExcel_xlnt.cpp /Fo%libs%\ %linker%
-:: %compile% %opts% %warns% %code%\diff\LongDiff.c %libs%\LExcel_xlnt.obj %out%excel_diff.exe %linker% %links% %libs%\xlnt.lib
-:: %compile% %opts% %warns% %code%\glob\glob.c      %out%glob.exe       %linker% %links%
-:: %compile% %opts% %warns% %code%\glob\test_glob.c %out%test_glob.exe  %linker% %links%
+%compile% %opts% %warns% %code%\glob\glob.c      %out%glob.exe       %linker% %links%
+%compile% %opts% %warns% %code%\glob\test_glob.c %out%test_glob.exe  %linker% %links%
 
 :: --- Cleanup Build ----------------------------------------------------------
 del *.obj > NUL 2> NUL
