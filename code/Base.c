@@ -743,8 +743,8 @@ function Arena* ArenaReserve(u64 reserve, u32 alignment, b32 growing)
     Arena* result = 0;
     if (reserve >= MEM_INITIAL_COMMIT)
     {
-        void* memory = OSReserve(reserve);
-        if (memory && OSCommit(memory, MEM_INITIAL_COMMIT))
+        void* memory = OS_Reserve(reserve);
+        if (memory && OS_Commit(memory, MEM_INITIAL_COMMIT))
         {
             result = (Arena*)memory;
             *result = (Arena)
@@ -775,7 +775,7 @@ function void ArenaRelease(Arena* arena)
     {
         Arena* prev = ptr->prev;
         AsanPoison(ptr, ptr->cap);
-        OSRelease(ptr);
+        OS_Release(ptr);
         ptr = prev;
     }
 }
@@ -809,8 +809,8 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
             // NOTE(long): The new size must be page-aligned (see ArenaPopTo for more info)
             newReserveSize = AlignUpPow2(newReserveSize, ARCH_PAGE_SIZE);
             
-            void* memory = OSReserve(newReserveSize);
-            if (OSCommit(memory, MEM_INITIAL_COMMIT))
+            void* memory = OS_Reserve(newReserveSize);
+            if (OS_Commit(memory, MEM_INITIAL_COMMIT))
             {
                 AsanPoison(memory, newReserveSize);
                 AsanUnpoison(memory, minSize);
@@ -847,7 +847,7 @@ function void* ArenaPushNZ(Arena* arena, u64 size)
             u64 nextCommitPos = ClampTop(AlignUpPow2(nextPos, MEM_COMMIT_BLOCK_SIZE), current->cap);
             u64 commitSize = nextCommitPos - current->commitPos;
             
-            if (OSCommit(PtrAdd(current, current->commitPos), commitSize))
+            if (OS_Commit(PtrAdd(current, current->commitPos), commitSize))
                 current->commitPos = nextCommitPos;
         }
         
@@ -887,7 +887,7 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         {
             Arena* prev = current->prev;
             u64 cap = current->cap;
-            OSDecommit(current, cap); // @RECONSIDER(long): Maybe OSRelease?
+            OS_Decommit(current, cap); // @RECONSIDER(long): Maybe OS_Release?
             AsanPoison(current, cap); // @RECONSIDER(long): Do I need to poison the decommitted memory?
             current = prev;
         }
@@ -901,7 +901,7 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         if (nextCommitPos < current->commitPos)
         {
             u8* nextPtr = PtrAdd(current, nextCommitPos);
-            OSDecommit(nextPtr, current->commitPos - nextCommitPos);
+            OS_Decommit(nextPtr, current->commitPos - nextCommitPos);
             AsanPoison(nextPtr, current->commitPos - nextCommitPos);
             current->commitPos = nextCommitPos;
             current->pos = ClampTop(current->pos, current->commitPos);
@@ -938,8 +938,8 @@ function void ArenaPopTo(Arena* arena, u64 pos)
         if (current->commitPos > alignedPos)
         {
             u8* commitPtr = PtrAdd(current, alignedPos);
-            OSDecommit(commitPtr, current->commitPos - alignedPos);
-            OSCommit  (commitPtr, current->commitPos - alignedPos);
+            OS_Decommit(commitPtr, current->commitPos - alignedPos);
+            OS_Commit  (commitPtr, current->commitPos - alignedPos);
         }
 # endif
         
@@ -959,7 +959,7 @@ internal void ArenaPoison(Arena* arena, u64 size)
 #if ENABLE_SANITIZER
         AsanPoison(PtrAdd(current, current->pos - size), size);
 #else
-        OSDecommit(PtrAdd(current, current->pos - size), size);
+        OS_Decommit(PtrAdd(current, current->pos - size), size);
 #endif
     }
 }
@@ -2551,7 +2551,7 @@ CHECK_PRINTF_FUNC(1) function void Outf(CHECK_PRINTF char* fmt, ...)
         {
             msg.size = PRINT_INTERNAL_BUFFER_SIZE;
             i32 allocSize = size + 1;
-            extra = OSCommit(0, allocSize);
+            extra = OS_Commit(0, allocSize);
             
             if (ALWAYS(extra))
             {
@@ -2565,7 +2565,7 @@ CHECK_PRINTF_FUNC(1) function void Outf(CHECK_PRINTF char* fmt, ...)
         
         ALWAYS(OSWriteConsole(OS_STD_OUT, msg));
         if (extra)
-            OSDecommit(extra, size);
+            OS_Decommit(extra, size);
     }
 }
 
@@ -2811,7 +2811,7 @@ MSVC(WarnEnable(28301 5105))
 
 //~ long: Memory Functions
 
-function void* OSReserve(u64 size)
+function void* OS_Reserve(u64 size)
 {
     // NOTE(long): Afaik, PAGE_XXX only matters when you MEM_COMMIT the memory
     // so when you MEM_RESERVE the memory, you can pass in any PAGE_XXX as you want
@@ -2825,7 +2825,7 @@ function void* OSReserve(u64 size)
     return result;
 }
 
-function void* OSCommit(void* ptr, u64 size)
+function void* OS_Commit(void* ptr, u64 size)
 {
     // NOTE(long): https://devblogs.microsoft.com/oldnewthing/20151008-00/?p=91411
     // MEM_COMMIT with a NULL ptr is unspecified, but Windows typically let it slide
@@ -2840,7 +2840,7 @@ function void* OSCommit(void* ptr, u64 size)
 
 // NOTE(long): 6250: calling 'VirtualFree' without the MEM_RELEASE flag might cause address space leaks
 MSVC(WarnDisable(6250))
-function void OSDecommit(void* ptr, u64 size)
+function void OS_Decommit(void* ptr, u64 size)
 {
     if (!VirtualFree(ptr, size, MEM_DECOMMIT))
     {
@@ -2851,12 +2851,28 @@ function void OSDecommit(void* ptr, u64 size)
 }
 MSVC(WarnEnable(6250))
 
-function void OSRelease(void* ptr)
+function void OS_Release(void* ptr)
 {
     if (!VirtualFree(ptr, 0, MEM_RELEASE))
     {
         DEBUG(error, DWORD error = GetLastError());
         PANIC("Failed to release memory");
+    }
+}
+
+function b32 OS_Purge(void* ptr, u64 size)
+{
+    return OfferVirtualMemory(ptr, size, VmOfferPriorityNormal) == ERROR_SUCCESS;
+}
+
+function i32 OS_Reclaim(void* ptr, u64 size)
+{
+    DWORD result = ReclaimVirtualMemory(ptr, size);
+    switch (result)
+    {
+        case ERROR_SUCCESS: return OS_MEM_RECLAIMED;
+        case ERROR_BUSY:    return OS_MEM_DISCARDED;
+        default:            return OS_MEM_ERROR;
     }
 }
 

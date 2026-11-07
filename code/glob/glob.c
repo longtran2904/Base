@@ -181,7 +181,7 @@ function void ThreadProc(void* arg)
             // NOTE(long): Pop after globbing to ensure the program
             // exits only after all files have been fully globbed
             AtomicDec64(&requestCount);
-            OSRelease(entry->data.str);
+            OS_Release(entry->data.str);
         }
     }
 }
@@ -219,7 +219,7 @@ function void ReadFilesAsync(Arena* arena, StringList* paths)
             u64 entrySize = Min(size - entry->offset, chunkSize);
             entrySize = AlignUpPow2(entrySize, 4096);
             entry->data.size = entrySize;
-            entry->data.str = OSCommit(0, entrySize);
+            entry->data.str = OS_Commit(0, entrySize);
             
             if (ALWAYS(OS_FileReadAsync(handle, R1U64Size(entry->offset, entrySize), entry->data.str, entry)))
             {

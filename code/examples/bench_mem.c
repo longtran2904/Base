@@ -292,8 +292,8 @@ i32 main(i32 argc, char** argv)
     Outf("Initializing %.2f GiB of test data...", DivF64(TestSize, GiB(1)));
     TIME_BLOCK(duration, Outf(" %.3fs\n", (f64)duration/1000.))
     {
-        MemSrc = OSCommit(0, TestSize);
-        MemDst = OSCommit(0, TestSize);
+        MemSrc = OS_Commit(0, TestSize);
+        MemDst = OS_Commit(0, TestSize);
         for (u64 i = 0; i < TestSize; ++i)
             MemSrc[i] = (u8)(i + i*i);
     }

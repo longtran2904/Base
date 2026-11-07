@@ -38,7 +38,7 @@ neverinline int bar2(char* ptr, int size, char value)
 
 neverinline char* init(int size)
 {
-    char* result = OSCommit(0, size);
+    char* result = OS_Commit(0, size);
     RNG rng = { .seed = BIT_NOISE1 };
     for (u64 i = 0; i < size - 1; ++i)
         result[i] = RandomRangeI32(rng, 1, 255);

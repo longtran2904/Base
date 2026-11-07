@@ -109,7 +109,7 @@ int main(void)
         }
     }
     
-    OSCommit(arena, KiB(4));
+    OS_Commit(arena, KiB(4));
     
     DEMO("Log")
     {

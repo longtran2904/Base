@@ -1976,10 +1976,25 @@ function void OSExit(u32 code);
 
 //~ long: Memory Functions
 
-function void* OSReserve(u64 size);
-function void  OSRelease(void* ptr);
-function void*  OSCommit(void* ptr, u64 size);
-function void OSDecommit(void* ptr, u64 size);
+function void* OS_Reserve (u64 size);
+function void  OS_Release (void* ptr);
+function void* OS_Commit  (void* ptr, u64 size);
+function void  OS_Decommit(void* ptr, u64 size);
+
+enum
+{
+    OS_MEM_ERROR,
+    OS_MEM_RECLAIMED,
+    OS_MEM_DISCARDED,
+};
+
+// NOTE(long): Inspired by https://nullprogram.com/blog/2019/12/29/
+// (As well as how other general-purpose heap allocators purge freed memory)
+// No purgeable_alloc/free equivalent since this is only needed on Linux
+// Instead, the purge functions keeps track of all the metadata itself behind the scene
+// This allows any allocation managed by the functions above to be purged and reclaimed
+function b32 OS_Purge  (void* ptr, u64 size);
+function i32 OS_Reclaim(void* ptr, u64 size);
 
 //~ long: Console Handling
 
